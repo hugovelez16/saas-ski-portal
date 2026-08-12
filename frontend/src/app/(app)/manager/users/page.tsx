@@ -1,17 +1,65 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCompaniesDetailed, updateMemberStatus, updateCompanyMembersOrder } from "@/lib/api/companies";
 import { DataTable } from "@/components/ui/data-table";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Users, ArrowUp, ArrowDown } from "lucide-react";
+import { Users, GripVertical } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
+import { Button } from "@/components/ui/button";
+
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    verticalListSortingStrategy,
+    useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+function SortableUserItem({ user }: { user: any }) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+    } = useSortable({ id: user.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+    };
+
+    return (
+        <div ref={setNodeRef} style={style} className="flex items-center gap-4 p-3 border rounded-md mb-2 bg-card shadow-sm">
+            <div {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground">
+                <GripVertical size={20} />
+            </div>
+            <div className="flex-1">
+                <div className="font-medium text-sm">{user.firstName || ""} {user.lastName || ""}</div>
+                <div className="text-xs text-muted-foreground">{user.email}</div>
+            </div>
+            <div className="text-xs text-muted-foreground">
+                {user._role}
+            </div>
+        </div>
+    );
+}
 
 export default function ManagerUsersPage() {
     const router = useRouter();
@@ -20,9 +68,10 @@ export default function ManagerUsersPage() {
 
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    
+    const [isEditingOrder, setIsEditingOrder] = useState(false);
     const [userOrder, setUserOrder] = useState<string[]>([]);
 
-    // Fetch Managed Key Data
     const { data: companies = [], isLoading } = useQuery({
         queryFn: getCompaniesDetailed,
         queryKey: ["companiesDetailed"],
@@ -38,10 +87,8 @@ export default function ManagerUsersPage() {
         onError: () => toast({ title: "Error al actualizar estado", variant: "destructive" })
     });
 
-    // Deduplicate Users from Companies and Flatten with Meta
     const usersWithMeta = useMemo(() => {
         const map = new Map<string, any>();
-
         const filteredCompanies = companyIdParam
             ? companies.filter((c: any) => c.id === companyIdParam)
             : companies;
@@ -77,26 +124,50 @@ export default function ManagerUsersPage() {
         return list;
     }, [usersWithMeta, userOrder]);
 
-    const moveUser = (userId: string, direction: 'up' | 'down', e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (!companyIdParam) return toast({ title: "Selecciona una empresa para ordenar", variant: "destructive" });
-        
-        const currentOrder = userOrder.length > 0 ? userOrder : sortedUsersWithMeta.map((u: any) => u.id);
-        const idx = currentOrder.indexOf(userId);
-        if (idx === -1) return;
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
 
-        const newOrder = [...currentOrder];
-        if (direction === 'up' && idx > 0) {
-            [newOrder[idx], newOrder[idx - 1]] = [newOrder[idx - 1], newOrder[idx]];
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over) return;
+
+        if (active.id !== over.id) {
+            const currentOrder = userOrder.length > 0 ? userOrder : sortedUsersWithMeta.map(u => u.id);
+            const oldIndex = currentOrder.indexOf(active.id as string);
+            const newIndex = currentOrder.indexOf(over.id as string);
+            
+            const newOrder = arrayMove(currentOrder, oldIndex, newIndex);
+            setUserOrder(newOrder);
         }
-        if (direction === 'down' && idx < newOrder.length - 1) {
-            [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
+    };
+
+    const toggleEditOrder = async () => {
+        if (isEditingOrder) {
+            // Save
+            if (companyIdParam && userOrder.length > 0) {
+                try {
+                    await updateCompanyMembersOrder(companyIdParam, userOrder);
+                    toast({ title: "Orden guardado correctamente" });
+                    queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
+                } catch (err) {
+                    console.error(err);
+                    toast({ title: "Error al guardar el orden", variant: "destructive" });
+                }
+            }
+            setIsEditingOrder(false);
+        } else {
+            // Start editing
+            if (!companyIdParam) {
+                toast({ title: "Selecciona una empresa primero", variant: "destructive" });
+                return;
+            }
+            setUserOrder(sortedUsersWithMeta.map(u => u.id));
+            setIsEditingOrder(true);
         }
-        setUserOrder(newOrder);
-        
-        updateCompanyMembersOrder(companyIdParam, newOrder).catch(err => {
-            console.error("Error updating order:", err);
-        });
     };
 
     const handleToggle = (user: any, checked: boolean) => {
@@ -109,20 +180,6 @@ export default function ManagerUsersPage() {
     };
 
     const columns: ColumnDef<any>[] = [
-        {
-            id: "actions",
-            header: "",
-            cell: ({ row }) => {
-                const user = row.original;
-                if (!companyIdParam) return null; // Solo mostrar flechas si estamos viendo una empresa específica
-                return (
-                    <div className="flex flex-col gap-1 w-6 items-center" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={(e) => moveUser(user.id, 'up', e)} className="h-5 w-6 hover:bg-muted rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ArrowUp size={14} /></button>
-                        <button onClick={(e) => moveUser(user.id, 'down', e)} className="h-5 w-6 hover:bg-muted rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ArrowDown size={14} /></button>
-                    </div>
-                );
-            }
-        },
         {
             accessorKey: "firstName",
             header: "Nombre",
@@ -186,18 +243,35 @@ export default function ManagerUsersPage() {
                     <Users className="h-6 w-6 text-indigo-600" />
                     <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Panel de Supervisión</h1>
                 </div>
+                {companyIdParam && (
+                    <Button onClick={toggleEditOrder} variant={isEditingOrder ? "default" : "outline"}>
+                        {isEditingOrder ? "Guardar orden" : "Modificar orden"}
+                    </Button>
+                )}
             </div>
 
-            <DataTable
-                columns={columns}
-                data={sortedUsersWithMeta}
-                searchKey="email"
-                searchPlaceholder="Buscar por email..."
-                onRowClick={(user) => {
-                    const query = companyIdParam ? `?companyId=${companyIdParam}` : "";
-                    router.push(`/manager/users/${user.id}${query}`);
-                }}
-            />
+            {isEditingOrder ? (
+                <div className="p-4 border rounded-md bg-muted/30">
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                        <SortableContext items={sortedUsersWithMeta.map(u => u.id)} strategy={verticalListSortingStrategy}>
+                            {sortedUsersWithMeta.map(user => (
+                                <SortableUserItem key={user.id} user={user} />
+                            ))}
+                        </SortableContext>
+                    </DndContext>
+                </div>
+            ) : (
+                <DataTable
+                    columns={columns}
+                    data={sortedUsersWithMeta}
+                    searchKey="email"
+                    searchPlaceholder="Buscar por email..."
+                    onRowClick={(user) => {
+                        const query = companyIdParam ? `?companyId=${companyIdParam}` : "";
+                        router.push(`/manager/users/${user.id}${query}`);
+                    }}
+                />
+            )}
         </div>
     );
 }
