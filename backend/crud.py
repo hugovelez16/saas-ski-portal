@@ -616,7 +616,17 @@ def get_company_members(db: Session, company_id: str, is_active: bool = None):
     query = db.query(models.CompanyMember).filter(models.CompanyMember.company_id == company_id)
     if is_active is not None:
         query = query.filter(models.CompanyMember.is_active == is_active)
-    return query.all()
+    return query.order_by(models.CompanyMember.sort_order.asc(), models.CompanyMember.joined_at.asc()).all()
+
+def update_company_members_order(db: Session, company_id: str, user_ids: list[str]):
+    for index, user_id in enumerate(user_ids):
+        member = db.query(models.CompanyMember).filter(
+            models.CompanyMember.company_id == company_id,
+            models.CompanyMember.user_id == user_id
+        ).first()
+        if member:
+            member.sort_order = index
+    db.commit()
 
 def update_company_member_status(db: Session, company_id: str, user_id: str, is_active: bool):
     member = db.query(models.CompanyMember).filter(

@@ -80,6 +80,17 @@ def read_company_members(company_id: str, status: str = None, db: Session = Depe
          
     return crud.get_company_members(db, company_id, status)
 
+@router.put("/{company_id}/members/order", response_model=dict)
+def update_members_order(company_id: str, order_data: schemas.UpdateCompanyMembersOrder, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+    """
+    Update the sort order of company members.
+    """
+    if not is_manager_of_company(db, current_user, company_id):
+         raise HTTPException(status_code=403, detail="Not authorized")
+         
+    crud.update_company_members_order(db, company_id, order_data.user_ids)
+    return {"message": "Order updated successfully"}
+
 @router.post("/{company_id}/members/add", response_model=schemas.CompanyMemberResponse)
 def add_company_member(company_id: str, member_data: schemas.TokenData, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
     """

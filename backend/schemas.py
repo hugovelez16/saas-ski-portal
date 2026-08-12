@@ -139,6 +139,9 @@ class UserCompanyRateResponse(UserCompanyRate):
     pass
     user: Optional[UserResponse] = None
 
+class UpdateCompanyMembersOrder(CamelModel):
+    user_ids: List[str]
+
 class CompanyBase(CamelModel):
     name: str
     fiscal_id: Optional[str] = None
