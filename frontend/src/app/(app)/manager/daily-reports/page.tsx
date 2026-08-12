@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format, addDays, subDays, isSameDay, parseISO, startOfDay } from "date-fns";
 import { getUsers, getUserCompanies } from "@/lib/api/users";
 import { getWorkLogs, deleteWorkLog } from "@/lib/api/work-logs"; // Assuming same API, simpler to fetch all and filter
-import { getCompaniesDetailed, getMyCompanies } from "@/lib/api/companies";
+import { getCompaniesDetailed, getMyCompanies, updateCompanyMembersOrder } from "@/lib/api/companies";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,8 +21,43 @@ import { ManagerAddWorkLogDialog } from "@/components/work-log/manager-add-log-d
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { CalendarConfigProvider, useCalendarConfig } from "@/components/event-calendar/use-calendar-config";
 
-export default function ManagerDailyReportPage() {
+function TimeRangeSelector() {
+  const { startHour, endHour, setStartHour, setEndHour } = useCalendarConfig();
+
+  return (
+    <div className="flex items-center gap-1 sm:gap-2">
+      <div className="flex items-center gap-1 text-xs sm:text-sm">
+        <span className="text-muted-foreground hidden lg:inline">Desde:</span>
+        <select 
+          className="h-8 rounded-md border border-input bg-transparent px-2 py-1 text-xs sm:text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          value={startHour} 
+          onChange={(e) => setStartHour(Number(e.target.value))}
+        >
+          {Array.from({ length: 24 }).map((_, i) => (
+            <option key={i} value={i} disabled={i >= endHour}>{i}:00</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex items-center gap-1 text-xs sm:text-sm">
+        <span className="text-muted-foreground hidden lg:inline">Hasta:</span>
+        <select 
+          className="h-8 rounded-md border border-input bg-transparent px-2 py-1 text-xs sm:text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          value={endHour} 
+          onChange={(e) => setEndHour(Number(e.target.value))}
+        >
+          {Array.from({ length: 24 }).map((_, i) => {
+            const hour = i + 1;
+            return <option key={hour} value={hour} disabled={hour <= startHour}>{hour}:00</option>
+          })}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function ManagerDailyReportInner() {
     const { user: currentUser } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -111,23 +146,8 @@ export default function ManagerDailyReportPage() {
     const sortedUsers = useMemo(() => {
         let list = [...companyUsers];
 
-        // Initial Sort: Active -> Inactive -> Managers?
-        // User request: "los activos primero, los inactivos despues, los manager al final"
-        list.sort((a, b) => {
-            const getPriority = (u: any) => {
-                if (u.relationRole === 'manager' || u.relationRole === 'admin') return 3;
-                if (!u.relationIsActive) return 2;
-                return 1;
-            };
-
-            const pA = getPriority(a);
-            const pB = getPriority(b);
-            if (pA !== pB) return pA - pB;
-
-            return (a.firstName || "").localeCompare(b.firstName || "");
-        });
-
-        // Apply Manual Override
+        // The list is already sorted by the backend (sort_order ASC, joined_at ASC)
+        // Apply Manual Override (optimistic update from UI arrows)
         if (userOrder.length > 0) {
             list.sort((a, b) => {
                 const idxA = userOrder.indexOf(a.id);
@@ -155,9 +175,17 @@ export default function ManagerDailyReportPage() {
             [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
         }
         setUserOrder(newOrder);
+        
+        // Persist new order in background
+        if (selectedCompanyId) {
+            updateCompanyMembersOrder(selectedCompanyId, newOrder).catch(err => {
+                console.error("Failed to update user order:", err);
+            });
+        }
     };
 
-    const hours = Array.from({ length: 12 }, (_, i) => i + 8);
+    const { startHour: configStartHour, endHour: configEndHour } = useCalendarConfig();
+    const hours = Array.from({ length: configEndHour - configStartHour }, (_, i) => i + configStartHour);
 
     const getLogsForUserAndDate = (userId: string) => {
         return workLogs.filter((log: any) => {
@@ -201,6 +229,8 @@ export default function ManagerDailyReportPage() {
                             Today
                         </Button>
                     </div>
+
+                    <TimeRangeSelector />
 
                     <div className="flex items-center gap-2">
                         <Button variant="outline" size="icon" onClick={() => setDate(subDays(date, 1))}>
@@ -312,8 +342,8 @@ export default function ManagerDailyReportPage() {
                                         {/* Logs Overlay */}
                                         <div className="absolute inset-0 pointer-events-none">
                                             {logs.map((log: any) => {
-                                                let startDecimal = 8;
-                                                let endDecimal = 19;
+                                                let startDecimal = configStartHour;
+                                                let endDecimal = configEndHour;
 
                                                 if (log.startTime && log.endTime) {
                                                     const [sh, sm] = log.startTime.split(':').map(Number);
@@ -325,17 +355,16 @@ export default function ManagerDailyReportPage() {
                                                     endDecimal = 16;
                                                 }
 
-                                                // Bounds Check (8:00 to 20:00)
-                                                if (endDecimal < 8 || startDecimal > 20) return null;
+                                                // Bounds Check
+                                                if (endDecimal < configStartHour || startDecimal > configEndHour) return null;
 
-                                                const visibleStart = Math.max(startDecimal, 8);
-                                                const visibleEnd = Math.min(endDecimal, 20);
-                                                const totalHours = 12; // 8:00 to 20:00
+                                                const visibleStart = Math.max(startDecimal, configStartHour);
+                                                const visibleEnd = Math.min(endDecimal, configEndHour);
+                                                const totalHours = configEndHour - configStartHour;
 
                                                 // Calculate %
-                                                const offset = ((visibleStart - 8) / totalHours) * 100;
+                                                const offset = ((visibleStart - configStartHour) / totalHours) * 100;
                                                 const duration = ((visibleEnd - visibleStart) / totalHours) * 100;
-
 
                                                 return (
                                                     <div
@@ -412,5 +441,13 @@ export default function ManagerDailyReportPage() {
                 </ManagerAddWorkLogDialog>
             )}
         </div>
+    );
+}
+
+export default function ManagerDailyReportPage() {
+    return (
+        <CalendarConfigProvider>
+            <ManagerDailyReportInner />
+        </CalendarConfigProvider>
     );
 }
