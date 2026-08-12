@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Numeric, Date, Time, Text, Enum
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Numeric, Date, Time, Text, Enum, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -86,6 +86,7 @@ class CompanyMember(Base):
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), primary_key=True)
     role = Column(Enum(CompanyRole), nullable=False, default=CompanyRole.worker, server_default="worker")
     is_active = Column(Boolean, nullable=False, default=True, server_default="true") 
+    sort_order = Column(Integer, default=1000, server_default="1000")
     
     # SaaS Evolution: The "Contract" - user rates for THIS specific company
     rates_config = Column(JSONB, default={})
