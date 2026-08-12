@@ -61,3 +61,8 @@ export const getCompanyMembers = async (companyId: string, status?: string): Pro
     return response.data;
 };
 
+export const updateCompanyMembersOrder = async (companyId: string, userIds: string[]): Promise<any> => {
+    const response = await api.put(`/companies/${companyId}/members/order`, { userIds });
+    return response.data;
+};
+
