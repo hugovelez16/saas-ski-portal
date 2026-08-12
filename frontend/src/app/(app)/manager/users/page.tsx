@@ -3,12 +3,12 @@ export const dynamic = "force-dynamic";
 
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getCompaniesDetailed, updateMemberStatus } from "@/lib/api/companies";
+import { getCompaniesDetailed, updateMemberStatus, updateCompanyMembersOrder } from "@/lib/api/companies";
 import { DataTable } from "@/components/ui/data-table";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Users } from "lucide-react";
+import { Users, ArrowUp, ArrowDown } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
@@ -20,6 +20,7 @@ export default function ManagerUsersPage() {
 
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    const [userOrder, setUserOrder] = useState<string[]>([]);
 
     // Fetch Managed Key Data
     const { data: companies = [], isLoading } = useQuery({
@@ -61,6 +62,43 @@ export default function ManagerUsersPage() {
         return Array.from(map.values());
     }, [companies, companyIdParam]);
 
+    const sortedUsersWithMeta = useMemo(() => {
+        let list = [...usersWithMeta];
+        if (userOrder.length > 0) {
+            list.sort((a, b) => {
+                const idxA = userOrder.indexOf(a.id);
+                const idxB = userOrder.indexOf(b.id);
+                if (idxA === -1 && idxB === -1) return 0;
+                if (idxA === -1) return 1;
+                if (idxB === -1) return -1;
+                return idxA - idxB;
+            });
+        }
+        return list;
+    }, [usersWithMeta, userOrder]);
+
+    const moveUser = (userId: string, direction: 'up' | 'down', e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!companyIdParam) return toast({ title: "Selecciona una empresa para ordenar", variant: "destructive" });
+        
+        const currentOrder = userOrder.length > 0 ? userOrder : sortedUsersWithMeta.map((u: any) => u.id);
+        const idx = currentOrder.indexOf(userId);
+        if (idx === -1) return;
+
+        const newOrder = [...currentOrder];
+        if (direction === 'up' && idx > 0) {
+            [newOrder[idx], newOrder[idx - 1]] = [newOrder[idx - 1], newOrder[idx]];
+        }
+        if (direction === 'down' && idx < newOrder.length - 1) {
+            [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
+        }
+        setUserOrder(newOrder);
+        
+        updateCompanyMembersOrder(companyIdParam, newOrder).catch(err => {
+            console.error("Error updating order:", err);
+        });
+    };
+
     const handleToggle = (user: any, checked: boolean) => {
         if (!user._companyId) return;
         memberStatusMutation.mutate({
@@ -72,9 +110,23 @@ export default function ManagerUsersPage() {
 
     const columns: ColumnDef<any>[] = [
         {
+            id: "actions",
+            header: "",
+            cell: ({ row }) => {
+                const user = row.original;
+                if (!companyIdParam) return null; // Solo mostrar flechas si estamos viendo una empresa específica
+                return (
+                    <div className="flex flex-col gap-1 w-6 items-center" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={(e) => moveUser(user.id, 'up', e)} className="h-5 w-6 hover:bg-muted rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ArrowUp size={14} /></button>
+                        <button onClick={(e) => moveUser(user.id, 'down', e)} className="h-5 w-6 hover:bg-muted rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ArrowDown size={14} /></button>
+                    </div>
+                );
+            }
+        },
+        {
             accessorKey: "firstName",
             header: "Nombre",
-            cell: ({ row }) => `${row.original.firstName} ${row.original.lastName}`,
+            cell: ({ row }) => `${row.original.firstName || ""} ${row.original.lastName || ""}`.trim(),
         },
         {
             accessorKey: "email",
@@ -138,7 +190,7 @@ export default function ManagerUsersPage() {
 
             <DataTable
                 columns={columns}
-                data={usersWithMeta}
+                data={sortedUsersWithMeta}
                 searchKey="email"
                 searchPlaceholder="Buscar por email..."
                 onRowClick={(user) => {
