@@ -619,13 +619,18 @@ def get_company_members(db: Session, company_id: str, is_active: bool = None):
     return query.order_by(models.CompanyMember.sort_order.asc(), models.CompanyMember.joined_at.asc()).all()
 
 def update_company_members_order(db: Session, company_id: str, user_ids: list[str]):
-    for index, user_id in enumerate(user_ids):
-        member = db.query(models.CompanyMember).filter(
-            models.CompanyMember.company_id == company_id,
-            models.CompanyMember.user_id == user_id
-        ).first()
-        if member:
-            member.sort_order = index
+    members = db.query(models.CompanyMember).filter(
+        models.CompanyMember.company_id == company_id,
+        models.CompanyMember.user_id.in_(user_ids)
+    ).all()
+    
+    order_map = {str(uid): idx for idx, uid in enumerate(user_ids)}
+    
+    for member in members:
+        uid_str = str(member.user_id)
+        if uid_str in order_map:
+            member.sort_order = order_map[uid_str]
+            
     db.commit()
 
 def update_company_member_status(db: Session, company_id: str, user_id: str, is_active: bool):

@@ -99,9 +99,9 @@ export default function ManagerUsersPage() {
                 if (!map.has(member.userId)) {
                     map.set(member.userId, {
                         ...member.user,
-                        _companyId: company.id,
-                        _status: member.isActive ? 'active' : 'inactive',
-                        _role: member.role
+                        _companyId: companyIdParam ? company.id : null,
+                        _status: companyIdParam ? (member.isActive ? 'active' : 'inactive') : null,
+                        _role: companyIdParam ? member.role : null
                     });
                 }
             });
@@ -112,12 +112,15 @@ export default function ManagerUsersPage() {
     const sortedUsersWithMeta = useMemo(() => {
         let list = [...usersWithMeta];
         if (userOrder.length > 0) {
+            const orderMap = new Map();
+            userOrder.forEach((id, index) => orderMap.set(id, index));
+            
             list.sort((a, b) => {
-                const idxA = userOrder.indexOf(a.id);
-                const idxB = userOrder.indexOf(b.id);
-                if (idxA === -1 && idxB === -1) return 0;
-                if (idxA === -1) return 1;
-                if (idxB === -1) return -1;
+                const idxA = orderMap.get(a.id);
+                const idxB = orderMap.get(b.id);
+                if (idxA === undefined && idxB === undefined) return 0;
+                if (idxA === undefined) return 1;
+                if (idxB === undefined) return -1;
                 return idxA - idxB;
             });
         }
@@ -194,6 +197,7 @@ export default function ManagerUsersPage() {
             header: "Rol",
             cell: ({ row }) => {
                 const role = row.original._role;
+                if (!role) return <span className="text-xs text-muted-foreground">-</span>;
                 const roleMap: Record<string, { label: string, color: string }> = {
                     admin: { label: 'Admin Empresa', color: 'bg-red-600' },
                     manager: { label: 'Manager', color: 'bg-indigo-600' },
@@ -217,6 +221,7 @@ export default function ManagerUsersPage() {
             header: "Estado en Empresa",
             cell: ({ row }) => {
                 const user = row.original;
+                if (!user._status) return <span className="text-xs text-muted-foreground">-</span>;
                 return (
                     <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
                         <Switch

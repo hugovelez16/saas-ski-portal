@@ -7,11 +7,11 @@ import { useQuery } from "@tanstack/react-query";
 import { format, addDays, subDays, isSameDay, parseISO, startOfDay } from "date-fns";
 import { getUsers, getUserCompanies } from "@/lib/api/users";
 import { getWorkLogs, deleteWorkLog } from "@/lib/api/work-logs"; // Assuming same API, simpler to fetch all and filter
-import { getCompaniesDetailed, getMyCompanies, updateCompanyMembersOrder } from "@/lib/api/companies";
+import { getCompaniesDetailed, getMyCompanies } from "@/lib/api/companies";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter, useSearchParams } from "next/navigation";
 import { WorkLogDetailsDialog } from "@/components/work-log/details-dialog";
@@ -139,50 +139,6 @@ function ManagerDailyReportInner() {
         enabled: !!selectedCompanyId
     });
 
-    // Manual Sort State
-    const [userOrder, setUserOrder] = useState<string[]>([]);
-
-    // Process Users & Sort
-    const sortedUsers = useMemo(() => {
-        let list = [...companyUsers];
-
-        // The list is already sorted by the backend (sort_order ASC, joined_at ASC)
-        // Apply Manual Override (optimistic update from UI arrows)
-        if (userOrder.length > 0) {
-            list.sort((a, b) => {
-                const idxA = userOrder.indexOf(a.id);
-                const idxB = userOrder.indexOf(b.id);
-                if (idxA === -1 && idxB === -1) return 0;
-                if (idxA === -1) return 1;
-                if (idxB === -1) return -1;
-                return idxA - idxB;
-            });
-        }
-
-        return list;
-    }, [companyUsers, userOrder]);
-
-    const moveUser = (userId: string, direction: 'up' | 'down') => {
-        const currentOrder = userOrder.length > 0 ? userOrder : sortedUsers.map(u => u.id);
-        const idx = currentOrder.indexOf(userId);
-        if (idx === -1) return;
-
-        const newOrder = [...currentOrder];
-        if (direction === 'up' && idx > 0) {
-            [newOrder[idx], newOrder[idx - 1]] = [newOrder[idx - 1], newOrder[idx]];
-        }
-        if (direction === 'down' && idx < newOrder.length - 1) {
-            [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
-        }
-        setUserOrder(newOrder);
-        
-        // Persist new order in background
-        if (selectedCompanyId) {
-            updateCompanyMembersOrder(selectedCompanyId, newOrder).catch(err => {
-                console.error("Failed to update user order:", err);
-            });
-        }
-    };
 
     const { startHour: configStartHour, endHour: configEndHour } = useCalendarConfig();
     const hours = Array.from({ length: configEndHour - configStartHour }, (_, i) => i + configStartHour);
@@ -274,15 +230,12 @@ function ManagerDailyReportInner() {
                         </div>
 
                         {/* User Rows */}
-                        {sortedUsers.map(user => {
+                        {companyUsers.map((user: any) => {
                             const logs = getLogsForUserAndDate(user.id);
                             return (
                                 <div key={user.id} className="flex border-b last:border-b-0 hover:bg-muted/5 divide-x group">
                                     <div className="w-12 md:w-64 flex-shrink-0 p-2 flex items-center gap-2 sticky left-0 bg-background z-30 group-hover:bg-muted/10 border-r shadow-[1px_0_5px_rgba(0,0,0,0.05)]">
-                                        <div className="hidden md:flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => moveUser(user.id, 'up')} className="h-4 w-4 hover:bg-muted rounded"><ArrowUp size={12} /></button>
-                                            <button onClick={() => moveUser(user.id, 'down')} className="h-4 w-4 hover:bg-muted rounded"><ArrowDown size={12} /></button>
-                                        </div>
+
 
                                         {/* Mobile View: Initials */}
                                         <div

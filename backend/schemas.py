@@ -140,7 +140,7 @@ class UserCompanyRateResponse(UserCompanyRate):
     user: Optional[UserResponse] = None
 
 class UpdateCompanyMembersOrder(CamelModel):
-    user_ids: List[str]
+    user_ids: List[UUID] = Field(..., max_length=500)
 
 class CompanyBase(CamelModel):
     name: str

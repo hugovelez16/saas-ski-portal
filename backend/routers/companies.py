@@ -38,7 +38,7 @@ def update_company(company_id: str, company: schemas.CompanyUpdate, db: Session 
 def read_companies_detailed(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
     # If admin, return all
     if current_user.role == "admin":
-        return db.query(models.Company).all()
+        return db.query(models.Company).options(joinedload(models.Company.members)).all()
 
     # If not admin, check for permissions
     # 1. Supervisor permissions (manager/admin of specific companies)
@@ -65,7 +65,7 @@ def read_companies_detailed(db: Session = Depends(get_db), current_user: models.
                  allowed_company_ids.add(company.id)
 
     if allowed_company_ids:
-        companies = db.query(models.Company).filter(models.Company.id.in_(allowed_company_ids)).all()
+        companies = db.query(models.Company).options(joinedload(models.Company.members)).filter(models.Company.id.in_(allowed_company_ids)).all()
         return companies
 
     raise HTTPException(status_code=403, detail="Not authorized")
