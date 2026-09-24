@@ -71,3 +71,5 @@ backend/keys/
 # Antigravity / IA
 .superpowers/
 *.tsbuildinfo
+.graphify/
+brag-output/
