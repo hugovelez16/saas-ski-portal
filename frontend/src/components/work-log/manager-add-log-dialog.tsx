@@ -164,6 +164,10 @@ export function ManagerAddWorkLogDialog({
             sharedData.endDate = sharedData.date;
         }
 
+        // Clean empty times to avoid Pydantic 422 errors
+        if (sharedData.startTime === "") sharedData.startTime = null;
+        if (sharedData.endTime === "") sharedData.endTime = null;
+
         // Remove redundant frontend-only fields
         delete sharedData.date;
 
@@ -173,6 +177,7 @@ export function ManagerAddWorkLogDialog({
             delete sharedData.rateApplied;
             delete sharedData.grossAmount;
             delete sharedData.isGrossCalculation;
+            delete sharedData.netAmount;
         }
 
         try {

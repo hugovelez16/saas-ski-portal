@@ -323,7 +323,7 @@ function ManagerDailyReportInner() {
                                                     <div
                                                         key={log.id}
                                                         className={cn(
-                                                            "absolute top-1 bottom-1 rounded-sm text-xs flex items-center justify-start px-2 cursor-pointer hover:brightness-95 transition-all text-white font-bold overflow-visible whitespace-nowrap pointer-events-auto z-20",
+                                                            "absolute top-1 bottom-1 rounded-sm text-xs flex items-center justify-start px-2 cursor-pointer hover:brightness-95 transition-all text-white font-bold overflow-hidden text-ellipsis whitespace-nowrap pointer-events-auto z-20",
                                                             log.type === 'tutorial' ? "bg-purple-500 opacity-80" : "bg-blue-600"
                                                         )}
                                                         style={{ left: `${offset}%`, width: `${duration}%` }}
