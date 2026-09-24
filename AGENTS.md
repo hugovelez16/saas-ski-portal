@@ -43,3 +43,14 @@ Este repositorio contiene la plataforma SaaS de gestion de escuelas de esqui, re
    - El desarrollo en local se ejecuta a traves de `docker-compose.dev.yml` con el servicio `gateway` (Nginx) expuesto en el puerto `8080:80`.
    - El frontend atiende en `/` y el backend en `/api/`.
    - Todo montaje de volumen debe utilizar el sufijo `:z` para compatibilidad con SELinux y Podman rootless.
+
+9. INCREMENTO OBLIGATORIO DE VERSION SEMVER POR PULL REQUEST:
+   - Cada Pull Request que introduzca nuevas funcionalidades (minor), correcciones de errores (patch) o cambios estructurales (major) debe incluir obligatoriamente un incremento de version SemVer (siguiendo PRINCIPAL.MENOR.PARCHE, ej: 0.1.0 -> 0.1.1 o 0.2.0).
+   - Excepcion: No es obligatorio incrementar la version si el Pull Request corresponde a cambios puramente internos de configuracion de desarrollo local o tooling menor que no afecte al despliegue o a la aplicacion.
+   - Justificacion tecnica y operativa: Cada merge a `develop` o `main` desencadena la compilacion y publicacion automatica de imagenes en GitHub Container Registry (GHCR) etiquetadas con la version SemVer canonica (`dev-vX.Y.Z` o `vX.Y.Z`). Sin este incremento, se perderia la trazabilidad, la capacidad de auditoria y la posibilidad de rollback en Komodo.
+   - Archivos obligatorios a actualizar cuando aplique incremento de version:
+     1. `package.json` (campo `version` en raiz, fuente de verdad principal).
+     2. `frontend/package.json` (campo `version`).
+     3. `CHANGELOG.md` (nueva seccion con version, fecha y resumen de cambios bajo el estandar Keep a Changelog).
+   - Los mensajes de commit NO deben llevar el numero de version en su titulo; los commits deben describir concisamente el cambio tecnico realizado.
+
