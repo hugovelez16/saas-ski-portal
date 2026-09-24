@@ -3,80 +3,97 @@ name: ski_prod
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: ski-prod-postgres
+    restart: unless-stopped
     env_file:
       - .env
-    ports:
-      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data:z
     networks:
-      - db
-    restart: unless-stopped
-
-  backend:
-    # La imagen se construye en GitHub y se descarga desde GHCR
-    image: ghcr.io/${GITHUB_REPOSITORY}/backend:latest
-    env_file:
-      - .env
-    ports:
-      - "8000:8000"
-    depends_on:
-      - postgres
-      - redis
-    networks:
-      - app
-      - db
-    restart: unless-stopped
+      - prod_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
-    volumes:
-      - redis_data:/data
-    networks:
-      - db
+    container_name: ski-prod-redis
     restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    volumes:
+      - redis_data:/data:z
+    networks:
+      - prod_db
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
-  frontend:
-    # La imagen se construye en GitHub y se descarga desde GHCR
-    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:latest
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY}/backend:${IMAGE_TAG:-latest}
+    container_name: ski-prod-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     ports:
-      - "3010:3000"
+      - "127.0.0.1:8000:8000"
+    networks:
+      - prod_app
+      - prod_db
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:${IMAGE_TAG:-latest}
+    container_name: ski-prod-frontend
+    restart: unless-stopped
     depends_on:
       - backend
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:3010:3000"
     networks:
-      - app
-    restart: unless-stopped
+      - prod_app
 
   pgbackups:
     image: prodrigestivill/postgres-backup-local
+    container_name: ski-prod-pgbackups
     restart: unless-stopped
     volumes:
-      # Montaje hacia la carpeta NFS
-      - /mnt/nas_backups/clases-vesotel:/backups
+      - /mnt/nas_backups/clases-vesotel:/backups:z
     networks:
-      - db
+      - prod_db
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
       - POSTGRES_HOST=postgres
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - SCHEDULE=@daily
       - BACKUP_KEEP_DAYS=7
       - BACKUP_KEEP_WEEKS=4
       - BACKUP_KEEP_MONTHS=3
 
-
 volumes:
   postgres_data:
   redis_data:
 
 networks:
-  app:
+  prod_app:
     driver: bridge
-  db:
+  prod_db:
     driver: bridge
+    internal: true

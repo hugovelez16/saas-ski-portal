@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+cd "${ROOT_DIR}"
+
+if [ ! -f .env ]; then
+    echo "Advertencia: Archivo .env no encontrado. Creando copia desde .env.example..."
+    cp .env.example .env
+fi
+
+echo "Iniciando entorno de desarrollo con Gateway unificado..."
+docker compose -f docker-compose.dev.yml up -d --build "$@"
+
+echo "--------------------------------------------------------"
+echo "Entorno local iniciado correctamente."
+echo "Aplicacion disponible en: http://localhost:8080"
+echo "Documentacion API (Swagger): http://localhost:8080/api/docs"
+echo "Para seguir los logs en tiempo real: ./bin/logs"
+echo "--------------------------------------------------------"

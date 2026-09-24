@@ -1,0 +1,14 @@
+{
+  "name": "saas-ski-vesotel-root",
+  "private": true,
+  "description": "Plataforma de gestion de escuelas de esqui, clases particulares y jornadas laborales",
+  "scripts": {
+    "dev": "./bin/dev",
+    "stop": "./bin/stop",
+    "logs": "./bin/logs",
+    "migrate": "./bin/migrate",
+    "docker:dev": "docker compose -f docker-compose.dev.yml up -d --build",
+    "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
+    "docker:dev:logs": "docker compose -f docker-compose.dev.yml logs -f"
+  }
+}

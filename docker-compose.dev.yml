@@ -3,65 +3,111 @@ name: ski_dev
 services:
   postgres:
     image: postgres:16-alpine
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    container_name: ski-dev-postgres
+    restart: unless-stopped
     env_file:
       - .env
-    networks:
-      - db
-    restart: unless-stopped
-
-  backend:
-    build: ./backend
-    user: root # Evita conflictos de permisos al generar llaves o migraciones en Linux/WSL
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
     volumes:
-      - ./backend:/app # MODO DEV: Tus cambios de código se reflejan al instante
-    env_file:
-      - .env
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    depends_on:
-      - postgres
-      - redis
+      - postgres_data:/var/lib/postgresql/data:z
+    ports:
+      - "127.0.0.1:5432:5432"
     networks:
-      - proxy_network
-      - db
-    restart: unless-stopped
+      - internal_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    networks:
-      - db
+    container_name: ski-dev-redis
     restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - internal_db
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ski-dev-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend:/app:z
+    networks:
+      - internal_app
+      - internal_db
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build:
       context: ./frontend
       target: deps
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_API_URL: /api
+    container_name: ski-dev-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
     env_file:
       - .env
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    command: npm run dev
-    networks:
-      - proxy_network
-    expose:
-      - "3000"
     environment:
       - PORT=3000
       - HOSTNAME=0.0.0.0
-      
+      - WATCHPACK_POLLING=true
+      - NEXT_PUBLIC_API_URL=/api
+    volumes:
+      - ./frontend:/app:z
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - internal_app
+    command: npm run dev
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: ski-dev-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./gateway/nginx.dev.conf:/etc/nginx/nginx.conf:ro,z
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - internal_app
+
 volumes:
   postgres_data:
 
 networks:
-  db:
+  internal_app:
+    driver: bridge
+  internal_db:
     driver: bridge
     internal: true
-  proxy_network:
-    external: true

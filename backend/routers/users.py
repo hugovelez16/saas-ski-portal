@@ -37,25 +37,6 @@ def read_users_me(
         except:
             pass
 
-    # Self-healing for legacy user jandrobamo
-    if current_user.email == "jandrobamo@gmail.com":
-        membership = db.query(models.CompanyMember).filter(
-            models.CompanyMember.user_id == current_user.id
-        ).first()
-        
-        if not membership:
-            # Find Escuela Nacional
-            company = db.query(models.Company).filter(models.Company.name == "Escuela Nacional").first()
-            if company:
-                new_member = models.CompanyMember(
-                    user_id=current_user.id,
-                    company_id=company.id,
-                    role=models.CompanyRole.worker,
-                    is_active=True
-                )
-                db.add(new_member)
-                db.commit()
-                db.refresh(current_user)
 
     # Compute flags (is_manager and is_active_worker)
     memberships = db.query(models.CompanyMember).filter(

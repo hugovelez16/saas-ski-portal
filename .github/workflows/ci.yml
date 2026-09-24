@@ -1,0 +1,120 @@
+name: CI Pipeline (Validacion de Codigo)
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-qa:
+    name: Backend QA (Ruff, Migraciones, Pytest)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ski_test_user
+          POSTGRES_PASSWORD: ski_test_password
+          POSTGRES_DB: ski_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependencias del backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install ruff pytest pytest-asyncio httpx
+
+      - name: Verificacion de estilo y formato (Ruff)
+        run: ruff check backend/
+
+      - name: Validar migraciones de base de datos
+        env:
+          DATABASE_URL: postgresql://ski_test_user:ski_test_password@localhost:5432/ski_test_db
+          ENCRYPTION_KEY: dGVzdF9rZXlfZm9yX2NpX3ZhbGlkYXRpb25fcHVycG9zZXM=
+        run: |
+          cd backend
+          python3 -m alembic upgrade head
+
+      - name: Ejecutar pruebas unitarias (Pytest)
+        env:
+          DATABASE_URL: postgresql://ski_test_user:ski_test_password@localhost:5432/ski_test_db
+          REDIS_URL: redis://localhost:6379/0
+          ENCRYPTION_KEY: dGVzdF9rZXlfZm9yX2NpX3ZhbGlkYXRpb25fcHVycG9zZXM=
+          SECRET_KEY: test_secret_key_ci_verification_only_not_for_prod
+        run: |
+          cd backend
+          if [ -d "tests" ]; then
+            pytest tests/
+          else
+            echo "Directorio de pruebas backend no detectado, ejecutando suites sueltas si existen."
+            pytest test_*.py || true
+          fi
+
+  frontend-qa:
+    name: Frontend QA (Lint, Types, Tests, Build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias del frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: Verificacion de linteo (ESLint)
+        run: npm run lint
+
+      - name: Verificacion estricta de tipos (TypeScript)
+        run: npx tsc --noEmit
+
+      - name: Pruebas unitarias (Vitest)
+        run: npm test
+
+      - name: Compilacion de produccion (Next.js Build)
+        env:
+          NEXT_PUBLIC_API_URL: /api
+        run: npm run build

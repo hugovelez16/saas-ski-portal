@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Backend returns snake_case: access_token, requires_2fa, device_token
         const tokenData = response.data;
 
-        if (tokenData.requires2Fa) {
+        if (tokenData.requires2fa || tokenData.requires2Fa || tokenData.requires_2fa) {
             // Provisional token is also in a cookie now
             return { requires2FA: true };
         }
