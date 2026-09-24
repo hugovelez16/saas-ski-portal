@@ -91,14 +91,26 @@ def get_worklog_unit(type_def: dict) -> str:
         unit = "days" if type_def.get("is_range") else "hours"
     return unit
 
+def _safe_float(val, default=0.0):
+    try:
+        if val is None or val == "":
+            return float(default)
+        return float(val)
+    except (ValueError, TypeError):
+        return float(default)
+
 def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dict, company_tax_config: dict = None):
     """
     SaaS Evolution: Dynamic calculation engine.
     Calculates amounts based on company definitions and user rates stored in JSONB.
     """
     # 1. Manual Amount Override
-    if log_data.get('net_amount') is not None:
-        amount = float(log_data['net_amount'])
+    manual_amount = log_data.get('amount')
+    if manual_amount is None:
+        manual_amount = log_data.get('net_amount')
+        
+    if manual_amount is not None:
+        amount = _safe_float(manual_amount)
         return {
             "net_amount": amount,
             "gross_amount": amount,
@@ -109,7 +121,7 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
 
     # 2. Extract configuration
     unit = get_worklog_unit(company_def)
-    base_rate = float(user_rate.get("base_rate", 0))
+    base_rate = _safe_float(user_rate.get("base_rate", 0))
     is_gross = user_rate.get("is_gross", False)
     
     # Tax configuration (Priority: rate override > company default > 0)
@@ -117,19 +129,19 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     company_defaults = company_tax_config if company_tax_config else {}
     
     irpf_val = user_overrides.get("irpf")
-    irpf = float(irpf_val if irpf_val is not None else company_defaults.get("irpf_base", 0))
+    irpf = _safe_float(irpf_val if irpf_val is not None else company_defaults.get("irpf_base", 0))
     
     ss_val = user_overrides.get("ss")
-    ss = float(ss_val if ss_val is not None else company_defaults.get("social_security", 0))
+    ss = _safe_float(ss_val if ss_val is not None else company_defaults.get("social_security", 0))
     
     extra_val = user_overrides.get("extra")
-    extra = float(extra_val if extra_val is not None else company_defaults.get("extra", 0))
+    extra = _safe_float(extra_val if extra_val is not None else company_defaults.get("extra", 0))
     
     duration = 0.0
     
     # 3. Calculate Base Amount by Unit
     if unit == "hours":
-        duration = float(log_data.get('duration_hours') or 0)
+        duration = _safe_float(log_data.get('duration_hours') or 0)
         if not duration and log_data.get('start_time') and log_data.get('end_time'):
             st = log_data['start_time']
             et = log_data['end_time']
@@ -146,7 +158,7 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
         end_date = log_data.get('end_date')
         if start_date and end_date:
             delta = end_date - start_date
-            duration = float(delta.days + 1)
+            duration = _safe_float(delta.days + 1)
             amount_base = duration * base_rate
         else:
             amount_base = 0.0
@@ -167,7 +179,7 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
         # If log has the key as True in extra_data['opciones']
         if log_options.get(extra_key) is True:
             # Extras can be fixed or per-unit
-            val = float(extra_val.get("value", 0))
+            val = _safe_float(extra_val.get("value", 0))
             if extra_val.get("per_unit") is True:
                 extra_amt = val * duration
             else:
@@ -336,7 +348,8 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
     type_rate = rates.get(work_type, {})
     
     # Validation: Ensure rate is set (and non-zero) unless it's a manual override
-    if work_log.net_amount is None and float(type_rate.get("base_rate", 0)) <= 0:
+    has_manual_override = getattr(work_log, 'amount', None) is not None or work_log.net_amount is not None
+    if not has_manual_override and _safe_float(type_rate.get("base_rate", 0)) <= 0:
         raise ValueError(f"No se ha encontrado un precio (rate) configurado para el tipo '{work_type}' para este usuario.")
 
     # Prepare DB Obj
@@ -398,7 +411,8 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
         type_rate = rates.get(work_type, {})
         
         # Validation: Ensure rate is set (and non-zero) unless it's a manual override
-        if work_log_bulk.net_amount is None and float(type_rate.get("base_rate", 0)) <= 0:
+        has_manual_override = getattr(work_log_bulk, 'amount', None) is not None or work_log_bulk.net_amount is not None
+        if not has_manual_override and _safe_float(type_rate.get("base_rate", 0)) <= 0:
             user_obj = db.query(models.User).filter(models.User.id == user_id).first()
             user_name = f"{user_obj.first_name} {user_obj.last_name}" if user_obj else str(user_id)
             raise ValueError(f"El usuario {user_name} no tiene un precio (rate) configurado para el tipo '{work_type}'.")

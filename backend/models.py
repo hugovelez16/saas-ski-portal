@@ -75,7 +75,7 @@ class Company(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    members = relationship("CompanyMember", back_populates="company")
+    members = relationship("CompanyMember", back_populates="company", order_by="CompanyMember.sort_order.asc(), CompanyMember.joined_at.asc()")
     work_logs = relationship("WorkLog", back_populates="company")
     # user_rates = relationship("UserCompanyRate", back_populates="company") # Deprecated
 
