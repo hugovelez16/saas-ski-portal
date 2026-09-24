@@ -1,0 +1,125 @@
+name: CD Build y Deploy Desarrollo (Komodo)
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch: {}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BASE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-backend:
+    name: Compilar y Publicar Backend Desarrollo
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout Repositorio
+        uses: actions/checkout@v4
+
+      - name: Iniciar Sesion en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compilar y Publicar Imagen Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_BASE }}/backend:dev-latest
+            ${{ env.IMAGE_BASE }}/backend:sha-${{ github.sha }}
+
+  build-frontend:
+    name: Compilar y Publicar Frontend Desarrollo
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout Repositorio
+        uses: actions/checkout@v4
+
+      - name: Iniciar Sesion en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compilar y Publicar Imagen Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=/api
+          tags: |
+            ${{ env.IMAGE_BASE }}/frontend:dev-latest
+            ${{ env.IMAGE_BASE }}/frontend:sha-${{ github.sha }}
+
+  build-gateway:
+    name: Compilar y Publicar Gateway Desarrollo
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout Repositorio
+        uses: actions/checkout@v4
+
+      - name: Iniciar Sesion en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compilar y Publicar Imagen Gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gateway
+          file: ./gateway/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_BASE }}/gateway:dev-latest
+            ${{ env.IMAGE_BASE }}/gateway:sha-${{ github.sha }}
+
+  deploy-komodo:
+    name: Desplegar Stack Desarrollo en Komodo
+    needs: [build-backend, build-frontend, build-gateway]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar Webhook Komodo
+        env:
+          KOMODO_WEBHOOK: ${{ secrets.KOMODO_WEBHOOK_DEV || secrets.KOMODO_WEBHOOK }}
+          KOMODO_SECRET: ${{ secrets.KOMODO_SECRET_DEV || secrets.KOMODO_SECRET }}
+        run: |
+          echo "Disparando despliegue en Komodo (Entorno Desarrollo)..."
+          if [ -z "$KOMODO_WEBHOOK" ]; then
+            echo "Error: Secreto KOMODO_WEBHOOK_DEV o KOMODO_WEBHOOK no configurado en el repositorio." >&2
+            exit 1
+          fi
+
+          BODY="{}"
+          if [ -n "$KOMODO_SECRET" ]; then
+            SIGNATURE="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$KOMODO_SECRET" | sed 's/^.* //')"
+            curl -f -s -X POST "$KOMODO_WEBHOOK" \
+              -H "Content-Type: application/json" \
+              -H "X-Hub-Signature-256: $SIGNATURE" \
+              -d "$BODY"
+          else
+            curl -f -s -X POST "$KOMODO_WEBHOOK" \
+              -H "Content-Type: application/json" \
+              -d "$BODY"
+          fi
+          echo "Despliegue en Komodo completado con exito."
