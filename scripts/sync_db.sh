@@ -53,7 +53,7 @@ if [ "$SRC_IP" = "local" ]; then
         echo -e "${BLUE}Copiando datos desde el contenedor local $SRC_CONTAINER a $DST_CONTAINER...${NC}"
         
         # Ejecutar dump y restore en un solo flujo
-        docker exec -t "$SRC_CONTAINER" pg_dump -U "$DB_USER" "$DB_NAME" --clean --if-exists --no-owner --no-privileges | \
+        docker exec "$SRC_CONTAINER" pg_dump -U "$DB_USER" "$DB_NAME" --clean --if-exists --no-owner --no-privileges | \
         docker exec -i "$DST_CONTAINER" psql -U "$DB_USER" "$DB_NAME"
 
         if [ $? -eq 0 ]; then
@@ -101,7 +101,7 @@ else
     echo -e "${BLUE}Copiando datos desde remoto $SSH_USER@$SRC_IP ($SRC_CONTAINER) a local $DST_CONTAINER...${NC}"
     
     # Ejecutar dump desde el servidor remoto a través de SSH e insertar en el contenedor de desarrollo local
-    ssh "$SSH_USER@$SRC_IP" "docker exec -t $SRC_CONTAINER pg_dump -U $DB_USER $DB_NAME --clean --if-exists --no-owner --no-privileges" | \
+    ssh "$SSH_USER@$SRC_IP" "docker exec $SRC_CONTAINER pg_dump -U $DB_USER $DB_NAME --clean --if-exists --no-owner --no-privileges" | \
     docker exec -i "$DST_CONTAINER" psql -U "$DB_USER" "$DB_NAME"
 
     if [ $? -eq 0 ]; then
