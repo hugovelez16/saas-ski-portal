@@ -6,6 +6,7 @@ import { startOfMonth, endOfMonth, format, addMonths, subMonths } from "date-fns
 import { DateRangeFilter } from "@/components/manager/date-range-filter";
 import { BillingTable } from "@/components/manager/billing-table";
 import { getBillingSummary } from "@/lib/api/work-logs";
+import { getCompaniesDetailed } from "@/lib/api/companies";
 import { useQuery } from "@tanstack/react-query";
 import { BillingSummaryItem, DynamicBillingRow } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +42,17 @@ export default function ManagerBillingPage() {
         queryKey: ["company", selectedCompanyId],
         enabled: !!selectedCompanyId,
     });
+
+    const { data: companiesDetailed = [] } = useQuery({
+        queryFn: getCompaniesDetailed,
+        queryKey: ["companiesDetailed"],
+    });
+
+    const orderedMemberIds = useMemo(() => {
+        const comp = companiesDetailed.find((c: any) => c.id === selectedCompanyId);
+        if (!comp || !comp.members) return [];
+        return comp.members.map((m: any) => m.userId);
+    }, [companiesDetailed, selectedCompanyId]);
 
     const worklogDefs = useMemo(
         () => (company?.worklogDefinitions ?? {}) as Record<string, { unit: string; label: string }>,
@@ -92,8 +104,24 @@ export default function ManagerBillingPage() {
             }
         });
 
-        return Array.from(userMap.values());
-    }, [billingItems, worklogDefs]);
+        const list = Array.from(userMap.values());
+        
+        if (orderedMemberIds.length > 0) {
+            const orderMap = new Map();
+            orderedMemberIds.forEach((id, index) => orderMap.set(id, index));
+            
+            list.sort((a, b) => {
+                const idxA = orderMap.get(a.userId);
+                const idxB = orderMap.get(b.userId);
+                if (idxA === undefined && idxB === undefined) return 0;
+                if (idxA === undefined) return 1;
+                if (idxB === undefined) return -1;
+                return idxA - idxB;
+            });
+        }
+        
+        return list;
+    }, [billingItems, worklogDefs, orderedMemberIds]);
 
     const summaryStats = useMemo(() => {
         let totalGross = 0;

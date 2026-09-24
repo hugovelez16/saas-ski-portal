@@ -31,7 +31,8 @@ export function BillingTable({ data, worklogDefs, isLoading }: BillingTableProps
             },
             {
                 id: 'logsCount',
-                header: 'Registros',
+                header: () => <div className="text-right pr-4">Registros</div>,
+                meta: { label: 'Registros' },
                 cell: ({ row }) => (
                     <div className="text-right font-medium text-slate-500 pr-4">
                         {row.original.logsCount}
@@ -41,7 +42,8 @@ export function BillingTable({ data, worklogDefs, isLoading }: BillingTableProps
             // Una columna por tipo definido en worklogDefs
             ...Object.entries(worklogDefs).map(([typeKey, def]) => ({
                 id: typeKey,
-                header: def.label ?? typeKey,
+                header: () => <div className="text-right">{def.label ?? typeKey}</div>,
+                meta: { label: def.label ?? typeKey },
                 cell: ({ row }: { row: { original: DynamicBillingRow } }) => {
                     const summary = row.original.byType[typeKey];
                     if (!summary || summary.quantity === 0) {
@@ -56,7 +58,8 @@ export function BillingTable({ data, worklogDefs, isLoading }: BillingTableProps
             // Columna fija Total Bruto (siempre última)
             {
                 id: 'totalGross',
-                header: 'Total Bruto',
+                header: () => <div className="text-right">Total Bruto</div>,
+                meta: { label: 'Total Bruto' },
                 cell: ({ row }) => (
                     <div className="text-right font-bold text-emerald-600 dark:text-emerald-400">
                         {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' })
