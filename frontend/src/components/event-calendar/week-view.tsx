@@ -28,10 +28,7 @@ import {
   useCurrentTimeIndicator,
   WeekCellsHeight,
 } from ".";
-import {
-  EndHour,
-  StartHour,
-} from "./constants";
+import { useCalendarConfig } from "./use-calendar-config";
 import { cn } from "@/lib/utils";
 
 interface WeekViewProps {
@@ -67,13 +64,14 @@ export function WeekView({
     [currentDate],
   );
 
+  const { startHour: configStartHour, endHour: configEndHour } = useCalendarConfig();
   const hours = useMemo(() => {
     const dayStart = startOfDay(currentDate);
     return eachHourOfInterval({
-      end: addHours(dayStart, EndHour - 1),
-      start: addHours(dayStart, StartHour),
+      end: addHours(dayStart, configEndHour - 1),
+      start: addHours(dayStart, configStartHour),
     });
-  }, [currentDate]);
+  }, [currentDate, configStartHour, configEndHour]);
 
   // Get all-day events and multi-day events for the week
   const allDayEvents = useMemo(() => {
@@ -154,9 +152,16 @@ export function WeekView({
           getHours(adjustedStart) + getMinutes(adjustedStart) / 60;
         const endHour = getHours(adjustedEnd) + getMinutes(adjustedEnd) / 60;
 
+        const visualStartHour = Math.max(startHour, configStartHour);
+        const visualEndHour = Math.min(endHour, configEndHour);
+
+        if (visualStartHour >= configEndHour || visualEndHour <= configStartHour) {
+          continue; // Event is completely outside visible hours
+        }
+
         // Adjust the top calculation to account for the new start time
-        const top = (startHour - StartHour) * WeekCellsHeight;
-        const height = (endHour - startHour) * WeekCellsHeight;
+        const top = (visualStartHour - configStartHour) * WeekCellsHeight;
+        const height = (visualEndHour - visualStartHour) * WeekCellsHeight;
 
         // Find a column for this event
         let columnIndex = 0;

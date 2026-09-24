@@ -45,6 +45,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { CalendarConfigProvider, useCalendarConfig } from "./use-calendar-config";
 
 export interface EventCalendarProps {
   events?: CalendarEvent[];
@@ -58,7 +59,41 @@ export interface EventCalendarProps {
   showAddButton?: boolean;
 }
 
-export function EventCalendar({
+function TimeRangeSelector() {
+  const { startHour, endHour, setStartHour, setEndHour } = useCalendarConfig();
+
+  return (
+    <div className="flex items-center gap-1 sm:gap-2 mr-2">
+      <div className="flex items-center gap-1 text-xs sm:text-sm">
+        <span className="text-muted-foreground hidden lg:inline">Desde:</span>
+        <select 
+          className="h-8 rounded-md border border-input bg-transparent px-2 py-1 text-xs sm:text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          value={startHour} 
+          onChange={(e) => setStartHour(Number(e.target.value))}
+        >
+          {Array.from({ length: 24 }).map((_, i) => (
+            <option key={i} value={i} disabled={i >= endHour}>{i}:00</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex items-center gap-1 text-xs sm:text-sm">
+        <span className="text-muted-foreground hidden lg:inline">Hasta:</span>
+        <select 
+          className="h-8 rounded-md border border-input bg-transparent px-2 py-1 text-xs sm:text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          value={endHour} 
+          onChange={(e) => setEndHour(Number(e.target.value))}
+        >
+          {Array.from({ length: 24 }).map((_, i) => {
+            const hour = i + 1;
+            return <option key={hour} value={hour} disabled={hour <= startHour}>{hour}:00</option>
+          })}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function EventCalendarInner({
   events = [],
   onEventAdd,
   onEventUpdate,
@@ -362,6 +397,7 @@ export function EventCalendar({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <TimeRangeSelector />
             {showAddButton && (
               <Button
                 className="max-[479px]:aspect-square max-[479px]:p-0!"
@@ -430,3 +466,12 @@ export function EventCalendar({
     </div>
   );
 }
+
+export function EventCalendar(props: EventCalendarProps) {
+  return (
+    <CalendarConfigProvider>
+      <EventCalendarInner {...props} />
+    </CalendarConfigProvider>
+  );
+}
+

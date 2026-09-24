@@ -4,16 +4,9 @@ import { RiCalendarLine, RiDeleteBinLine } from "@remixicon/react";
 import { format, isBefore } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import {
-  type CalendarEvent,
-  EventColor,
-} from ".";
-import {
-  DefaultEndHour,
-  DefaultStartHour,
-  EndHour,
-  StartHour,
-} from "./constants";
+import { type CalendarEvent, EventColor } from ".";
+import { DefaultEndHour, DefaultStartHour } from "./constants";
+import { useCalendarConfig } from "./use-calendar-config";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -58,6 +51,7 @@ export function EventDialog({
   onSave,
   onDelete,
 }: EventDialogProps) {
+  const { startHour: configStartHour, endHour: configEndHour } = useCalendarConfig();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [startDate, setStartDate] = useState<Date>(new Date());
@@ -119,8 +113,9 @@ export function EventDialog({
   // Memoize time options so they're only calculated once
   const timeOptions = useMemo(() => {
     const options = [];
-    for (let hour = StartHour; hour <= EndHour; hour++) {
+    for (let hour = configStartHour; hour <= configEndHour; hour++) {
       for (let minute = 0; minute < 60; minute += 15) {
+        if (hour === configEndHour && minute > 0) continue;
         const formattedHour = hour.toString().padStart(2, "0");
         const formattedMinute = minute.toString().padStart(2, "0");
         const value = `${formattedHour}:${formattedMinute}`;
@@ -131,7 +126,7 @@ export function EventDialog({
       }
     }
     return options;
-  }, []); // Empty dependency array ensures this only runs once
+  }, [configStartHour, configEndHour]); // Re-calculate when config changes
 
   const handleSave = () => {
     const start = new Date(startDate);
@@ -144,13 +139,13 @@ export function EventDialog({
       const [endHours = 0, endMinutes = 0] = endTime.split(":").map(Number);
 
       if (
-        startHours < StartHour ||
-        startHours > EndHour ||
-        endHours < StartHour ||
-        endHours > EndHour
+        startHours < configStartHour ||
+        startHours > configEndHour ||
+        endHours < configStartHour ||
+        endHours > configEndHour
       ) {
         setError(
-          `Selected time must be between ${StartHour}:00 and ${EndHour}:00`,
+          `Selected time must be between ${configStartHour}:00 and ${configEndHour}:00`,
         );
         return;
       }
