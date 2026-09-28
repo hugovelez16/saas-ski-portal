@@ -39,6 +39,23 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.2.0] - 2026-09-28
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Rediseño data-driven completo del dashboard de usuario y calculo dinamico de turnos laborales.
+
+### Funcionalidades y Mejoras
+
+- **Dashboard de Usuario Data-Driven**:
+  - Eliminado el calculo estatico obsoleto de 6 horas por dia para turnos tutoriales (`days * 6`).
+  - Agrupacion automatica y dinamica de metricas segun las unidades configuradas en la empresa (`hours`, `days`, turnos fijos o combinaciones hibridas) leyendo de `company.worklogDefinitions`.
+  - Sustitucion de la tarta binaria rigida por tarjetas de ingresos y actividad real desglosada por tipo de turno.
+  - Grafico de area interactivo y responsivo con Recharts adaptado a la tendencia mensual.
+  - Internacionalizacion completa de fechas con soporte regional en espanol (`date-fns/locale/es`).
+
+---
+
 ## [0.1.0] - 2026-09-24
 
 ### Tipo de Cambio SemVer
