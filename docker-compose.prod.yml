@@ -1,9 +1,8 @@
-name: ski_prod
+name: ${COMPOSE_PROJECT_NAME:-ski_prod}
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ski-prod-postgres
     restart: unless-stopped
     env_file:
       - .env
@@ -23,9 +22,8 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: ski-prod-redis
     restart: unless-stopped
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    command: redis-server --maxmemory ${REDIS_MAXMEMORY:-256mb} --maxmemory-policy allkeys-lru --appendonly yes
     volumes:
       - redis_data:/data:z
     networks:
@@ -37,8 +35,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY}/backend:${IMAGE_TAG:-latest}
-    container_name: ski-prod-backend
+    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -47,31 +44,62 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    ports:
-      - "127.0.0.1:8000:8000"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
     networks:
       - prod_app
       - prod_db
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:${IMAGE_TAG:-latest}
-    container_name: ski-prod-frontend
+    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     env_file:
       - .env
+    environment:
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - BACKEND_INTERNAL_URL=http://backend:8000
+    networks:
+      - prod_app
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  gateway:
+    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/gateway:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     ports:
-      - "127.0.0.1:3010:3000"
+      - "${GATEWAY_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     networks:
       - prod_app
 
   pgbackups:
     image: prodrigestivill/postgres-backup-local
-    container_name: ski-prod-pgbackups
     restart: unless-stopped
     volumes:
-      - /mnt/nas_backups/clases-vesotel:/backups:z
+      - ${BACKUP_DIR:-/mnt/nas_backups/clases-vesotel}:/backups:z
     networks:
       - prod_db
     depends_on:
@@ -82,10 +110,10 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-postgres}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - SCHEDULE=@daily
-      - BACKUP_KEEP_DAYS=7
-      - BACKUP_KEEP_WEEKS=4
-      - BACKUP_KEEP_MONTHS=3
+      - SCHEDULE=${BACKUP_SCHEDULE:-@daily}
+      - BACKUP_KEEP_DAYS=${BACKUP_KEEP_DAYS:-7}
+      - BACKUP_KEEP_WEEKS=${BACKUP_KEEP_WEEKS:-4}
+      - BACKUP_KEEP_MONTHS=${BACKUP_KEEP_MONTHS:-3}
 
 volumes:
   postgres_data:

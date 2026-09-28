@@ -1,5 +1,5 @@
 # 1. LA BASE: Debian slim (optimizado para Python, sin los problemas de Alpine)
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # 2. VARIABLES DE ENTORNO (Sin caché de bytecode y logs en tiempo real)
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -9,10 +9,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # 3. DIRECTORIO DE TRABAJO
 WORKDIR /app
 
-# 4. DEPENDENCIAS DEL SISTEMA (Librerías necesarias para conectarse a Postgres)
+# 4. DEPENDENCIAS DEL SISTEMA (Librerías necesarias para conectarse a Postgres y curl para healthchecks)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 5. CACHÉ DE DEPENDENCIAS (Instalamos esto ANTES de copiar el código)

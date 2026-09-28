@@ -1,10 +1,11 @@
 import unittest
 import uuid
-from datetime import datetime, timedelta
-from fastapi import HTTPException
-from database import SessionLocal
+
 import models
+from database import SessionLocal
+from fastapi import HTTPException
 from routers.modules import get_my_modules
+
 
 class TestModulesMeLogic(unittest.TestCase):
     def setUp(self):

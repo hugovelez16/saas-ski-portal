@@ -1,7 +1,7 @@
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
-from pydantic import EmailStr
-from typing import Any
 import os
+
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
+from pydantic import EmailStr
 
 conf = ConnectionConfig(
     MAIL_USERNAME = os.getenv("MAIL_USERNAME", ""),
@@ -70,7 +70,7 @@ async def send_welcome_email(email: EmailStr, token: str):
         <p>This link will expire in 2 hours.</p>
         """
     )
-    
+
     message = MessageSchema(
         subject="Welcome to Vesotel Team",
         recipients=[email],
@@ -99,7 +99,7 @@ async def send_password_reset_email(email: EmailStr, token: str):
         <p>If you did not request this, you can safely ignore this email.</p>
         """
     )
-    
+
     message = MessageSchema(
         subject="Reset Your Vesotel Password",
         recipients=[email],

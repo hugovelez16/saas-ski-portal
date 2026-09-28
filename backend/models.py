@@ -1,10 +1,24 @@
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Numeric, Date, Time, Text, Enum, Integer
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
+import enum
 import uuid
 from datetime import datetime
-import enum
+
 from database import Base
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    Time,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import relationship
+
 
 class UserRole(str, enum.Enum):
     admin = "admin" # System Creator / Super Admin
@@ -22,7 +36,7 @@ class CompanyRole(str, enum.Enum):
 class User(Base):
     """
     User Model.
-    
+
     Represents a registered user in the system.
     """
     __tablename__ = "users"
@@ -38,7 +52,7 @@ class User(Base):
 
     # Auth & Security
     must_change_password = Column(Boolean, default=False)
-    
+
     # TOTP 2FA Evolution
     is_2fa_enabled = Column(Boolean, default=False)
     otp_secret = Column(String, nullable=True) # Should be encrypted in production
@@ -62,15 +76,15 @@ class Company(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     fiscal_id = Column(String)
-    
+
     # SaaS Evolution: Dynamic tax/deduction configuration
     tax_config = Column(JSONB, default={"social_security": 0.0648})
     # Structure example: { "social_security": 0.0648, "irpf_base": 0.15 }
-    
+
     # SaaS Evolution: Dynamic shift definitions
-    worklog_definitions = Column(JSONB, default={}) 
+    worklog_definitions = Column(JSONB, default={})
     # Structure example: { "particular": { "unit": "hours", "label": "Particular", "fields": [...] } }
-    
+
     settings = Column(JSONB, default={}) # Global company settings
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -85,9 +99,9 @@ class CompanyMember(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), primary_key=True)
     role = Column(Enum(CompanyRole), nullable=False, default=CompanyRole.worker, server_default="worker")
-    is_active = Column(Boolean, nullable=False, default=True, server_default="true") 
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
     sort_order = Column(Integer, default=1000, server_default="1000")
-    
+
     # SaaS Evolution: The "Contract" - user rates for THIS specific company
     rates_config = Column(JSONB, default={})
     # Structure example: { "particular": { "base_rate": 25.0, "is_gross": true, "tax_overrides": {...} } }
@@ -107,28 +121,28 @@ class WorkLog(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
-    
+
     type = Column(String, nullable=False)
-    
+
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
-    
+
     start_time = Column(Time, nullable=True)
     end_time = Column(Time, nullable=True)
-    
+
     duration = Column(Numeric(10, 2), nullable=True)
-    
+
     net_amount = Column(Numeric(10, 2), nullable=True)
     gross_amount = Column(Numeric(10, 2), default=0.0)
-    
+
     extra_data = Column(JSONB, default={}) # Stores dynamic extras: {"has_night": true, etc.}
-    
+
     description = Column(Text, nullable=True)
-    
+
     # SaaS Evolution: Historical integrity snapshot
     calculation_snapshot = Column(JSONB, nullable=True)
     # Stores a copy of rates, definitions and logic used for this calculation.
-    
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -146,11 +160,11 @@ class UserSession(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    
+
     refresh_token = Column(String, unique=True, nullable=False)
     device_name = Column(String, nullable=True)
     ip_address = Column(String, nullable=True)
-    
+
     is_active = Column(Boolean, default=True)
     last_active = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)

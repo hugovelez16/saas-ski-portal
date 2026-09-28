@@ -4,25 +4,28 @@ Authentication Module.
 This module handles password hashing, token creation/verification, and current user retrieval.
 It uses OAuth2 with Password Flow and JWT tokens.
 """
+import os
+import secrets
 from datetime import datetime, timedelta
-from typing import Optional
+
+import crud
+import models
+import pyotp
+import schemas
+from cryptography.fernet import Fernet
+from database import get_db
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import OAuth2PasswordBearer
+from redis_config import redis_manager
 from sqlalchemy.orm import Session
-import models, crud, schemas
-from database import get_db
-import os
-import pyotp
-from cryptography.fernet import Fernet
-import secrets
 
 # Cryptographic Configuration
 # RS256 (Asymmetric) is used for signing and verification.
 # The private key signs the token; the public key verifies it.
 ALGORITHM = "RS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30 
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 # Load RSA Keys
@@ -34,8 +37,8 @@ try:
     with open(os.path.join(KEYS_DIR, "private_key.pem"), "rb") as f:
         private_key_data = f.read()
 
-    from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import serialization
 
     passphrase = os.getenv("JWT_PRIVATE_KEY_PASSPHRASE")
     private_key_obj = serialization.load_pem_private_key(
@@ -56,9 +59,9 @@ except (FileNotFoundError, ValueError, TypeError) as e:
     if not PRIVATE_KEY and not PUBLIC_KEY:
         try:
             print("RSA keys not found or failed to load. Generating a new key pair for local development...")
-            from cryptography.hazmat.primitives.asymmetric import rsa
-            from cryptography.hazmat.primitives import serialization
             from cryptography.hazmat.backends import default_backend
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
 
             # Generate new RSA key pair
             private_key_obj = rsa.generate_private_key(
@@ -91,7 +94,6 @@ except (FileNotFoundError, ValueError, TypeError) as e:
         except Exception as gen_err:
             raise RuntimeError(f"Failed to load RSA key: {e}. Auto-generation also failed: {gen_err}")
 
-from redis_config import redis_manager
 
 # Encryption key for OTP secrets
 _encryption_key_env = os.getenv("ENCRYPTION_KEY")
@@ -139,7 +141,7 @@ def get_password_hash(password):
     """Generates a Bcrypt hash for a password."""
     return pwd_context.hash(password)
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     """Creates a JWT access token with an expiration time."""
     to_encode = data.copy()
     now = datetime.utcnow()
@@ -164,7 +166,7 @@ def create_reset_token(email: str) -> str:
     to_encode.update({"exp": expire, "iat": now, "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
 
-def verify_reset_token(token: str) -> Optional[str]:
+def verify_reset_token(token: str) -> str | None:
     """Verifies the reset token and returns the email if valid."""
     try:
         payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
@@ -174,14 +176,14 @@ def verify_reset_token(token: str) -> Optional[str]:
     except JWTError:
         return None
 
-def generate_user_tokens(db: Session, user: models.User, company_id: Optional[str] = None, role: Optional[str] = None, force_none: bool = False, scope: Optional[str] = None):
+def generate_user_tokens(db: Session, user: models.User, company_id: str | None = None, role: str | None = None, force_none: bool = False, scope: str | None = None):
     """
     SRE: Enhanced token generation with platform and company context.
     If company_id or role are not provided, it selects defaults based on user profile and memberships.
     If force_none is True, it allows cid/role to be None (only for platform admins).
     """
     is_platform_admin = user.role == models.UserRole.admin
-    
+
     # SaaS Logic: Platform Admins start in neutral context by default unless a company is explicitly requested
     if is_platform_admin and (force_none or not company_id):
         active_cid = company_id
@@ -189,7 +191,7 @@ def generate_user_tokens(db: Session, user: models.User, company_id: Optional[st
     else:
         active_cid = company_id or (str(user.default_company_id) if user.default_company_id else None)
         active_role = role
-        
+
         # Selection logic if not explicitly provided
         if not active_cid or not active_role:
             # Try to find membership for default or any company
@@ -197,14 +199,14 @@ def generate_user_tokens(db: Session, user: models.User, company_id: Optional[st
                 models.CompanyMember.user_id == user.id,
                 models.CompanyMember.is_active == True
             )
-            
+
             if active_cid:
                 membership = query.filter(models.CompanyMember.company_id == active_cid).first()
                 if not membership:
                     membership = query.first()
             else:
                 membership = query.first()
-                
+
             if membership:
                 active_cid = str(membership.company_id)
                 if not active_role:
@@ -213,7 +215,7 @@ def generate_user_tokens(db: Session, user: models.User, company_id: Optional[st
                         active_role = "manager"
                     else:
                         active_role = "worker"
-    
+
     # Token Data
     data = {
         "sub": str(user.id),
@@ -222,7 +224,7 @@ def generate_user_tokens(db: Session, user: models.User, company_id: Optional[st
         "role": active_role,
         "scope": scope or "full"
     }
-    
+
     access_token = create_access_token(data=data)
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
     return access_token, refresh_token
@@ -243,14 +245,14 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
         payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         jti: str = payload.get("jti")
-        
+
         if user_id is None:
             raise credentials_exception
-            
+
         # SRE Improvement: Check Blacklist in Redis
         if jti and redis_manager.get(f"bl_{jti}"):
             raise credentials_exception
-            
+
         token_data = schemas.TokenData(
             user_id=user_id,
             company_id=payload.get("cid"),
@@ -261,18 +263,18 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
         )
     except JWTError:
         raise credentials_exception
-        
+
     user = crud.get_user(db, user_id=token_data.user_id)
     if user is None:
         raise credentials_exception
-    
+
     # Attach active context to user object (transient)
     user.active_company_id = token_data.company_id
     user.active_role = token_data.company_role
     user.is_platform_admin = token_data.is_platform_admin
     user.token_scope = token_data.scope
     user.admin_user_id = token_data.admin_user_id
-    
+
     return user
 
 async def get_verified_user(token: str = Depends(get_token_from_request), db: Session = Depends(get_db)):
@@ -301,17 +303,17 @@ async def get_verified_user(token: str = Depends(get_token_from_request), db: Se
         user_id: str = payload.get("sub")
         jti: str = payload.get("jti")
         scope: str = payload.get("scope", "")
-        
+
         if user_id is None:
             raise credentials_exception
-            
+
         # SRE Improvement: Check Blacklist in Redis
         if jti and redis_manager.get(f"bl_{jti}"):
             raise credentials_exception
-            
+
         if scope == "2fa_pending":
              raise two_fa_exception
-             
+
         token_data = schemas.TokenData(
             user_id=user_id,
             company_id=payload.get("cid"),
@@ -322,18 +324,18 @@ async def get_verified_user(token: str = Depends(get_token_from_request), db: Se
         )
     except JWTError:
         raise credentials_exception
-        
+
     user = crud.get_user(db, user_id=token_data.user_id)
     if user is None:
         raise credentials_exception
-        
+
     # Attach active context to user object (transient)
     user.active_company_id = token_data.company_id
     user.active_role = token_data.company_role
     user.is_platform_admin = token_data.is_platform_admin
     user.token_scope = token_data.scope
     user.admin_user_id = token_data.admin_user_id
-    
+
     return user
 
 # --- TOTP 2FA Logic ---

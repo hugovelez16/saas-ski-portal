@@ -4,14 +4,16 @@ Módulos y Suscripciones SaaS.
 Gestión del catálogo de módulos de la plataforma y las suscripciones
 de empresa o usuario a dichos módulos.
 """
+from datetime import datetime
+from uuid import UUID
+
+import auth
+import crud
+import models
+import schemas
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
-from typing import List, Optional
-from uuid import UUID
-from datetime import datetime
-
-import crud, models, schemas, auth
-from database import get_db
 
 router = APIRouter(prefix="/modules", tags=["modules"])
 
@@ -25,7 +27,7 @@ def _require_admin(current_user: models.User):
 
 # ─── Catálogo de Módulos ─────────────────────────────────────────────────────
 
-@router.get("", response_model=List[schemas.AppModuleResponse])
+@router.get("", response_model=list[schemas.AppModuleResponse])
 def list_modules(
     include_inactive: bool = False,
     db: Session = Depends(get_db),
@@ -74,11 +76,11 @@ def update_module(
 
 # ─── Suscripciones ──────────────────────────────────────────────────────────
 
-@router.get("/subscriptions", response_model=List[schemas.ModuleSubscriptionResponse])
+@router.get("/subscriptions", response_model=list[schemas.ModuleSubscriptionResponse])
 def list_subscriptions(
-    company_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    module_id: Optional[str] = None,
+    company_id: str | None = None,
+    user_id: str | None = None,
+    module_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user)
 ):
@@ -170,9 +172,9 @@ def delete_subscription(
 
 # ─── Módulos del Usuario Actual ──────────────────────────────────────────────
 
-@router.get("/me", response_model=List[schemas.AppModuleResponse])
+@router.get("/me", response_model=list[schemas.AppModuleResponse])
 def get_my_modules(
-    company_id: Optional[UUID] = None,
+    company_id: UUID | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user)
 ):
@@ -227,11 +229,11 @@ def get_my_modules(
                 models.ModuleSubscription.expires_at > now
             )
         ]
-        
+
         user_or_company_filters = [models.ModuleSubscription.user_id == user_id]
         if effective_company_id:
             user_or_company_filters.append(models.ModuleSubscription.company_id == effective_company_id)
-            
+
         filters.append(or_(*user_or_company_filters))
 
         subs = db.query(models.ModuleSubscription)\
