@@ -11,14 +11,19 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 load_dotenv()
 
 # Database Connection Configuration
-POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres") # Usar 'postgres' por defecto (nombre del servicio)
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Construir URL escapando caracteres especiales en el password (como '@')
-SQLALCHEMY_DATABASE_URL = f"postgresql://{POSTGRES_USER}:{quote_plus(POSTGRES_PASSWORD)}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+if DATABASE_URL:
+    SQLALCHEMY_DATABASE_URL = DATABASE_URL
+else:
+    POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+    POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
+    POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres") # Usar 'postgres' por defecto (nombre del servicio)
+    POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+
+    # Construir URL escapando caracteres especiales en el password (como '@')
+    SQLALCHEMY_DATABASE_URL = f"postgresql://{POSTGRES_USER}:{quote_plus(POSTGRES_PASSWORD)}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
 # Create SQLAlchemy engine
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
