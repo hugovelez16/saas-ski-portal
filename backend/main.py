@@ -98,6 +98,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+@app.get("/health", tags=["system"])
+def health_check():
+    """Endpoint de comprobacion de salud para Docker Compose y Gateway Nginx."""
+    return {"status": "ok"}
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     origin = request.headers.get("origin")
