@@ -4,11 +4,13 @@ Pydantic Schemas Module.
 This module defines the Pydantic models used for request validation and response serialization.
 It ensures that data sent to and received from the API conforms to the expected structure.
 """
-from pydantic import BaseModel, EmailStr, Field, ConfigDict, BeforeValidator
-from typing import Optional, List, Dict, Any, Annotated
-from datetime import date as dt_date, time, datetime
+from datetime import date as dt_date
+from datetime import datetime, time
+from typing import Annotated, Any
 from uuid import UUID
-from enum import Enum
+
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
+
 
 def to_camel(string: str) -> str:
     words = string.split('_')
@@ -29,36 +31,36 @@ class WorkLogBase(CamelModel):
     type: str
     start_date: dt_date = Field(..., alias="startDate")
     end_date: dt_date = Field(..., alias="endDate")
-    start_time: Optional[time] = Field(None, alias="startTime")
-    end_time: Optional[time] = Field(None, alias="endTime")
-    duration: Optional[float] = None
-    net_amount: Optional[float] = Field(None, alias="netAmount")
-    gross_amount: Optional[float] = Field(None, alias="grossAmount")
-    extra_data: Optional[Dict[str, Any]] = Field(default={}, alias="extraData")
-    description: Optional[str] = None
-    company_id: Optional[UUID] = Field(None, alias="companyId")
-    group_id: Optional[UUID] = Field(None, alias="groupId")
+    start_time: time | None = Field(None, alias="startTime")
+    end_time: time | None = Field(None, alias="endTime")
+    duration: float | None = None
+    net_amount: float | None = Field(None, alias="netAmount")
+    gross_amount: float | None = Field(None, alias="grossAmount")
+    extra_data: dict[str, Any] | None = Field(default={}, alias="extraData")
+    description: str | None = None
+    company_id: UUID | None = Field(None, alias="companyId")
+    group_id: UUID | None = Field(None, alias="groupId")
 
 class WorkLogCreate(WorkLogBase):
     """Schema for creating a new WorkLog entry."""
     user_id: UUID
-    amount: Optional[float] = None # Allow manual amount override
+    amount: float | None = None # Allow manual amount override
 
 class WorkLogBulkCreate(WorkLogBase):
     """Schema for creating multiple WorkLog entries at once."""
-    user_ids: List[UUID] = Field(..., alias="userIds")
-    amount: Optional[float] = None
+    user_ids: list[UUID] = Field(..., alias="userIds")
+    amount: float | None = None
 
 class WorkLogResponse(WorkLogBase):
     """Schema for WorkLog response data."""
     id: UUID
     user_id: UUID
-    amount: Optional[float] = None
-    gross_amount: Optional[float] = Field(None, alias="grossAmount")
+    amount: float | None = None
+    gross_amount: float | None = Field(None, alias="grossAmount")
 
     # SaaS Evolution: Historical snapshot (includes rate_applied inside snapshot["rate_applied"])
-    calculation_snapshot: Optional[Dict[str, Any]] = Field(None, alias="calculationSnapshot")
-    
+    calculation_snapshot: dict[str, Any] | None = Field(None, alias="calculationSnapshot")
+
     created_at: datetime
     updated_at: datetime
 
@@ -68,13 +70,13 @@ class WorkLogResponse(WorkLogBase):
 class UserBase(CamelModel):
     """Base schema for User data, containing common fields."""
     email: EmailStr
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    first_name: str | None = None
+    last_name: str | None = None
 
 class UserCreate(UserBase):
     """Schema for creating a new user (registration)."""
-    password: Optional[str] = None
-    company_id: Optional[UUID] = None
+    password: str | None = None
+    company_id: UUID | None = None
     send_email: bool = True
 
 class UserResponse(UserBase):
@@ -88,26 +90,26 @@ class UserResponse(UserBase):
     is_2fa_enabled: bool = False # TOTP status
     is_impersonated: bool = False # SRE: Support impersonation UI
     is_platform_admin: bool = False
-    active_company_id: Optional[UUID] = None
-    active_role: Optional[str] = None
-    default_company_id: Optional[UUID] = None
+    active_company_id: UUID | None = None
+    active_role: str | None = None
+    default_company_id: UUID | None = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 class UserUpdate(CamelModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    role: Optional[str] = None
-    is_active: Optional[bool] = None
-    default_company_id: Optional[UUID] = None
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+    role: str | None = None
+    is_active: bool | None = None
+    default_company_id: UUID | None = None
 
 class UserSelfUpdate(CamelModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    default_company_id: Optional[UUID] = None
+    first_name: str | None = None
+    last_name: str | None = None
+    default_company_id: UUID | None = None
 
 class PasswordChange(CamelModel):
     current_password: str
@@ -115,14 +117,14 @@ class PasswordChange(CamelModel):
 
 
 class UserCompanyRateBase(CamelModel):
-    hourly_rate: Optional[float] = 0.0
-    daily_rate: Optional[float] = 0.0
-    coordination_rate: Optional[float] = 0.0
-    night_rate: Optional[float] = 0.0
-    is_gross: Optional[bool] = False
-    deduction_ss: Optional[float] = None
-    deduction_irpf: Optional[float] = 0.0
-    deduction_extra: Optional[float] = 0.0
+    hourly_rate: float | None = 0.0
+    daily_rate: float | None = 0.0
+    coordination_rate: float | None = 0.0
+    night_rate: float | None = 0.0
+    is_gross: bool | None = False
+    deduction_ss: float | None = None
+    deduction_irpf: float | None = 0.0
+    deduction_extra: float | None = 0.0
 
 class UserCompanyRateCreate(UserCompanyRateBase):
     company_id: UUID
@@ -131,49 +133,48 @@ class UserCompanyRate(UserCompanyRateBase):
     user_id: UUID
     company_id: UUID
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 class UserCompanyRateResponse(UserCompanyRate):
-    pass
-    user: Optional[UserResponse] = None
+    user: UserResponse | None = None
 
 class UpdateCompanyMembersOrder(CamelModel):
-    user_ids: List[UUID] = Field(..., max_length=500)
+    user_ids: list[UUID] = Field(..., max_length=500)
 
 class CompanyBase(CamelModel):
     name: str
-    fiscal_id: Optional[str] = None
-    tax_config: Optional[Dict[str, float]] = Field(default={"social_security": 0.0, "irpf_base": 0.0}, alias="taxConfig")
-    
+    fiscal_id: str | None = None
+    tax_config: dict[str, float] | None = Field(default={"social_security": 0.0, "irpf_base": 0.0}, alias="taxConfig")
+
     # SaaS Evolution: Dynamic shift definitions
-    worklog_definitions: Optional[Dict[str, Any]] = Field(default={}, alias="worklogDefinitions")
-    
-    settings: Optional[Dict[str, Any]] = None
+    worklog_definitions: dict[str, Any] | None = Field(default={}, alias="worklogDefinitions")
+
+    settings: dict[str, Any] | None = None
 
 class CompanyCreate(CompanyBase):
     pass
 
 class CompanyUpdate(CamelModel):
-    name: Optional[str] = None
-    fiscal_id: Optional[str] = None
-    tax_config: Optional[Dict[str, float]] = Field(None, alias="taxConfig")
-    worklog_definitions: Optional[Dict[str, Any]] = Field(None, alias="worklogDefinitions")
-    settings: Optional[Dict[str, Any]] = None
+    name: str | None = None
+    fiscal_id: str | None = None
+    tax_config: dict[str, float] | None = Field(None, alias="taxConfig")
+    worklog_definitions: dict[str, Any] | None = Field(None, alias="worklogDefinitions")
+    settings: dict[str, Any] | None = None
 
 class Company(CompanyBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 class CompanyResponse(Company):
-    is_active_member: Optional[bool] = Field(True, alias="isActiveMember")
-    role: Optional[str] = None
-    rates_config: Optional[Dict[str, Any]] = Field(None, alias="ratesConfig")
+    is_active_member: bool | None = Field(True, alias="isActiveMember")
+    role: str | None = None
+    rates_config: dict[str, Any] | None = Field(None, alias="ratesConfig")
 
 
 def default_role(v: Any) -> str:
@@ -185,23 +186,23 @@ def default_is_active(v: Any) -> bool:
 class CompanyMemberBase(CamelModel):
     role: Annotated[str, BeforeValidator(default_role)] = "worker"
     is_active: Annotated[bool, BeforeValidator(default_is_active)] = True
-    rates_config: Optional[Dict[str, Any]] = None
-    settings: Optional[Dict[str, Any]] = None
+    rates_config: dict[str, Any] | None = None
+    settings: dict[str, Any] | None = None
 
 class CompanyMemberUpdate(CamelModel):
-    role: Optional[str] = None
-    is_active: Optional[bool] = None
-    rates_config: Optional[Dict[str, Any]] = None
-    settings: Optional[Dict[str, Any]] = None
+    role: str | None = None
+    is_active: bool | None = None
+    rates_config: dict[str, Any] | None = None
+    settings: dict[str, Any] | None = None
 
 class CompanyMemberResponse(CompanyMemberBase):
     user_id: UUID
     company_id: UUID
     joined_at: datetime
-    user: Optional[UserResponse] = None
+    user: UserResponse | None = None
 
 class CompanyWithMembers(CompanyResponse):
-    members: List[CompanyMemberResponse] = []
+    members: list[CompanyMemberResponse] = []
 
 
 class Token(CamelModel):
@@ -221,18 +222,18 @@ class TOTPActivate(CamelModel):
 
 
 class TokenData(CamelModel):
-    user_id: Optional[str] = None
-    company_id: Optional[str] = None
-    company_role: Optional[str] = None
+    user_id: str | None = None
+    company_id: str | None = None
+    company_role: str | None = None
     is_platform_admin: bool = False
     scope: str = "full"
-    email: Optional[EmailStr] = None
-    admin_user_id: Optional[str] = None
+    email: EmailStr | None = None
+    admin_user_id: str | None = None
 
 class SessionResponse(CamelModel):
     id: UUID
-    device_name: Optional[str] = None
-    ip_address: Optional[str] = None
+    device_name: str | None = None
+    ip_address: str | None = None
     is_active: bool
     last_active: datetime
     created_at: datetime
@@ -251,28 +252,28 @@ class AppModuleCreate(CamelModel):
     """Schema para crear un módulo en el catálogo (solo Platform Admin)."""
     code_name: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     is_active: bool = True
     target_scope: str = "both"  # "company" | "user" | "both"
-    price_monthly: Optional[float] = None
+    price_monthly: float | None = None
 
 class AppModuleUpdate(CamelModel):
     """Schema para actualizar un módulo del catálogo."""
-    name: Optional[str] = None
-    description: Optional[str] = None
-    is_active: Optional[bool] = None
-    target_scope: Optional[str] = None
-    price_monthly: Optional[float] = None
+    name: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+    target_scope: str | None = None
+    price_monthly: float | None = None
 
 class AppModuleResponse(CamelModel):
     """Schema de respuesta de un módulo del catálogo."""
     id: UUID
     code_name: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     is_active: bool
     target_scope: str
-    price_monthly: Optional[float] = None
+    price_monthly: float | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -280,42 +281,42 @@ class AppModuleResponse(CamelModel):
 class ModuleSubscriptionCreate(CamelModel):
     """Schema para crear una suscripción a un módulo."""
     module_id: UUID = Field(..., alias="moduleId")
-    company_id: Optional[UUID] = Field(None, alias="companyId")
-    user_id: Optional[UUID] = Field(None, alias="userId")
+    company_id: UUID | None = Field(None, alias="companyId")
+    user_id: UUID | None = Field(None, alias="userId")
     scope: str  # "company" | "user"
     status: str = "active"  # "active" | "trial" | "cancelled" | "expired"
-    expires_at: Optional[datetime] = Field(None, alias="expiresAt")
-    notes: Optional[str] = None
+    expires_at: datetime | None = Field(None, alias="expiresAt")
+    notes: str | None = None
 
 class ModuleSubscriptionUpdate(CamelModel):
     """Schema para actualizar el estado de una suscripción."""
-    status: Optional[str] = None
-    expires_at: Optional[datetime] = Field(None, alias="expiresAt")
-    notes: Optional[str] = None
+    status: str | None = None
+    expires_at: datetime | None = Field(None, alias="expiresAt")
+    notes: str | None = None
 
 class ModuleSubscriptionResponse(CamelModel):
     """Schema de respuesta de una suscripción."""
     id: UUID
     module_id: UUID = Field(..., alias="moduleId")
-    company_id: Optional[UUID] = Field(None, alias="companyId")
-    user_id: Optional[UUID] = Field(None, alias="userId")
+    company_id: UUID | None = Field(None, alias="companyId")
+    user_id: UUID | None = Field(None, alias="userId")
     scope: str
     status: str
-    expires_at: Optional[datetime] = Field(None, alias="expiresAt")
-    notes: Optional[str] = None
+    expires_at: datetime | None = Field(None, alias="expiresAt")
+    notes: str | None = None
     created_at: datetime
     updated_at: datetime
-    module: Optional[AppModuleResponse] = None
-    company: Optional[CompanyResponse] = None
-    user: Optional[UserResponse] = None
+    module: AppModuleResponse | None = None
+    company: CompanyResponse | None = None
+    user: UserResponse | None = None
 
 
 class BillingSummaryItemResponse(CamelModel):
     user_id: UUID
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    first_name: str | None = None
+    last_name: str | None = None
     email: EmailStr
-    type: Optional[str] = None
+    type: str | None = None
     total_hours: float
     total_net: float
     total_gross: float

@@ -1,7 +1,7 @@
-import redis
-import os
 import logging
-from typing import Optional
+import os
+
+import redis
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -13,8 +13,8 @@ class RedisManager:
     """
     def __init__(self):
         self.redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
-        self._pool: Optional[redis.ConnectionPool] = None
-        self._client: Optional[redis.Redis] = None
+        self._pool: redis.ConnectionPool | None = None
+        self._client: redis.Redis | None = None
 
     @property
     def client(self) -> redis.Redis:
@@ -25,7 +25,7 @@ class RedisManager:
             try:
                 logger.info(f"Initializing Redis connection pool to {self.redis_url}")
                 self._pool = redis.ConnectionPool.from_url(
-                    self.redis_url, 
+                    self.redis_url,
                     decode_responses=True,
                     socket_timeout=2.0,
                     socket_connect_timeout=2.0,
@@ -37,7 +37,7 @@ class RedisManager:
                 # We return a dummy client or handle it in the methods
         return self._client
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         """
         Safely gets a value from Redis. Returns None on failure or miss.
         """

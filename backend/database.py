@@ -1,14 +1,13 @@
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-import os
 
 # Database Connection URL
 # Defaults to a local PostgreSQL container if not specified in environment variables
 from urllib.parse import quote_plus
+
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
 load_dotenv()
 
 # Database Connection Configuration

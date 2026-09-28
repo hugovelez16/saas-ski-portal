@@ -4,22 +4,26 @@ Main API Application Module.
 This module defines the FastAPI application, API endpoints, and middleware configuration.
 It serves as the entry point for the backend service.
 """
+import asyncio
+import os
+from contextlib import asynccontextmanager
+
+from database import SessionLocal
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-import os, asyncio
-from database import SessionLocal
-from contextlib import asynccontextmanager
+
+# Import modular routers
+from routers import auth, companies, modules, users, work_logs
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-# Import modular routers
-from routers import auth, users, work_logs, companies, modules
 
 def perform_session_cleanup():
     """
     Síncrona: Borra de la base de datos las sesiones inactivas por más de 30 días.
     """
     from datetime import datetime, timedelta
+
     import models
     db = SessionLocal()
     try:
@@ -77,12 +81,12 @@ async def lifespan(app: FastAPI):
                 break
             print(f"Database not ready yet. Retrying in 2 seconds... ({retries} attempts remaining)")
             await asyncio.sleep(2)
-    
+
     # Iniciar la tarea periódica de limpieza de sesiones en segundo plano
     cleanup_task = asyncio.create_task(cleanup_expired_sessions_loop())
-    
+
     yield
-    
+
     # Cancelar la tarea de limpieza de sesiones al apagar la aplicación
     cleanup_task.cancel()
     try:
