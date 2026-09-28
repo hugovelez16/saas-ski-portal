@@ -81,10 +81,15 @@ def update_user_status(db: Session, user_id: str, is_active: bool):
         db.refresh(user)
     return user
 
-def get_company_member(db: Session, user_id: str, company_id: str):
+def get_company_member(db: Session, user_id: Any, company_id: Any):
+    try:
+        cid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
+        uid = uuid.UUID(str(user_id)) if not isinstance(user_id, uuid.UUID) else user_id
+    except (ValueError, TypeError, AttributeError):
+        return None
     return db.query(models.CompanyMember).filter(
-        models.CompanyMember.user_id == user_id,
-        models.CompanyMember.company_id == company_id
+        models.CompanyMember.user_id == uid,
+        models.CompanyMember.company_id == cid
     ).first()
 
 def get_worklog_unit(type_def: dict) -> str:
@@ -595,11 +600,11 @@ def join_company(db: Session, user_id: str, company_id: str):
 
 def get_user_companies(db: Session, user_id: str, include_inactive: bool = False):
     """Get companies the user is a member of (joined), merging member-specific settings."""
-    query = db.query(models.CompanyMember).filter(
+    query = db.query(models.CompanyMember).join(models.Company).filter(
         models.CompanyMember.user_id == user_id
     )
     if not include_inactive:
-        query = query.filter(models.CompanyMember.is_active == True)
+        query = query.filter(models.CompanyMember.is_active == True, models.Company.is_active == True)
 
     members = query.all()
 
@@ -622,6 +627,8 @@ def get_user_companies(db: Session, user_id: str, include_inactive: bool = False
             "fiscal_id": company.fiscal_id,
             "tax_config": company.tax_config,
             "worklog_definitions": company.worklog_definitions,
+            "is_active": company.is_active,
+            "is_managed": company.is_managed,
             "created_at": company.created_at,
             "updated_at": company.updated_at,
             "settings": effective,
@@ -744,11 +751,19 @@ def create_company(db: Session, company: schemas.CompanyCreate):
     db.refresh(db_company)
     return db_company
 
-def get_company(db: Session, company_id: str):
-    return db.query(models.Company).filter(models.Company.id == company_id).first()
+def get_company(db: Session, company_id: Any):
+    try:
+        cid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return db.query(models.Company).filter(models.Company.id == cid).first()
 
-def update_company(db: Session, company_id: str, company: schemas.CompanyUpdate):
-    db_company = db.query(models.Company).filter(models.Company.id == company_id).first()
+def update_company(db: Session, company_id: Any, company: schemas.CompanyUpdate):
+    try:
+        cid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
+    except (ValueError, TypeError, AttributeError):
+        return None
+    db_company = db.query(models.Company).filter(models.Company.id == cid).first()
     if db_company:
         # Use model_dump(by_alias=False) to ensure we get snake_case property names for setattr
         update_data = company.model_dump(exclude_unset=True, by_alias=False)

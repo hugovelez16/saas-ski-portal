@@ -244,6 +244,10 @@ async def switch_scope(
         if not data.company_id:
             raise HTTPException(status_code=400, detail="company_id is required")
 
+        company = crud.get_company(db, str(data.company_id))
+        if not company or not company.is_active:
+            raise HTTPException(status_code=403, detail="Empresa inactiva o suspendida")
+
         membership = db.query(models.CompanyMember).filter(
             models.CompanyMember.user_id == current_user.id,
             models.CompanyMember.company_id == data.company_id,
