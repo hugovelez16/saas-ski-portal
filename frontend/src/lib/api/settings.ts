@@ -1,5 +1,5 @@
 import api from '../api';
-import { CompanyMember, CompanyWithMembers } from '@/lib/types';
+import { CompanyMember } from '@/lib/types';
 import { getCompaniesDetailed } from './companies';
 
 export const getUserRates = async (companyId?: string): Promise<CompanyMember[]> => {
@@ -7,7 +7,7 @@ export const getUserRates = async (companyId?: string): Promise<CompanyMember[]>
         const companies = await getCompaniesDetailed();
         const { data: user } = await api.get('/users/me');
 
-        let membersList: CompanyMember[] = [];
+        const membersList: CompanyMember[] = [];
 
         for (const company of companies) {
             if (companyId && company.id !== companyId) continue;

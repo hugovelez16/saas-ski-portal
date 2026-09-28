@@ -80,7 +80,7 @@ export const defaultTextGenerator: TextReportGenerator = (logs, context) => {
             .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
             .join(' ');
             
-        let units = [];
+        const units = [];
         
         if (data.hours > 0) {
             units.push(`${data.hours} horas`);
