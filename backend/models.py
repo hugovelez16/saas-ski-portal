@@ -85,6 +85,9 @@ class Company(Base):
     worklog_definitions = Column(JSONB, default={})
     # Structure example: { "particular": { "unit": "hours", "label": "Particular", "fields": [...] } }
 
+    is_active = Column(Boolean, default=True, server_default="true", nullable=False)
+    is_managed = Column(Boolean, default=False, server_default="false", nullable=False)
+
     settings = Column(JSONB, default={}) # Global company settings
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

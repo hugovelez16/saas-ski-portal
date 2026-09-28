@@ -31,6 +31,14 @@ def create_work_log(work_log: schemas.WorkLogCreate, db: Session = Depends(get_d
     """
     Create a new work log entry.
     """
+    company = crud.get_company(db, str(work_log.company_id))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    is_platform_admin = getattr(current_user, "is_platform_admin", False) or current_user.role == models.UserRole.admin
+    if not is_platform_admin and not company.is_active:
+        raise HTTPException(status_code=403, detail="Empresa inactiva o suspendida")
+
     # Verify current_user.id matches work_log.user_id or user is manager/admin of the target company
     if str(work_log.user_id) != str(current_user.id):
         if not is_manager_of_company(db, current_user, work_log.company_id):
@@ -57,6 +65,14 @@ def create_work_log_bulk(
     """
     Create multiple work log entries at once (for managers).
     """
+    company = crud.get_company(db, str(work_log_bulk.company_id))
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    is_platform_admin = getattr(current_user, "is_platform_admin", False) or current_user.role == models.UserRole.admin
+    if not is_platform_admin and not company.is_active:
+        raise HTTPException(status_code=403, detail="Empresa inactiva o suspendida")
+
     # Authorization check: must be manager of the company
     if not is_manager_of_company(db, current_user, work_log_bulk.company_id):
          raise HTTPException(status_code=403, detail="Only managers can create bulk work logs")
@@ -209,15 +225,25 @@ def get_billing_summary(
 
 @router.delete("/{work_log_id}")
 def delete_work_log(work_log_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
-    log = db.query(models.WorkLog).filter(models.WorkLog.id == work_log_id).first()
+    wid = UUID(str(work_log_id)) if not isinstance(work_log_id, UUID) else work_log_id
+    log = db.query(models.WorkLog).filter(models.WorkLog.id == wid).first()
     if not log:
          raise HTTPException(status_code=404, detail="Work log not found")
+
+    company = crud.get_company(db, str(log.company_id))
+    is_platform_admin = getattr(current_user, "is_platform_admin", False) or current_user.role == models.UserRole.admin
+
+    if company and not company.is_active and not is_platform_admin:
+        raise HTTPException(status_code=403, detail="Empresa inactiva o suspendida")
 
     is_owner = str(log.user_id) == str(current_user.id)
     is_manager = is_manager_of_company(db, current_user, log.company_id)
 
-    if not is_owner and not is_manager and not getattr(current_user, "is_platform_admin", False):
+    if not is_owner and not is_manager and not is_platform_admin:
          raise HTTPException(status_code=403, detail="Not authorized")
+
+    if company and company.is_managed and not is_manager and not is_platform_admin:
+        raise HTTPException(status_code=403, detail="En empresas gestionadas los trabajadores no pueden eliminar turnos directamente")
 
     record_impersonation_audit(
         db,
@@ -237,18 +263,28 @@ def update_work_log(
     current_user: models.User = Depends(auth.get_verified_user)
 ):
     # Verify ownership or management
-    log = db.query(models.WorkLog).filter(models.WorkLog.id == work_log_id).first()
+    wid = UUID(str(work_log_id)) if not isinstance(work_log_id, UUID) else work_log_id
+    log = db.query(models.WorkLog).filter(models.WorkLog.id == wid).first()
     if not log:
          raise HTTPException(status_code=404, detail="Work log not found")
+
+    company = crud.get_company(db, str(log.company_id))
+    is_platform_admin = getattr(current_user, "is_platform_admin", False) or current_user.role == models.UserRole.admin
+
+    if company and not company.is_active and not is_platform_admin:
+        raise HTTPException(status_code=403, detail="Empresa inactiva o suspendida")
 
     is_owner = str(log.user_id) == str(current_user.id)
     is_manager = is_manager_of_company(db, current_user, log.company_id)
 
-    if not is_owner and not is_manager and not getattr(current_user, "is_platform_admin", False):
+    if not is_owner and not is_manager and not is_platform_admin:
          raise HTTPException(status_code=403, detail="Not authorized")
 
+    if company and company.is_managed and not is_manager and not is_platform_admin:
+        raise HTTPException(status_code=403, detail="En empresas gestionadas los trabajadores no pueden modificar turnos directamente")
+
     # Only managers/admins can apply to group
-    if apply_to_group and not is_manager and not getattr(current_user, "is_platform_admin", False):
+    if apply_to_group and not is_manager and not is_platform_admin:
         raise HTTPException(status_code=403, detail="Only managers can perform cascading updates")
 
     updated_log = crud.update_work_log(db, work_log_id, work_log, apply_to_group=apply_to_group)

@@ -19,6 +19,26 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.3.0] - 2026-09-28
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Gobernanza de empresas, modo empresa gestionada vs autonoma, control de actividad y restricciones estrictas RBAC.
+
+### Funcionalidades y Mejoras
+
+- **Base de Datos y Modelos**:
+  - Migracion Alembic reversible \`8f10a2b3c4d5_anadir_is_active_e_is_managed_a_companies\` que anade columnas \`is_active\` e \`is_managed\` a la tabla \`companies\`.
+  - Actualizados modelos SQLAlchemy y esquemas Pydantic con soporte camelCase (\`isActive\`, \`isManaged\`).
+- **Gobernanza y RBAC**:
+  - Restriccion estricta en cambio de roles: Se elimina la posibilidad de que un manager altere el rol de un usuario. Solo los administradores de empresa o administradores de plataforma pueden modificar roles.
+  - Modo Empresa Gestionada (\`is_managed = True\`): Los trabajadores tienen sus tarifas (\`rates_config\`) en solo lectura y no pueden alterar turnos directamente.
+  - Desactivacion de Empresa (\`is_active = False\`): Bloqueo total de operaciones, conmutacion de ambito y registro de turnos para usuarios regulares, permitiendo acceso administrativo unicamente a la administracion de plataforma.
+- **Suite de Pruebas**:
+  - Cobertura completa de politicas de gobernanza con \`test_governance.py\` (8/8 pruebas unitarias superadas).
+
+---
+
 ## [0.2.0] - 2026-09-28
 
 ### Tipo de Cambio SemVer

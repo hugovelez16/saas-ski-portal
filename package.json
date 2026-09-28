@@ -1,6 +1,6 @@
 {
   "name": "saas-ski-vesotel-root",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Plataforma de gestion de escuelas de esqui, clases particulares y jornadas laborales",
   "scripts": {

@@ -151,6 +151,9 @@ class CompanyBase(CamelModel):
     # SaaS Evolution: Dynamic shift definitions
     worklog_definitions: dict[str, Any] | None = Field(default={}, alias="worklogDefinitions")
 
+    is_active: bool = Field(default=True, alias="isActive")
+    is_managed: bool = Field(default=False, alias="isManaged")
+
     settings: dict[str, Any] | None = None
 
 class CompanyCreate(CompanyBase):
@@ -161,6 +164,8 @@ class CompanyUpdate(CamelModel):
     fiscal_id: str | None = None
     tax_config: dict[str, float] | None = Field(None, alias="taxConfig")
     worklog_definitions: dict[str, Any] | None = Field(None, alias="worklogDefinitions")
+    is_active: bool | None = Field(None, alias="isActive")
+    is_managed: bool | None = Field(None, alias="isManaged")
     settings: dict[str, Any] | None = None
 
 class Company(CompanyBase):
