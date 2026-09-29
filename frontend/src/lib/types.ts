@@ -43,6 +43,8 @@ export interface Company {
     // UI specific
     role?: string;
     isActiveMember?: boolean;
+    isManaged?: boolean;
+    isActive?: boolean;
 }
 
 export type CompanyResponse = Company;
