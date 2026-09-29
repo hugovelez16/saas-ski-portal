@@ -12,7 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { formatPercentage } from "@/lib/utils";
 
 type ViewMode = "cards" | "list";
 
@@ -52,9 +53,27 @@ export default function AdminCompaniesPage() {
         }
     });
 
-    const filteredCompanies = companies.filter(company =>
-        company.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredCompanies = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        const filtered = companies.filter(company =>
+            company.name.toLowerCase().includes(query) ||
+            (company.fiscalId && company.fiscalId.toLowerCase().includes(query))
+        );
+
+        return filtered.sort((a, b) => {
+            const aActive = a.isActive !== false;
+            const bActive = b.isActive !== false;
+
+            // 1. Activas primero, inactivas/suspendidas al final
+            if (aActive !== bActive) {
+                return aActive ? -1 : 1;
+            }
+
+            // 2. Orden alfabético por nombre
+            return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
+        });
+    }, [companies, searchQuery]);
+
 
     if (isLoading) {
         return <div className="p-8 text-center">Cargando empresas...</div>;
@@ -64,8 +83,8 @@ export default function AdminCompaniesPage() {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-2">
-                    <Building2 className="h-7 w-7 text-indigo-600" />
-                    <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700">
+                    <Building2 className="h-7 w-7 text-slate-900 dark:text-slate-100" />
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
                         Gestión de Empresas
                     </h1>
                 </div>
@@ -114,39 +133,40 @@ export default function AdminCompaniesPage() {
                     {filteredCompanies.map((company) => {
                         const activeWorkers = (company.members || []).filter((m) => m.isActive && m.role !== 'manager').length;
                         const activeManagers = (company.members || []).filter((m) => m.isActive && m.role === 'manager').length;
-                        const ss = (company.taxConfig?.social_security || 0) * 100;
+                        const ss = formatPercentage(company.taxConfig?.social_security);
                         const isManaged = Boolean(company.isManaged || company.settings?.is_managed);
                         const isActive = company.isActive !== false;
 
                         return (
                             <Card 
                                 key={company.id} 
-                                className="group hover:shadow-xl hover:ring-2 hover:ring-indigo-500/20 transition-all duration-300 cursor-pointer overflow-hidden border-slate-200"
+                                className={`group hover:shadow-xl hover:ring-2 hover:ring-slate-900/10 transition-all duration-300 cursor-pointer overflow-hidden border-slate-200 ${!isActive ? "opacity-80 bg-slate-50/40" : "bg-white"}`}
                                 onClick={() => router.push(`/admin/companies/${company.id}`)}
                             >
                                 <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
                                     <CardTitle className="flex items-center justify-between">
                                         <div className="space-y-1">
-                                            <span className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors block">
+                                            <span className="text-lg font-bold text-slate-900 group-hover:text-slate-800 transition-colors block">
                                                 {company.name}
                                             </span>
                                             <div className="flex items-center gap-1.5 pt-1">
                                                 <Badge 
-                                                    variant={isActive ? "default" : "destructive"} 
-                                                    className={`text-[10px] font-medium px-2 py-0.5 ${isActive ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
+                                                    variant="outline"
+                                                    className={`text-[10px] font-medium px-2 py-0.5 shadow-none ${isActive ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" : "bg-rose-50/70 text-rose-700 border-rose-200/70"}`}
                                                 >
+                                                    <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${isActive ? "bg-emerald-500" : "bg-rose-400"}`} />
                                                     {isActive ? "Activa" : "Suspendida"}
                                                 </Badge>
                                                 <Badge 
-                                                    variant={isManaged ? "secondary" : "outline"} 
-                                                    className={`text-[10px] font-medium px-2 py-0.5 ${isManaged ? "bg-indigo-100 text-indigo-700 border-indigo-200" : "text-slate-600"}`}
+                                                    variant="outline"
+                                                    className={`text-[10px] font-medium px-2 py-0.5 shadow-none ${isManaged ? "bg-slate-900 text-slate-50 border-slate-900" : "bg-slate-50 text-slate-600 border-slate-200"}`}
                                                 >
                                                     {isManaged ? "Gestionada" : "Autonoma"}
                                                 </Badge>
                                             </div>
                                         </div>
-                                        <div className="p-2 bg-white rounded-lg border border-slate-100 shadow-sm group-hover:bg-indigo-50 group-hover:border-indigo-100 transition-all">
-                                            <Building2 className="h-5 w-5 text-indigo-500" />
+                                        <div className="p-2 bg-white rounded-lg border border-slate-100 shadow-sm group-hover:bg-slate-100 group-hover:border-slate-200 transition-all">
+                                            <Building2 className="h-5 w-5 text-slate-700" />
                                         </div>
                                     </CardTitle>
                                 </CardHeader>
@@ -161,8 +181,8 @@ export default function AdminCompaniesPage() {
                                                 </div>
                                                 {activeManagers > 0 && (
                                                     <Badge 
-                                                        variant="secondary" 
-                                                        className="px-1.5 py-0 h-5 text-[10px] bg-indigo-100/50 text-indigo-700 border-indigo-200/50"
+                                                        variant="outline" 
+                                                        className="px-1.5 py-0 h-5 text-[10px] bg-slate-100 text-slate-700 border-slate-200 shadow-none"
                                                     >
                                                         {activeManagers} Gestores
                                                     </Badge>
@@ -172,9 +192,9 @@ export default function AdminCompaniesPage() {
                                         <div className="h-8 w-[1px] bg-slate-200" />
                                         <div className="text-right">
                                             <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">SS (%)</p>
-                                            <div className="flex items-center justify-end gap-1 text-indigo-600">
-                                                <Wallet className="h-4 w-4" />
-                                                <span className="text-sm font-bold">{ss}%</span>
+                                            <div className="flex items-center justify-end gap-1 text-slate-800">
+                                                <Wallet className="h-4 w-4 text-slate-500" />
+                                                <span className="text-sm font-bold">{ss}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -204,7 +224,7 @@ export default function AdminCompaniesPage() {
                                                     });
                                                 }}
                                             />
-                                            <span className={`text-xs font-medium ${isActive ? "text-emerald-700" : "text-red-600"}`}>
+                                            <span className={`text-xs font-medium ${isActive ? "text-emerald-700" : "text-slate-500"}`}>
                                                 {isActive ? "Activa" : "Suspendida"}
                                             </span>
                                         </div>
@@ -238,7 +258,7 @@ export default function AdminCompaniesPage() {
                                 {filteredCompanies.map((company) => {
                                     const activeWorkers = (company.members || []).filter((m) => m.isActive && m.role !== 'manager').length;
                                     const activeManagers = (company.members || []).filter((m) => m.isActive && m.role === 'manager').length;
-                                    const ss = (company.taxConfig?.social_security || 0) * 100;
+                                    const ss = formatPercentage(company.taxConfig?.social_security);
                                     const isManaged = Boolean(company.isManaged || company.settings?.is_managed);
                                     const isActive = company.isActive !== false;
 
@@ -246,15 +266,15 @@ export default function AdminCompaniesPage() {
                                         <tr
                                             key={company.id}
                                             onClick={() => router.push(`/admin/companies/${company.id}`)}
-                                            className="hover:bg-slate-50/80 cursor-pointer transition-colors group"
+                                            className={`hover:bg-slate-50/80 cursor-pointer transition-colors group ${!isActive ? "bg-slate-50/40 opacity-75 hover:opacity-100" : ""}`}
                                         >
                                             <td className="py-3.5 px-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-indigo-50 transition-colors">
-                                                        <Building2 className="h-4 w-4 text-slate-600 group-hover:text-indigo-600" />
+                                                    <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-slate-200 transition-colors">
+                                                        <Building2 className="h-4 w-4 text-slate-600 group-hover:text-slate-900" />
                                                     </div>
                                                     <div>
-                                                        <div className="font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                                                        <div className="font-semibold text-slate-900 group-hover:text-slate-800 transition-colors">
                                                             {company.name}
                                                         </div>
                                                         <div className="text-xs text-slate-400">
@@ -276,9 +296,10 @@ export default function AdminCompaniesPage() {
                                                         }}
                                                     />
                                                     <Badge 
-                                                        variant={isActive ? "default" : "destructive"} 
-                                                        className={`text-[11px] font-medium px-2 py-0.5 ${isActive ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}`}
+                                                        variant="outline" 
+                                                        className={`text-[11px] font-medium px-2 py-0.5 shadow-none ${isActive ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" : "bg-rose-50/70 text-rose-700 border-rose-200/70"}`}
                                                     >
+                                                        <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${isActive ? "bg-emerald-500" : "bg-rose-400"}`} />
                                                         {isActive ? "Activa" : "Suspendida"}
                                                     </Badge>
                                                 </div>
@@ -296,8 +317,8 @@ export default function AdminCompaniesPage() {
                                                         }}
                                                     />
                                                     <Badge 
-                                                        variant={isManaged ? "secondary" : "outline"} 
-                                                        className={`text-[11px] font-medium px-2 py-0.5 ${isManaged ? "bg-indigo-100 text-indigo-700 border-indigo-200" : "text-slate-600"}`}
+                                                        variant="outline" 
+                                                        className={`text-[11px] font-medium px-2 py-0.5 shadow-none ${isManaged ? "bg-slate-900 text-slate-50 border-slate-900" : "bg-slate-50 text-slate-600 border-slate-200"}`}
                                                     >
                                                         {isManaged ? "Gestionada" : "Autonoma"}
                                                     </Badge>
@@ -309,8 +330,8 @@ export default function AdminCompaniesPage() {
                                                     <span className="text-xs text-slate-400">trabajadores</span>
                                                     {activeManagers > 0 && (
                                                         <Badge 
-                                                            variant="secondary" 
-                                                            className="px-1.5 py-0 h-4 text-[10px] bg-indigo-100/60 text-indigo-700 border-indigo-200/50 ml-1"
+                                                            variant="outline" 
+                                                            className="px-1.5 py-0 h-4 text-[10px] bg-slate-100 text-slate-700 border-slate-200 shadow-none ml-1"
                                                         >
                                                             {activeManagers} gestores
                                                         </Badge>
@@ -318,10 +339,10 @@ export default function AdminCompaniesPage() {
                                                 </div>
                                             </td>
                                             <td className="py-3.5 px-4 text-center">
-                                                <span className="font-semibold text-slate-700">{ss}%</span>
+                                                <span className="font-semibold text-slate-700">{ss}</span>
                                             </td>
                                             <td className="py-3.5 px-4 text-right">
-                                                <div className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 group-hover:text-indigo-700">
+                                                <div className="inline-flex items-center gap-1 text-xs font-semibold text-slate-900 hover:text-slate-700">
                                                     <span>Detalle</span>
                                                     <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                                                 </div>

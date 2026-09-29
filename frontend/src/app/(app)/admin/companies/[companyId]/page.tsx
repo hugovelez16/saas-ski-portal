@@ -25,6 +25,7 @@ import { JsonEditor } from "@/components/admin/json-editor";
 import { TaxConfigBuilder } from "@/components/admin/tax-config-builder";
 import { WorklogDefinitionBuilder } from "@/components/admin/worklog-definition-builder";
 import { UserRatesEditDialog } from "@/components/admin/user-rates-edit-dialog";
+import { formatPercentage } from "@/lib/utils";
 
 export default function CompanyDetailsPage() {
     const { user } = useAuth();
@@ -427,14 +428,14 @@ function TaxOverview({ company, isAdmin }: { company: any, isAdmin?: boolean }) 
                         </Badge>
                         <div className="flex gap-2 text-[10px] font-mono">
                             <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded" title="Seguridad Social">
-                                SS: <b className="ml-0.5">{(ss ?? (company.taxConfig?.social_security || 0)) * 100}%</b>
+                                SS: <b className="ml-0.5">{formatPercentage(ss ?? company.taxConfig?.social_security)}</b>
                             </span>
                             <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded" title="IRPF">
-                                IRPF: <b className="ml-0.5">{irpf * 100}%</b>
+                                IRPF: <b className="ml-0.5">{formatPercentage(irpf)}</b>
                             </span>
                             {extra > 0 && (
                                 <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
-                                    EX: <b className="ml-0.5">{extra * 100}%</b>
+                                    EX: <b className="ml-0.5">{formatPercentage(extra)}</b>
                                 </span>
                             )}
                         </div>

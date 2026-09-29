@@ -39,6 +39,10 @@ echo -e "${BLUE}   Sincronizador de Base de Datos: Remoto -> Local  ${NC}"
 echo -e "${BLUE}===================================================${NC}"
 
 # 1. Verificar si el contenedor de desarrollo (destino) está corriendo
+if [ -z "$(docker ps -q -f name=^/${DST_CONTAINER}$)" ] && [ -n "$(docker ps -q -f name=^/${DST_CONTAINER}-1$)" ]; then
+    DST_CONTAINER="${DST_CONTAINER}-1"
+fi
+
 if [ "$(docker ps -q -f name=$DST_CONTAINER)" ]; then
     echo -e "${GREEN}[OK]${NC} Contenedor de destino local ($DST_CONTAINER) detectado."
 else
