@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, formatPercentage } from '@/lib/utils';
 
 describe('cn (class name utility)', () => {
     it('should merge simple class names', () => {
@@ -54,3 +54,28 @@ describe('formatCurrency', () => {
         expect(result).toContain('100,00');
     });
 });
+
+describe('formatPercentage', () => {
+    it('should format decimal tax rate without floating point precision issues', () => {
+        // 0.0648 * 100 is 6.4799999999999995 in JS
+        expect(formatPercentage(0.0648)).toBe('6.48%');
+    });
+
+    it('should format standard whole percentage rates', () => {
+        expect(formatPercentage(0.15)).toBe('15%');
+        expect(formatPercentage(0.21)).toBe('21%');
+        expect(formatPercentage(0)).toBe('0%');
+    });
+
+    it('should format rates already in 1-100 range', () => {
+        expect(formatPercentage(6.48)).toBe('6.48%');
+        expect(formatPercentage(15)).toBe('15%');
+    });
+
+    it('should handle null and undefined safely', () => {
+        expect(formatPercentage(null)).toBe('0%');
+        expect(formatPercentage(undefined)).toBe('0%');
+        expect(formatPercentage(NaN)).toBe('0%');
+    });
+});
+

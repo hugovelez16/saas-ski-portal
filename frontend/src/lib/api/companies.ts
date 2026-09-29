@@ -1,5 +1,5 @@
 import api from "@/lib/api";
-import { CompanyResponse, CompanyWithMembers, CompanyMemberResponse } from "@/lib/types";
+import { CompanyResponse, CompanyWithMembers, CompanyMemberResponse, DashboardSummaryResponse } from "@/lib/types";
 
 export const createCompany = async (data: {
     name: string;
@@ -20,6 +20,11 @@ export const updateCompany = async (companyId: string, data: any): Promise<Compa
 
 export const getCompanies = async (): Promise<CompanyResponse[]> => {
     const response = await api.get<CompanyResponse[]>("/companies");
+    return response.data;
+};
+
+export const getCompany = async (companyId: string): Promise<CompanyResponse> => {
+    const response = await api.get<CompanyResponse>(`/companies/${companyId}`);
     return response.data;
 };
 
@@ -67,4 +72,19 @@ export const updateCompanyMembersOrder = async (companyId: string, userIds: stri
     const response = await api.put(`/companies/${companyId}/members/order`, { userIds });
     return response.data;
 };
+
+export const getCompanyDashboardSummary = async (
+    companyId: string,
+    params?: { startDate?: string; endDate?: string }
+): Promise<DashboardSummaryResponse> => {
+    const queryParams: Record<string, string> = {};
+    if (params?.startDate) queryParams.start_date = params.startDate;
+    if (params?.endDate) queryParams.end_date = params.endDate;
+
+    const response = await api.get<DashboardSummaryResponse>(`/companies/${companyId}/dashboard-summary`, {
+        params: queryParams
+    });
+    return response.data;
+};
+
 
