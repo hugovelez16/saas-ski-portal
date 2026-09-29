@@ -251,7 +251,10 @@ def delete_work_log(work_log_id: str, db: Session = Depends(get_db), current_use
         action="delete_work_log",
         extra_data={"work_log_id": work_log_id, "user_id": str(log.user_id)}
     )
+    company_id = log.company_id
     crud.delete_work_log(db, work_log_id)
+    if company_id:
+        crud.invalidate_dashboard_summary(company_id)
     return {"ok": True}
 
 @router.put("/{work_log_id}", response_model=schemas.WorkLogResponse)
