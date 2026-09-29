@@ -42,9 +42,14 @@ try:
     from cryptography.hazmat.primitives import serialization
 
     passphrase = os.getenv("JWT_PRIVATE_KEY_PASSPHRASE")
-    private_key_obj = serialization.load_pem_private_key(
-        private_key_data, password=passphrase.encode() if passphrase else None, backend=default_backend()
-    )
+    try:
+        private_key_obj = serialization.load_pem_private_key(
+            private_key_data, password=passphrase.encode() if passphrase else None, backend=default_backend()
+        )
+    except TypeError:
+        private_key_obj = serialization.load_pem_private_key(
+            private_key_data, password=None, backend=default_backend()
+        )
 
     PRIVATE_KEY = private_key_obj.private_bytes(
         encoding=serialization.Encoding.PEM,

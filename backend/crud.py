@@ -410,6 +410,8 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
     db.add(db_work_log)
     db.commit()
     db.refresh(db_work_log)
+    if db_work_log.company_id:
+        invalidate_dashboard_summary(db_work_log.company_id)
     return db_work_log
 
 
@@ -490,6 +492,9 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
     db.commit()
     for log in created_logs:
         db.refresh(log)
+
+    if company_id:
+        invalidate_dashboard_summary(company_id)
 
     return created_logs[0] if created_logs else None
 
@@ -603,6 +608,8 @@ def _update_single_work_log(db: Session, db_work_log: models.WorkLog, work_log: 
 
     db.commit()
     db.refresh(db_work_log)
+    if db_work_log.company_id:
+        invalidate_dashboard_summary(db_work_log.company_id)
     return db_work_log
 
 
@@ -1015,3 +1022,236 @@ def user_has_module(db: Session, user_id: str, company_id: str | None, code_name
             return True
 
     return False
+def invalidate_dashboard_summary(company_id: Any):
+    """
+    Invalidates cached dashboard summary keys for a company.
+    """
+    if not company_id:
+        return
+    try:
+        cid_str = str(company_id)
+        redis_manager.delete_pattern(f"dashboard_summary:{cid_str}:*")
+        logger.info(f"Invalidated dashboard summary cache for company {cid_str}")
+    except Exception as e:
+        logger.error(f"Error invalidating dashboard summary cache: {e}")
+
+
+def get_dashboard_summary(
+    db: Session,
+    company_id: Any,
+    start_date: date | None = None,
+    end_date: date | None = None
+) -> dict:
+    """
+    Calculates aggregated metrics for the manager dashboard.
+    """
+    cid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
+    company = db.query(models.Company).filter(models.Company.id == cid).first()
+    if not company:
+        raise ValueError("Company not found")
+
+    today = date.today()
+    defs = company.worklog_definitions or {}
+
+    # 1. Fetch all active members ordered by sort_order
+    members = db.query(models.CompanyMember).options(
+        joinedload(models.CompanyMember.user)
+    ).filter(
+        models.CompanyMember.company_id == cid,
+        models.CompanyMember.is_active == True
+    ).order_by(
+        models.CompanyMember.sort_order.asc(),
+        models.CompanyMember.joined_at.asc()
+    ).all()
+
+    # 2. Fetch period work logs
+    query = db.query(models.WorkLog).options(
+        joinedload(models.WorkLog.user)
+    ).filter(models.WorkLog.company_id == cid)
+
+    if start_date:
+        query = query.filter(models.WorkLog.end_date >= start_date)
+    if end_date:
+        query = query.filter(models.WorkLog.start_date <= end_date)
+
+    period_logs = query.all()
+
+    # 3. Fetch today's logs specifically
+    today_logs = db.query(models.WorkLog).options(
+        joinedload(models.WorkLog.user)
+    ).filter(
+        models.WorkLog.company_id == cid,
+        models.WorkLog.start_date <= today,
+        models.WorkLog.end_date >= today
+    ).all()
+
+    # 4. Compute Period Metrics
+    total_hours = 0.0
+    total_net = 0.0
+    total_gross = 0.0
+    unique_days_set = set()
+    active_users_set = set()
+
+    type_stats: dict[str, dict] = {}
+    daily_stats: dict[str, dict] = {}
+    user_period_stats: dict[str, dict] = {}
+
+    for log in period_logs:
+        uid_str = str(log.user_id)
+        active_users_set.add(uid_str)
+
+        dur = float(log.duration or 0.0)
+        net = float(log.net_amount or 0.0)
+        gross = float(log.gross_amount or 0.0)
+
+        total_hours += dur
+        total_net += net
+        total_gross += gross
+
+        # Unique days
+        if log.start_date:
+            unique_days_set.add(str(log.start_date))
+
+        # Type Breakdown
+        w_type = log.type or "particular"
+        if w_type not in type_stats:
+            t_def = defs.get(w_type, {})
+            type_stats[w_type] = {
+                "type": w_type,
+                "label": t_def.get("label", w_type.capitalize()),
+                "unit": t_def.get("unit", "hours"),
+                "hours": 0.0,
+                "net": 0.0,
+                "gross": 0.0,
+                "count": 0
+            }
+        type_stats[w_type]["hours"] += dur
+        type_stats[w_type]["net"] += net
+        type_stats[w_type]["gross"] += gross
+        type_stats[w_type]["count"] += 1
+
+        # Daily Breakdown
+        d_str = str(log.start_date)
+        if d_str not in daily_stats:
+            d_obj = log.start_date
+            # Day names in Spanish
+            d_names = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            dow = d_obj.weekday()
+            daily_stats[d_str] = {
+                "date": d_str,
+                "day_of_week": dow,
+                "day_name": d_names[dow],
+                "hours": 0.0,
+                "net": 0.0,
+                "gross": 0.0,
+                "count": 0
+            }
+        daily_stats[d_str]["hours"] += dur
+        daily_stats[d_str]["net"] += net
+        daily_stats[d_str]["gross"] += gross
+        daily_stats[d_str]["count"] += 1
+
+        # User stats
+        if uid_str not in user_period_stats:
+            user_period_stats[uid_str] = {
+                "hours": 0.0,
+                "net": 0.0,
+                "gross": 0.0,
+                "days": set(),
+                "count": 0,
+                "types": {}
+            }
+        user_period_stats[uid_str]["hours"] += dur
+        user_period_stats[uid_str]["net"] += net
+        user_period_stats[uid_str]["gross"] += gross
+        user_period_stats[uid_str]["days"].add(str(log.start_date))
+        user_period_stats[uid_str]["count"] += 1
+        user_period_stats[uid_str]["types"][w_type] = user_period_stats[uid_str]["types"].get(w_type, 0.0) + dur
+
+    # 5. Compute Today's Metrics
+    today_hours = 0.0
+    today_user_map: dict[str, dict] = {}
+
+    for log in today_logs:
+        uid_str = str(log.user_id)
+        dur = float(log.duration or 0.0)
+        today_hours += dur
+
+        if uid_str not in today_user_map:
+            u = log.user
+            today_user_map[uid_str] = {
+                "user_id": log.user_id,
+                "first_name": u.first_name if u else None,
+                "last_name": u.last_name if u else None,
+                "email": u.email if u else None,
+                "role": "worker",
+                "hours": 0.0,
+                "logs_count": 0
+            }
+        today_user_map[uid_str]["hours"] += dur
+        today_user_map[uid_str]["logs_count"] += 1
+
+    # Attach member roles for today's active members
+    for m in members:
+        uid_str = str(m.user_id)
+        if uid_str in today_user_map:
+            today_user_map[uid_str]["role"] = m.role.value if hasattr(m.role, "value") else str(m.role)
+
+    today_active_members = list(today_user_map.values())
+
+    # 6. Workers Summary respecting strict sort_order
+    workers_summary = []
+    for m in members:
+        uid_str = str(m.user_id)
+        u = m.user
+        u_stats = user_period_stats.get(uid_str, {
+            "hours": 0.0,
+            "net": 0.0,
+            "gross": 0.0,
+            "days": set(),
+            "count": 0,
+            "types": {}
+        })
+
+        workers_summary.append({
+            "user_id": m.user_id,
+            "first_name": u.first_name if u else None,
+            "last_name": u.last_name if u else None,
+            "email": u.email if u else None,
+            "role": m.role.value if hasattr(m.role, "value") else str(m.role),
+            "sort_order": m.sort_order if m.sort_order is not None else 1000,
+            "is_active": m.is_active,
+            "total_hours": round(u_stats["hours"], 2),
+            "total_net": round(u_stats["net"], 2),
+            "total_gross": round(u_stats["gross"], 2),
+            "unique_days": len(u_stats["days"]),
+            "logs_count": u_stats["count"],
+            "types_breakdown": {k: round(v, 2) for k, v in u_stats["types"].items()}
+        })
+
+    # Sort daily breakdown by date
+    sorted_daily = sorted(daily_stats.values(), key=lambda x: x["date"])
+
+    return {
+        "company_id": company.id,
+        "company_name": company.name,
+        "start_date": str(start_date) if start_date else "",
+        "end_date": str(end_date) if end_date else "",
+        "period_metrics": {
+            "total_hours": round(total_hours, 2),
+            "total_net": round(total_net, 2),
+            "total_gross": round(total_gross, 2),
+            "unique_days": len(unique_days_set),
+            "total_logs": len(period_logs),
+            "active_members_count": len(active_users_set)
+        },
+        "today_metrics": {
+            "today_hours": round(today_hours, 2),
+            "today_logs_count": len(today_logs),
+            "today_active_members_count": len(today_active_members),
+            "today_active_members": today_active_members
+        },
+        "type_breakdown": list(type_stats.values()),
+        "daily_breakdown": sorted_daily,
+        "workers_summary": workers_summary
+    }

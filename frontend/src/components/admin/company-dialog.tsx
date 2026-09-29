@@ -87,16 +87,16 @@ export function CompanyDialog() {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button>
+                <Button className="bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 font-medium shadow-sm">
                     <Plus className="mr-2 h-4 w-4" />
-                    Add Company
+                    Nueva Empresa
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle>Add Company</DialogTitle>
+                    <DialogTitle>Nueva Empresa</DialogTitle>
                     <DialogDescription>
-                        Create a new company entity.
+                        Crea y da de alta una nueva empresa en la plataforma.
                     </DialogDescription>
                 </DialogHeader>
                 <Form {...form}>
@@ -106,9 +106,9 @@ export function CompanyDialog() {
                             name="name"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Name</FormLabel>
+                                    <FormLabel>Nombre de la empresa</FormLabel>
                                     <FormControl>
-                                        <Input placeholder="Acme Corp" {...field} />
+                                        <Input placeholder="Ej: Escuela Esquí Sierra" {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>

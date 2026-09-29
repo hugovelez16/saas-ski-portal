@@ -372,3 +372,75 @@ class BillingSummaryItemResponse(CamelModel):
     total_gross: float
     unique_days: int
     logs_count: int
+class DashboardPeriodMetrics(CamelModel):
+    total_hours: float = 0.0
+    total_net: float = 0.0
+    total_gross: float = 0.0
+    unique_days: int = 0
+    total_logs: int = 0
+    active_members_count: int = 0
+
+
+class DashboardTodayMember(CamelModel):
+    user_id: UUID
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    role: str = "worker"
+    hours: float = 0.0
+    logs_count: int = 0
+
+
+class DashboardTodayMetrics(CamelModel):
+    today_hours: float = 0.0
+    today_logs_count: int = 0
+    today_active_members_count: int = 0
+    today_active_members: list[DashboardTodayMember] = []
+
+
+class DashboardTypeBreakdown(CamelModel):
+    type: str
+    label: str
+    unit: str = "hours"
+    hours: float = 0.0
+    net: float = 0.0
+    gross: float = 0.0
+    count: int = 0
+
+
+class DashboardDailyBreakdown(CamelModel):
+    date: str
+    day_of_week: int
+    day_name: str
+    hours: float = 0.0
+    net: float = 0.0
+    gross: float = 0.0
+    count: int = 0
+
+
+class DashboardWorkerSummary(CamelModel):
+    user_id: UUID
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    role: str = "worker"
+    sort_order: int = 1000
+    is_active: bool = True
+    total_hours: float = 0.0
+    total_net: float = 0.0
+    total_gross: float = 0.0
+    unique_days: int = 0
+    logs_count: int = 0
+    types_breakdown: dict[str, float] = {}
+
+
+class DashboardSummaryResponse(CamelModel):
+    company_id: UUID
+    company_name: str
+    start_date: str
+    end_date: str
+    period_metrics: DashboardPeriodMetrics
+    today_metrics: DashboardTodayMetrics
+    type_breakdown: list[DashboardTypeBreakdown] = []
+    daily_breakdown: list[DashboardDailyBreakdown] = []
+    workers_summary: list[DashboardWorkerSummary] = []

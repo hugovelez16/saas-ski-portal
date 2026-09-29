@@ -32,6 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import { updateCompanyMember } from "@/lib/api/companies";
 import { CompanyMember, Company } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
+import { formatPercentage } from "@/lib/utils";
 
 const rateFormSchema = z.object({
     rates: z.record(z.coerce.number().min(0)),
@@ -264,7 +265,7 @@ export function UserRatesEditDialog({ userId, company, member, userName, open: e
                                                         </div>
                                                     </FormControl>
                                                     <FormDescription className="text-[9px] leading-tight">
-                                                        Vacío para usar defecto: <b className="text-indigo-600">{(company.taxConfig?.social_security || 0) * 100}%</b>
+                                                        Vacío para usar defecto: <b className="text-indigo-600">{formatPercentage(company.taxConfig?.social_security)}</b>
                                                     </FormDescription>
                                                     <FormMessage />
                                                 </FormItem>

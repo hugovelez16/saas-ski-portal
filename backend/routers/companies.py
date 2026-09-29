@@ -1,3 +1,5 @@
+import json
+from datetime import date
 from uuid import UUID
 
 import auth
@@ -6,6 +8,7 @@ import models
 import schemas
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
+from redis_config import redis_manager
 from sqlalchemy.orm import Session, joinedload
 
 from routers.utils import is_manager_of_company
@@ -397,3 +400,54 @@ def update_company_member(
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
     return member
+
+
+@router.get("/{company_id}/dashboard-summary", response_model=schemas.DashboardSummaryResponse)
+def get_company_dashboard_summary(
+    company_id: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user)
+):
+    """
+    Retorna el resumen analitico y operativo para el dashboard de gestores,
+    integrando cache en Redis y agregacion optimizada.
+    """
+    company = crud.get_company(db, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    is_platform_admin = getattr(current_user, "is_platform_admin", False) or current_user.role == models.UserRole.admin
+    if not is_platform_admin and not company.is_active:
+        raise HTTPException(status_code=403, detail="Empresa inactiva o suspendida")
+
+    if not is_platform_admin and not is_manager_of_company(db, current_user, company_id):
+        raise HTTPException(status_code=403, detail="Solo los gestores o administradores de la empresa pueden acceder al resumen del dashboard")
+
+    # Redis Cache Key
+    cache_key = f"dashboard_summary:{company_id}:{start_date or ''}:{end_date or ''}"
+    cached_data = redis_manager.get(cache_key)
+    if cached_data:
+        try:
+            return json.loads(cached_data)
+        except Exception:
+            pass
+
+    try:
+        summary_data = crud.get_dashboard_summary(
+            db=db,
+            company_id=company_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        try:
+            serialized = schemas.DashboardSummaryResponse(**summary_data).model_dump(mode="json", by_alias=True)
+            redis_manager.set(cache_key, json.dumps(serialized), ex=300)
+        except Exception:
+            pass
+
+        return summary_data
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+

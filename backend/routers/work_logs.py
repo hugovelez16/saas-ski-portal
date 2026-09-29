@@ -267,7 +267,10 @@ def delete_work_log(
     record_impersonation_audit(
         db, current_user, action="delete_work_log", extra_data={"work_log_id": work_log_id, "user_id": str(log.user_id)}
     )
+    company_id = log.company_id
     crud.delete_work_log(db, work_log_id)
+    if company_id:
+        crud.invalidate_dashboard_summary(company_id)
     return {"ok": True}
 
 
