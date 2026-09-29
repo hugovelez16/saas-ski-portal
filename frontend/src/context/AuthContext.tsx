@@ -2,13 +2,14 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api, { setAuthToken } from "@/lib/api";
-import { UserProfile, Token } from "@/lib/types";
+import { UserProfile } from "@/lib/types";
 import { useRouter } from 'next/navigation';
 
 interface AuthContextType {
     user: UserProfile | null;
     loading: boolean;
     login: (email: string, password: string) => Promise<{ requires2FA: boolean }>;
+    devLogin: () => Promise<{ requires2FA: boolean }>;
     verify2FA: (code: string, trustDevice?: boolean) => Promise<void>;
     resend2FA: () => Promise<void>;
     logout: () => void;
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthContextType>({
     user: null,
     loading: true,
     login: async () => { return { requires2FA: false } },
+    devLogin: async () => { return { requires2FA: false } },
     verify2FA: async () => { },
     resend2FA: async () => { },
     logout: () => { },
@@ -36,12 +38,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [loading, setLoading] = useState(true);
     const router = useRouter();
 
-    const fetchUser = async () => {
+    const fetchUser = async (retryDev: boolean = true): Promise<UserProfile | null> => {
         try {
             const response = await api.get<UserProfile>('/users/me');
             setUser(response.data);
             return response.data;
         } catch (error: any) {
+            if (error.response?.status === 401 && retryDev && process.env.NEXT_PUBLIC_DEV_LOGIN_BYPASS === 'true') {
+                try {
+                    await api.post('/auth/dev-login');
+                    return await fetchUser(false);
+                } catch {
+                    // Si falla el auto-login en dev, continuar con flujo habitual
+                }
+            }
+
             // Suppress 401 errors from console to avoid Next.js error overlay
             if (error.response?.status !== 401) {
                 console.error("Failed to fetch user:", error);
@@ -70,6 +81,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         checkAuth();
     }, []);
+
+    const devLogin = async () => {
+        try {
+            const response = await api.post('/auth/dev-login');
+            const tokenData = response.data;
+            setAuthToken(tokenData.accessToken);
+            const userData = await fetchUser();
+
+            if (userData?.role === 'admin' || userData?.isPlatformAdmin) {
+                router.push('/admin/companies');
+            } else if (userData?.isManager) {
+                router.push('/manager/daily-reports');
+            } else {
+                router.push('/dashboard');
+            }
+            return { requires2FA: false };
+        } catch (error) {
+            console.error("Error en bypass de inicio de sesión en desarrollo:", error);
+            throw error;
+        }
+    };
 
     const login = async (email: string, password: string) => {
         const formData = new URLSearchParams();
@@ -105,7 +137,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         const userData = await fetchUser();
 
-        if (userData?.role === 'admin') {
+        if (userData?.role === 'admin' || userData?.isPlatformAdmin) {
             router.push('/admin/companies');
         } else if (userData?.isManager) {
             router.push('/manager/daily-reports');
@@ -181,7 +213,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, verify2FA, resend2FA, logout, stopImpersonation, switchScope, checkAuth }}>
+        <AuthContext.Provider value={{ user, loading, login, devLogin, verify2FA, resend2FA, logout, stopImpersonation, switchScope, checkAuth }}>
             {children}
         </AuthContext.Provider>
     );

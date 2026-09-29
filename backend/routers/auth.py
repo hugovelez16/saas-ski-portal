@@ -1,8 +1,10 @@
+import os
 from datetime import datetime, timedelta
 from uuid import UUID
 
 import auth
 import crud
+import dev_seed
 import models
 import schemas
 from database import get_db
@@ -12,6 +14,69 @@ from sqlalchemy.orm import Session
 
 router = APIRouter()
 
+@router.get("/auth/dev-status")
+async def get_dev_status():
+    """
+    Retorna si el bypass de desarrollo esta activo y el correo configurado.
+    """
+    dev_mode = dev_seed.is_dev_mode()
+    return {
+        "dev_bypass": dev_mode,
+        "email": os.getenv("DEV_ADMIN_EMAIL", "admin@vesotel.com") if dev_mode else None
+    }
+
+@router.post("/auth/dev-login", response_model=schemas.Token)
+async def dev_bypass_login(
+    response: Response,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Bypass de desarrollo: Inicia sesion directamente como el usuario administrador
+    configurado en las variables de entorno sin requerir contrasena.
+    Solo disponible si el entorno es de desarrollo.
+    """
+    if not dev_seed.is_dev_mode():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dev bypass is only available in development environment."
+        )
+
+    user = dev_seed.ensure_dev_admin_user(db)
+    access_token, refresh_token = auth.generate_user_tokens(db, user)
+
+    # Crear sesion en base de datos
+    auth.create_session(
+        db,
+        user_id=str(user.id),
+        refresh_token=refresh_token,
+        device_name="Dev Bypass Auto-Login",
+        ip_address=request.client.host if request.client else "127.0.0.1"
+    )
+
+    # Establecer cookies HttpOnly
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400
+    )
+
+    return {
+        "access_token": "cookie",
+        "token_type": "bearer",
+        "requires_2fa": False
+    }
 
 @router.post("/token", response_model=schemas.Token)
 async def login_for_access_token(
@@ -25,8 +90,15 @@ async def login_for_access_token(
     If 2FA is enabled, return provisional token.
     Otherwise, create session and return full tokens.
     """
+    dev_email = os.getenv("DEV_ADMIN_EMAIL", "admin@vesotel.com").strip().lower()
+    is_dev = dev_seed.is_dev_mode()
+
     user = crud.get_user_by_email(db, form_data.username)
-    if not user or not auth.verify_password(form_data.password, user.hashed_password):
+
+    # En desarrollo, si es el usuario dev y no existe o las credenciales no coinciden, permitir acceso directo
+    if is_dev and (not user or form_data.username.lower() == dev_email):
+        user = dev_seed.ensure_dev_admin_user(db)
+    elif not user or not auth.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",

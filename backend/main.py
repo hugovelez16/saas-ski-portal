@@ -78,8 +78,17 @@ async def lifespan(app: FastAPI):
             db = SessionLocal()
             # Simple query to validate connection
             db.execute(text("SELECT 1"))
-            db.close()
             print("Database connection established successfully.")
+
+            # Inicializar usuario y empresa de desarrollo si aplica
+            import dev_seed
+            if dev_seed.is_dev_mode():
+                try:
+                    dev_seed.ensure_dev_admin_user(db)
+                except Exception as seed_err:
+                    print(f"[DevSeed] Error inicializando datos de desarrollo: {seed_err}")
+
+            db.close()
             break
         except OperationalError:
             retries -= 1
