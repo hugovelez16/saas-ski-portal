@@ -8,7 +8,7 @@ import { DashboardHeaderActions } from "@/components/manager/dashboard/dashboard
 
 // Mock useModules hook
 vi.mock("@/hooks/useModules", () => ({
-    useModules: vi.fn((companyId: string) => ({
+    useModules: vi.fn((_companyId?: string) => ({
         hasModule: vi.fn((code: string) => {
             if (code === "worker_daily_report") return true;
             if (code === "billing") return true;

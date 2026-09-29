@@ -4,7 +4,6 @@ from datetime import date
 
 import crud
 import models
-import schemas
 from database import SessionLocal
 from fastapi import HTTPException
 from routers.companies import get_company_dashboard_summary
