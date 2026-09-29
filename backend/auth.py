@@ -41,6 +41,7 @@ try:
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import serialization
 
+    passphrase = os.getenv("JWT_PRIVATE_KEY_PASSPHRASE")
     try:
         private_key_obj = serialization.load_pem_private_key(
             private_key_data, password=passphrase.encode() if passphrase else None, backend=default_backend()
