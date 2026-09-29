@@ -1,6 +1,6 @@
 ---
 name: smart-flow
-description: "Orquesta el ciclo completo de entrega en Git: audita y propone commits atomicos (smart-commit), sube los cambios de forma segura (smart-push) y redacta y abre el Pull Request en Forgejo con prefijo WIP (smart-pr), solicitando confirmacion paso a paso o en bloque."
+description: "Orquesta el ciclo completo de entrega en Git: audita y propone commits atomicos (smart-commit), sube los cambios de forma segura (smart-push) y redacta y abre el Pull Request (smart-pr), solicitando confirmacion paso a paso o en bloque."
 triggers:
   - "smart-flow"
   - "/smart-flow"
@@ -16,11 +16,11 @@ triggers:
 
 ## Rol y Objetivo
 
-Actuas como el guardián de calidad y orquestador integral del ciclo de entrega en Git para poc-portal. Tu objetivo es integrar en una sola experiencia fluida y segura las tres etapas clave de publicacion:
+Actuas como el guardian de calidad y orquestador integral del ciclo de entrega en Git para saas-ski-portal. Tu objetivo es integrar en una sola experiencia fluida y segura las tres etapas clave de publicacion:
 
 1. **Smart Commit:** Auditoria de cambios locales, limpieza de temporales y propuesta de commits atomicos en espanol.
-2. **Smart Push:** Verificacion de sincronizacion y subida segura de commits al repositorio remoto (Forgejo).
-3. **Smart PR:** Redaccion tecnica estructurada con prefijo `WIP:` y apertura del Pull Request hacia la rama base `develop`.
+2. **Smart Push:** Verificacion de sincronizacion y subida segura de commits al repositorio remoto.
+3. **Smart PR:** Redaccion tecnica estructurada (sin prefijo WIP) y apertura del Pull Request hacia la rama base `develop`.
 
 ---
 
@@ -29,9 +29,9 @@ Actuas como el guardián de calidad y orquestador integral del ciclo de entrega 
 - **Cero automatismos sin confirmacion:** NUNCA ejecutar commits, pushes ni abrir PRs sin que el usuario haya revisado y aprobado explicitamente el plan.
 - **Idioma estrictamente en espanol:** Nombres de ramas, mensajes de commit, titulos y descripciones de PRs deben estar redactados en espanol.
 - **Prohibicion estricta de emojis:** Redaccion 100% tecnica, sobria y profesional en texto plano y markdown estandar.
-- **Prefijo WIP obligatorio en PRs:** El titulo del Pull Request debe iniciar con `WIP:`.
+- **Titulos de PR sin prefijo WIP:** El titulo del Pull Request debe seguir la convencion de commits en espanol (`<tipo>(<ambito>): <descripcion>` o `<tipo>: <descripcion>`) directamente sin `WIP:`.
 - **Proteccion de ramas:** Prohibido commitear o pushear directamente sobre `main` o `develop`.
-- **Incremento de Version SemVer (cuando aplique):** Verificar si el cambio requiere bump de version (funcionalidades o correcciones visibles) o si aplica la excepcion (infraestructura local, contenedores dev, tooling o tareas *chore*).
+- **Incremento de Version SemVer (cuando aplique):** Verificar si el cambio requiere bump de version (`package.json`, `frontend/package.json`, `CHANGELOG.md`) o si aplica la excepcion (infraestructura local, contenedores dev, tooling o tareas *chore*).
 
 ---
 
@@ -57,13 +57,13 @@ Ejecuta unicamente comandos de inspeccion para recopilar el estado completo:
    - `git status -sb` y comprobacion de upstream (`git rev-parse --abbrev-ref @{u}` si existe).
 
 5. **Evaluacion de Version SemVer:**
-   - Determina si los cambios requieren incremento de version segun `AGENTS.md`. Si aplica, comprueba que se hayan actualizado los 5 archivos requeridos (`shared/package.json`, `shared/src/version.ts`, `backend/package.json`, `frontend/package.json`, `CHANGELOG.md`).
+   - Determina si los cambios requieren incremento de version segun `AGENTS.md` (`package.json`, `frontend/package.json`, `CHANGELOG.md`).
 
 ---
 
 ### Fase 2: Presentacion del Plan Integral (ESPERA CONFIRMACION)
 
-**NO ejecutes ningun comando de escritura (`git add`, `git commit`, `git push`, peticion de PR) todavia.**
+**NO ejecutes ningun comando de escritura (`git add`, `git commit`, `git push`, creacion de PR) todavia.**
 Muestra al usuario el plan unificado de entrega:
 
 ```markdown
@@ -82,7 +82,7 @@ Muestra al usuario el plan unificado de entrega:
 
 #### 3. Propuesta de Pull Request:
 - **Rama Base:** `develop`
-- **Titulo:** `WIP: <tipo>(<ambito>): <descripcion>`
+- **Titulo:** `<tipo>(<ambito>): <descripcion>`
 - **Incremento SemVer:** `<version>` (o "No requerido por tratarse de tarea interna/chore")
 - **Resumen:** <1-2 frases del proposito>
 - **Detalle de cambios:** <puntos principales>
@@ -105,31 +105,12 @@ Tras recibir el consentimiento explicito:
    - Realiza `git add` especifico por cada bloque y ejecuta `git commit -m "<mensaje-en-espanol>"`.
 
 2. **Etapa B - Push Seguro:**
-   - Ejecuta `git push -u origin <rama_actual>` hacia Forgejo.
+   - Ejecuta `git push -u origin <rama_actual>`.
 
-3. **Etapa C - Creacion Directa del Pull Request via API:**
-   - Obtener el token de acceso personal de Forgejo:
-     ```bash
-     TOKEN=$(printf "protocol=https\nhost=git.civica-soft.com\n\n" | git credential fill | grep '^password=' | cut -d= -f2)
-     ```
-   - Extraer la ruta del repositorio:
-     ```bash
-     REPO_PATH=$(git config --get remote.origin.url | sed -E 's/.*git\.civica-soft\.com[:\/](.+)\.git/\1/')
-     ```
-   - Realizar la llamada `POST /api/v1/repos/{owner}/{repo}/pulls` en la API de Forgejo:
-     ```bash
-     curl -s -X POST \
-       -H "Authorization: token $TOKEN" \
-       -H "Content-Type: application/json" \
-       -d '{
-         "head": "<rama_actual>",
-         "base": "develop",
-         "title": "WIP: <tipo>(<ambito>): <descripcion>",
-         "body": "<cuerpo_markdown_estructurado>"
-       }' \
-       "https://git.civica-soft.com/api/v1/repos/${REPO_PATH}/pulls"
-     ```
-   - Extrae el `html_url` y el numero de PR retornado por Forgejo.
+3. **Etapa C - Creacion Directa del Pull Request via GitHub CLI:**
+   ```bash
+   gh pr create --base develop --head <rama_actual> --title "<tipo>(<ambito>): <descripcion>" --body "<cuerpo_markdown_estructurado>"
+   ```
 
 ---
 
@@ -138,4 +119,4 @@ Tras recibir el consentimiento explicito:
 Finaliza mostrando un resumen claro con:
 - Estado del arbol de trabajo (`git status -s`).
 - Commits confirmados y subidos al remoto.
-- Numero y enlace navegable directo del Pull Request creado en Forgejo (`https://git.civica-soft.com/<owner>/<repo>/pulls/<id>`).
+- Numero y enlace navegable directo del Pull Request creado en GitHub.
