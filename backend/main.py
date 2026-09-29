@@ -82,6 +82,13 @@ async def lifespan(app: FastAPI):
             print(f"Database not ready yet. Retrying in 2 seconds... ({retries} attempts remaining)")
             await asyncio.sleep(2)
 
+    # Sembrado inicial de datos si procede
+    try:
+        from seed import seed_initial_data
+        seed_initial_data()
+    except Exception as seed_err:
+        print(f"[Seed] No se pudo ejecutar el sembrado inicial en arranque: {seed_err}")
+
     # Iniciar la tarea periódica de limpieza de sesiones en segundo plano
     cleanup_task = asyncio.create_task(cleanup_expired_sessions_loop())
 

@@ -6,17 +6,24 @@
 # Uso: ./scripts/sync_db.sh [nombre_contenedor_origen]
 # ==============================================================================
 
-# Configuración por defecto
-SRC_CONTAINER=${1:-"ski_dev-postgres-1"}
+# Cargar variables de entorno locales si existen
+if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source .env 2>/dev/null || true
+    set +a
+fi
+
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-ski_dev}"
+SRC_CONTAINER=${1:-"ski_prod-postgres"}
+DST_CONTAINER="${COMPOSE_PROJECT_NAME}-postgres"
 DB_USER="postgres"
 DB_NAME="postgres"
 
-# Detectar contenedor de destino local
-if [ "$(docker ps -q -f name=ski-dev-postgres)" ]; then
-    DST_CONTAINER="ski-dev-postgres"
-elif [ "$(docker ps -q -f name=ski_dev-postgres-1)" ]; then
-    DST_CONTAINER="ski_dev-postgres-1"
-else
+# Detectar contenedor de destino local si tiene sufijo -1 o nombre directo
+if [ -z "$(docker ps -q -f name=^/${DST_CONTAINER}$)" ] && [ -n "$(docker ps -q -f name=^/${DST_CONTAINER}-1$)" ]; then
+    DST_CONTAINER="${DST_CONTAINER}-1"
+elif [ -z "$(docker ps -q -f name=^/${DST_CONTAINER}$)" ] && [ -n "$(docker ps -q -f name=^/ski-dev-postgres$)" ]; then
     DST_CONTAINER="ski-dev-postgres"
 fi
 
@@ -127,7 +134,7 @@ else
         echo -e "${GREEN}¡Éxito! La base de datos de desarrollo ha sido actualizada.${NC}"
         
         # Ejecutar migraciones pendientes en backend local
-        BACKEND_CONTAINER=$(docker ps -q -f name=ski-dev-backend || docker ps -q -f name=ski_dev-backend-1)
+        BACKEND_CONTAINER=$(docker ps -q -f name="${COMPOSE_PROJECT_NAME}-backend" || docker ps -q -f name=ski-dev-backend || docker ps -q -f name=ski_dev-backend-1)
         if [ -n "$BACKEND_CONTAINER" ]; then
             echo -e "${BLUE}Aplicando migraciones Alembic pendientes...${NC}"
             docker exec "$BACKEND_CONTAINER" alembic upgrade head

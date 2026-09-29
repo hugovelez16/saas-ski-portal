@@ -41,7 +41,7 @@ Este repositorio contiene la plataforma SaaS de gestion de escuelas de esqui, re
    - Queda TERMINANTEMENTE PROHIBIDO usar comandos de consola bash (`cat << 'EOF'`, `echo >`, `sed -i` o similares) para inyectar o modificar contenido en archivos del repositorio. La consola bash solo debe utilizarse para ejecutar tests, linters, git o comandos del sistema.
 
 8. ENTORNO DE DESARROLLO LOCAL BASADO EN GATEWAY UNIFICADO:
-   - El desarrollo en local se ejecuta a traves de `docker-compose.dev.yml` con el servicio `gateway` (Nginx) expuesto en el puerto `8080:80`.
+   - El desarrollo en local se ejecuta a traves de `docker-compose.dev.yml` con el servicio `gateway` (Nginx) expuesto en el puerto `8080:80` por defecto.
    - El frontend atiende en `/` y el backend en `/api/`.
    - Todo montaje de volumen debe utilizar el sufijo `:z` para compatibilidad con SELinux y Podman rootless.
 
@@ -55,3 +55,7 @@ Este repositorio contiene la plataforma SaaS de gestion de escuelas de esqui, re
      3. `CHANGELOG.md` (nueva seccion con version, fecha y resumen de cambios bajo el estandar Keep a Changelog).
    - Los mensajes de commit NO deben llevar el numero de version en su titulo; los commits deben describir concisamente el cambio tecnico realizado.
 
+10. ORQUESTACION MULTI-WORKTREE, SEMBRADO INICIAL Y SINCRONIZACION DE BASE DE DATOS:
+    - Parametrizacion por Worktree: Al trabajar con multiples agentes o workspaces en paralelo en el mismo host, se deben parametrizar los puertos y el nombre de proyecto en el archivo `.env` local (`COMPOSE_PROJECT_NAME`, `GATEWAY_PORT`, `POSTGRES_PORT`, `REDIS_PORT`, `ALLOWED_ORIGINS`).
+    - Sembrado Inicial de Administrador: Al arrancar una base de datos nueva, el backend inicializa automaticamente un usuario administrador y empresa si se configuran `INITIAL_ADMIN_EMAIL` e `INITIAL_ADMIN_PASSWORD` en `.env`. Tambien puede ejecutarse manualmente con `./bin/seed` tras ejecutar `./bin/migrate`.
+    - Sincronizacion de Base de Datos: El script `./scripts/sync_db.sh` permite sincronizar datos desde el servidor de produccion hacia el contenedor local de desarrollo. Esta operacion requiere acceso SSH autorizado y solo debe ejecutarse por administradores autorizados con acceso al servidor remoto.

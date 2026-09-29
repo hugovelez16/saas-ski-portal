@@ -6,9 +6,17 @@
 # Uso: ./scripts/sync_to_prod.sh [ip_maquina_produccion] [usuario_ssh]
 # ==============================================================================
 
-# Configuración
-SRC_CONTAINER="ski_dev-postgres-1"
-DST_CONTAINER="ski_prod-postgres-1"
+# Cargar variables de entorno locales si existen
+if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source .env 2>/dev/null || true
+    set +a
+fi
+
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-ski_dev}"
+SRC_CONTAINER="${COMPOSE_PROJECT_NAME}-postgres"
+DST_CONTAINER=${3:-"ski_prod-postgres"}
 DST_HOST=${1:-"10.192.168.114"}
 DST_USER=${2:-"usuario"}
 DB_USER="postgres"
@@ -26,6 +34,10 @@ echo -e "${BLUE}   Migrador de Base de Datos: Dev -> Prod Remoto    ${NC}"
 echo -e "${BLUE}===================================================${NC}"
 
 # 1. Verificar si el contenedor de desarrollo (origen) está corriendo localmente
+if [ -z "$(docker ps -q -f name=^/${SRC_CONTAINER}$)" ] && [ -n "$(docker ps -q -f name=^/${SRC_CONTAINER}-1$)" ]; then
+    SRC_CONTAINER="${SRC_CONTAINER}-1"
+fi
+
 if [ "$(docker ps -q -f name=$SRC_CONTAINER)" ]; then
     echo -e "${GREEN}[OK]${NC} Contenedor de origen local ($SRC_CONTAINER) detectado."
 else

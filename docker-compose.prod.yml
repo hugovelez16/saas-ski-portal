@@ -3,6 +3,7 @@ name: ${COMPOSE_PROJECT_NAME:-ski_prod}
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-postgres
     restart: unless-stopped
     env_file:
       - .env
@@ -22,6 +23,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-redis
     restart: unless-stopped
     command: redis-server --maxmemory ${REDIS_MAXMEMORY:-256mb} --maxmemory-policy allkeys-lru --appendonly yes
     volumes:
@@ -36,6 +38,7 @@ services:
 
   backend:
     image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/backend:${IMAGE_TAG:-latest}
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -63,6 +66,7 @@ services:
 
   frontend:
     image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/frontend:${IMAGE_TAG:-latest}
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-frontend
     restart: unless-stopped
     depends_on:
       backend:
@@ -84,6 +88,7 @@ services:
 
   gateway:
     image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/gateway:${IMAGE_TAG:-latest}
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-gateway
     restart: unless-stopped
     ports:
       - "${GATEWAY_PORT:-8080}:80"
@@ -97,6 +102,7 @@ services:
 
   pgbackups:
     image: prodrigestivill/postgres-backup-local
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-pgbackups
     restart: unless-stopped
     volumes:
       - ${BACKUP_DIR:-/mnt/nas_backups/clases-vesotel}:/backups:z

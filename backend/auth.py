@@ -52,7 +52,7 @@ try:
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption()
     ).decode("utf-8")
-except (FileNotFoundError, ValueError, TypeError) as e:
+except (FileNotFoundError, ValueError, TypeError):
     # Fallback for dev/CI if keys don't exist yet or decryption fails
     PRIVATE_KEY = os.getenv("PRIVATE_KEY", "")
     PUBLIC_KEY = os.getenv("PUBLIC_KEY", "")
@@ -81,18 +81,21 @@ except (FileNotFoundError, ValueError, TypeError) as e:
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             )
 
-            # Write key pair back to disk to persist across hot-reloads
-            os.makedirs(KEYS_DIR, exist_ok=True)
-            with open(os.path.join(KEYS_DIR, "private_key.pem"), "wb") as f:
-                f.write(pem_private)
-            with open(os.path.join(KEYS_DIR, "public_key.pem"), "wb") as f:
-                f.write(pem_public)
+            # Write key pair back to disk to persist across hot-reloads if writable
+            try:
+                os.makedirs(KEYS_DIR, exist_ok=True)
+                with open(os.path.join(KEYS_DIR, "private_key.pem"), "wb") as f:
+                    f.write(pem_private)
+                with open(os.path.join(KEYS_DIR, "public_key.pem"), "wb") as f:
+                    f.write(pem_public)
+                print("Successfully auto-generated RSA key pair for local development (saved under keys/).")
+            except Exception as write_err:
+                print(f"Warning: Could not save RSA keys to disk ({write_err}). Using in-memory keys for this session.")
 
             PRIVATE_KEY = pem_private.decode("utf-8")
             PUBLIC_KEY = pem_public.decode("utf-8")
-            print("Successfully auto-generated RSA key pair for local development (saved under keys/).")
         except Exception as gen_err:
-            raise RuntimeError(f"Failed to load RSA key: {e}. Auto-generation also failed: {gen_err}")
+            raise RuntimeError(f"Failed to generate RSA key: {gen_err}")
 
 
 # Encryption key for OTP secrets
@@ -111,7 +114,12 @@ else:
     else:
         ENCRYPTION_KEY = _encryption_key_env
 
-fernet = Fernet(ENCRYPTION_KEY.encode())
+try:
+    fernet = Fernet(ENCRYPTION_KEY.encode())
+except Exception as e:
+    print(f"Warning: Invalid ENCRYPTION_KEY ({e}). Generating a new ephemeral Fernet key for local development.")
+    ENCRYPTION_KEY = Fernet.generate_key().decode()
+    fernet = Fernet(ENCRYPTION_KEY.encode())
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
