@@ -23,29 +23,34 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ### Tipo de Cambio SemVer
 
-- **MINOR**: Renovación integral del Dashboard de Gestores (Manager Dashboard) con operativa en tiempo real, KPIs adaptativos, orden estricto de plantilla, agregación optimizada y caché Redis.
+- **MINOR**: Renovacion integral del Dashboard de Gestores con operativa en tiempo real, KPIs adaptativos, cache Redis e implementacion de bypass de autenticacion para desarrollo local.
 
 ### Funcionalidades y Mejoras
 
 - **Dashboard de Gestores Modular (`frontend/src/components/manager/`)**:
-  - `DashboardTodayCard`: Panel de operativa en tiempo real ("Hoy en Pista") con conteo de monitores activos, horas programadas, resumen de tipos de turnos y listado cronológico de la jornada.
-  - `DashboardKpis`: Selector de período (Hoy, Semana, Mes, Mes Anterior, Temporada, Personalizado) y tarjetas de KPIs adaptativas. Si la empresa no distingue bruto y neto, presenta una métrica unificada de *Total Liquidación* sin duplicar cifras.
-  - `DashboardCharts`: Gráficos dinámicos con Recharts con selector de métrica (Horas vs Coste). Si hay 2 o más tipos de turnos activos muestra la distribución por servicios; si hay 1 solo tipo, lo sustituye por la carga semanal acumulada por días (Lunes a Domingo).
-  - `DashboardTeamTable`: Resumen de plantilla respetando estrictamente el orden de miembros definido por el gestor (`sort_order`), eliminando clasificaciones de tipo ranking.
-  - `DashboardHeaderActions`: Barra de acciones operativas con botón principal para añadir partes de trabajo y exportación en formato CSV.
-- **Gestión y Administración de Empresas**:
-  - Ordenación inteligente de empresas: empresas activas primero y suspendidas al final, con ordenación alfabética secundaria.
-  - Atenuación y sobriedad en la paleta de colores de estados operativos y badges.
-  - Creación de función de utilidad `formatPercentage` para evitar artefactos de punto flotante IEEE-754 en tipos de Seguridad Social (ej: 6.48%).
-  - Traducción al español de todos los diálogos y componentes de administración.
+  - `DashboardTodayCard`: Panel de operativa en tiempo real con conteo de monitores activos, horas programadas, resumen de tipos de turnos y listado cronologico de la jornada.
+  - `DashboardKpis`: Selector de periodo (Hoy, Semana, Mes, Mes Anterior, Temporada, Personalizado) y tarjetas de KPIs adaptativas. Si la empresa no distingue bruto y neto, presenta una metrica unificada de liquidacion sin duplicar cifras.
+  - `DashboardCharts`: Graficos dinamicos con Recharts y selector de metrica (Horas vs Coste). Muestra distribucion por servicios si hay 2+ tipos de turnos activos, o carga semanal acumulada por dias si hay 1 solo tipo.
+  - `DashboardTeamTable`: Resumen de plantilla respetando el orden definido por el gestor (`sort_order`), eliminando clasificaciones de tipo ranking.
+  - `DashboardHeaderActions`: Barra de acciones con boton principal para añadir partes de trabajo y exportacion en formato CSV.
+- **Gestion y Administracion de Empresas**:
+  - Ordenacion inteligente de empresas: activas primero y suspendidas al final, con ordenacion alfabetica secundaria.
+  - Creacion de funcion de utilidad `formatPercentage` para evitar artefactos de punto flotante IEEE-754 en tipos de Seguridad Social.
+  - Traduccion al espanol de todos los dialogos y componentes de administracion.
 - **Backend y Rendimiento**:
-  - Nuevo endpoint analítico `GET /companies/{company_id}/dashboard-summary` con agregación optimizada de métricas del período, jornada actual y desglose por trabajador.
-  - Integración de caché Redis con TTL de 300 segundos bajo `dashboard_summary:{company_id}:{start_date}:{end_date}`.
-  - Invalidación reactiva de caché ante cualquier mutación de partes de trabajo (`create_work_log`, `create_work_log_bulk`, `update_work_log`, `delete_work_log`) y cambios en la ordenación de miembros.
+  - Nuevo endpoint analitico `GET /companies/{company_id}/dashboard-summary` con agregacion optimizada de metricas del periodo, jornada actual y desglose por trabajador.
+  - Integracion de cache Redis con TTL de 300 segundos e invalidacion reactiva ante mutaciones de partes de trabajo y cambios en ordenacion de miembros.
   - Manejo robusto de claves RSA no encriptadas en entornos locales de desarrollo.
+- **Bypass de Desarrollo y Auto-Login**:
+  - Creacion del modulo `dev_seed.py` para sembrado y garantia de existencia del usuario administrador (`admin@vesotel.com`) y empresa predeterminada.
+  - Endpoints dedicados `GET /api/auth/dev-status` y `POST /api/auth/dev-login` para emision directa de cookies de sesion HttpOnly sin credenciales en entorno local.
+  - Integracion en frontend (`AuthContext.tsx` y `LoginPage`) para detectar modo desarrollo, iniciar sesion automaticamente y auto-recuperar la sesion ante reinicios del backend (error 401).
+- **Seguridad**:
+  - Variable `ENCRYPTION_KEY` eliminada de la plantilla `env.example`; se documenta como comentario el comando para generarla.
 - **Suite de Pruebas**:
   - Nuevos tests frontend en `manager-dashboard.test.tsx`, `companies.test.ts` y `utils.test.ts` (85 pruebas unitarias passing).
-  - Nuevos tests backend en `test_dashboard_summary.py` (cálculo de métricas, control de acceso y RBAC).
+  - Nuevos tests backend en `test_dashboard_summary.py` (calculo de metricas, control de acceso y RBAC).
+  - Pruebas de bypass de desarrollo y optimizaciones de compilacion frontend.
 
 ---
 

@@ -86,6 +86,7 @@ services:
       - HOSTNAME=0.0.0.0
       - WATCHPACK_POLLING=true
       - NEXT_PUBLIC_API_URL=/api
+      - NEXT_PUBLIC_DEV_LOGIN_BYPASS=${NEXT_PUBLIC_DEV_LOGIN_BYPASS:-true}
       - BACKEND_INTERNAL_URL=http://backend:8000
     volumes:
       - ./frontend:/app:z

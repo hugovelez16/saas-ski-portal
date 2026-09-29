@@ -20,7 +20,7 @@ import { Loader2, Terminal } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 export default function LoginPage() {
-  const { login, verify2FA, resend2FA } = useAuth()
+  const { login, devLogin, verify2FA, resend2FA } = useAuth()
   const router = useRouter()
 
   const [email, setEmail] = useState("")
@@ -32,8 +32,40 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [timer, setTimer] = useState(30)
   const [canResend, setCanResend] = useState(false)
+  const [isDevMode, setIsDevMode] = useState(false)
+  const [devEmail, setDevEmail] = useState("admin@vesotel.com")
 
-  // Timer effect
+  // Comprobar si estamos en entorno de desarrollo y auto-iniciar sesion
+  useEffect(() => {
+    let isMounted = true;
+    const checkDevBypass = async () => {
+      try {
+        const res = await fetch("/api/auth/dev-status");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.dev_bypass && isMounted) {
+            setIsDevMode(true);
+            if (data.email) setDevEmail(data.email);
+            // Bypass automatico en desarrollo
+            setIsLoading(true);
+            try {
+              await devLogin();
+            } catch (bypassErr) {
+              console.warn("Fallo el bypass automatico de login, esperando accion manual:", bypassErr);
+              if (isMounted) setIsLoading(false);
+            }
+          }
+        }
+      } catch (err) {
+        // En caso de fallo de conexion o produccion
+      }
+    };
+
+    checkDevBypass();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Effect for timer
   useEffect(() => {
@@ -56,6 +88,8 @@ export default function LoginPage() {
     try {
       if (showTwoFactor) {
         await verify2FA(twoFactorCode, trustDevice);
+      } else if (isDevMode && (!email || !password || email === devEmail)) {
+        await devLogin();
       } else {
         const result = await login(email, password);
         if (result.requires2FA) {
@@ -94,6 +128,11 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {!showTwoFactor ? (
               <>
+                {isDevMode && (
+                  <div className="rounded-md bg-blue-50 p-3 text-xs text-blue-700 border border-blue-200 text-center font-medium">
+                    Modo desarrollo activo: Acceso directo como {devEmail}
+                  </div>
+                )}
                 <div className="space-y-2">
                   <label htmlFor="email" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                     Email
@@ -101,10 +140,10 @@ export default function LoginPage() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder=""
+                    placeholder={isDevMode ? devEmail : ""}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    required
+                    required={!isDevMode}
                   />
                 </div>
                 <div className="space-y-2">
@@ -124,9 +163,10 @@ export default function LoginPage() {
                   <Input
                     id="password"
                     type="password"
+                    placeholder={isDevMode ? "••••••••" : ""}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    required
+                    required={!isDevMode}
                   />
                 </div>
               </>
@@ -231,7 +271,7 @@ export default function LoginPage() {
             )}
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isLoading ? "Signing in..." : "Sign In"}
+              {isLoading ? "Signing in..." : isDevMode ? "Entrar como Administrador (Dev)" : "Sign In"}
             </Button>
             {/* Request Access Button */}
             <Dialog>
