@@ -1,15 +1,21 @@
 """
 Pruebas unitarias para CreateWorkLogUseCase utilizando mocks de los puertos de repositorio.
 """
+
 from datetime import date, time
 from decimal import Decimal
+
 import pytest
+from application.use_cases.work_logs.create_work_log_use_case import CreateWorkLogUseCase
 from domain.entities.company import Company
 from domain.entities.company_member import CompanyMember, CompanyRole
 from domain.entities.work_log import WorkLog
-from domain.ports.repositories.work_log_repository_port import WorkLogRepositoryPort, CompanyRepositoryPort, CompanyMemberRepositoryPort
-from domain.exceptions.domain_exceptions import InactiveMembershipException, EntityNotFoundException
-from application.use_cases.work_logs.create_work_log_use_case import CreateWorkLogUseCase
+from domain.exceptions.domain_exceptions import InactiveMembershipException
+from domain.ports.repositories.work_log_repository_port import (
+    CompanyMemberRepositoryPort,
+    CompanyRepositoryPort,
+    WorkLogRepositoryPort,
+)
 
 
 class InMemoryCompanyRepo(CompanyRepositoryPort):
@@ -63,8 +69,8 @@ class InMemoryWorkLogRepo(WorkLogRepositoryPort):
         return log
 
     async def save_bulk(self, logs):
-        for l in logs:
-            self.logs[l.id] = l
+        for log_item in logs:
+            self.logs[log_item.id] = log_item
         return logs
 
     async def delete(self, log_id: str):

@@ -1,17 +1,18 @@
 """
 Implementacion de WorkLogRepositoryPort utilizando SQLAlchemy.
 """
-from typing import Optional, List
+
 from datetime import date
-from sqlalchemy.orm import Session
+from typing import List, Optional
+
+import models
 from domain.entities.work_log import WorkLog
 from domain.ports.repositories.work_log_repository_port import WorkLogRepositoryPort
 from infrastructure.persistence.sqlalchemy.mappers.work_log_mapper import SqlAlchemyWorkLogMapper
-import models
+from sqlalchemy.orm import Session
 
 
 class SqlAlchemyWorkLogRepository(WorkLogRepositoryPort):
-
     def __init__(self, db: Session):
         self.db = db
 
@@ -41,7 +42,12 @@ class SqlAlchemyWorkLogRepository(WorkLogRepositoryPort):
         if log_type:
             query = query.filter(models.WorkLog.type == log_type)
 
-        orm_logs = query.order_by(models.WorkLog.start_date.desc(), models.WorkLog.start_time.desc()).offset(skip).limit(limit).all()
+        orm_logs = (
+            query.order_by(models.WorkLog.start_date.desc(), models.WorkLog.start_time.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
         return [SqlAlchemyWorkLogMapper.to_domain(log) for log in orm_logs]
 
     async def save(self, log: WorkLog) -> WorkLog:

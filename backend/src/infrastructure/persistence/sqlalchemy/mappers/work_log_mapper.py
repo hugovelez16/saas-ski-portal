@@ -1,15 +1,16 @@
 """
 Mapeador de persistencia para WorkLog entre SQLAlchemy ORM y Entidades de Dominio.
 """
+
 from decimal import Decimal
-from domain.entities.work_log import WorkLog
-from domain.value_objects.money import Money
-from domain.value_objects.calculation_snapshot import CalculationSnapshot, DisplayLine
+
 import models
+from domain.entities.work_log import WorkLog
+from domain.value_objects.calculation_snapshot import CalculationSnapshot, DisplayLine
+from domain.value_objects.money import Money
 
 
 class SqlAlchemyWorkLogMapper:
-
     @staticmethod
     def to_domain(orm_log: models.WorkLog) -> WorkLog:
         snapshot_obj = None

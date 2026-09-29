@@ -1,11 +1,13 @@
 """
 Entidad de Dominio WorkLog: Representa el registro de una jornada, turno o clase.
 """
+
 from dataclasses import dataclass, field
-from datetime import date, time, datetime
-from typing import Optional, Dict, Any
-from domain.value_objects.money import Money
+from datetime import date, datetime, time
+from typing import Any, Dict, Optional
+
 from domain.value_objects.calculation_snapshot import CalculationSnapshot
+from domain.value_objects.money import Money
 
 
 @dataclass

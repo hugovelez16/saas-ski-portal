@@ -1,12 +1,12 @@
 """
 Mapeador de persistencia para Company entre SQLAlchemy ORM y Entidades de Dominio.
 """
-from domain.entities.company import Company
+
 import models
+from domain.entities.company import Company
 
 
 class SqlAlchemyCompanyMapper:
-
     @staticmethod
     def to_domain(orm_company: models.Company) -> Company:
         return Company(

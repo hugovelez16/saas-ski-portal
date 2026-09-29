@@ -2,12 +2,14 @@
 Servicio de Dominio: Motor de calculo de jornadas y liquidacion fiscal.
 Completamente aislado de SQLAlchemy, FastAPI, Redis o librerias de infraestructura.
 """
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional, Dict, Any, List
-from domain.value_objects.work_duration import WorkDuration, WorkUnit
-from domain.value_objects.tax_configuration import TaxConfiguration
-from domain.value_objects.rate_definition import RateDefinition
+
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Dict, List, Optional
+
 from domain.value_objects.calculation_snapshot import CalculationSnapshot, DisplayLine
+from domain.value_objects.rate_definition import RateDefinition
+from domain.value_objects.tax_configuration import TaxConfiguration
+from domain.value_objects.work_duration import WorkDuration, WorkUnit
 
 
 class WorkLogCalculationService:
@@ -79,11 +81,15 @@ class WorkLogCalculationService:
 
         if is_gross:
             gross_total = (amount_base + extras_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            net_total = (gross_total * (Decimal("1.0") - total_tax_rate)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            net_total = (gross_total * (Decimal("1.0") - total_tax_rate)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
         else:
             net_total = (amount_base + extras_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             if total_tax_rate < Decimal("1.0"):
-                gross_total = (net_total / (Decimal("1.0") - total_tax_rate)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                gross_total = (net_total / (Decimal("1.0") - total_tax_rate)).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
             else:
                 gross_total = net_total
 
@@ -109,7 +115,9 @@ class WorkLogCalculationService:
         )
 
         if tax_configuration.social_security_rate > Decimal("0"):
-            ss_val = (gross_total * tax_configuration.social_security_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            ss_val = (gross_total * tax_configuration.social_security_rate).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
             display_lines.append(
                 DisplayLine(
                     type="tax",

@@ -1,20 +1,24 @@
 """
 Implementacion de UserRepositoryPort, CompanyRepositoryPort y CompanyMemberRepositoryPort con SQLAlchemy.
 """
-from typing import Optional, List
-from sqlalchemy.orm import Session
-from domain.entities.user import User
+
+from typing import List, Optional
+
+import models
 from domain.entities.company import Company
 from domain.entities.company_member import CompanyMember
+from domain.entities.user import User
+from domain.ports.repositories.company_repository_port import CompanyMemberRepositoryPort, CompanyRepositoryPort
 from domain.ports.repositories.user_repository_port import UserRepositoryPort
-from domain.ports.repositories.company_repository_port import CompanyRepositoryPort, CompanyMemberRepositoryPort
-from infrastructure.persistence.sqlalchemy.mappers.user_mapper import SqlAlchemyUserMapper, SqlAlchemyCompanyMemberMapper
 from infrastructure.persistence.sqlalchemy.mappers.company_mapper import SqlAlchemyCompanyMapper
-import models
+from infrastructure.persistence.sqlalchemy.mappers.user_mapper import (
+    SqlAlchemyCompanyMemberMapper,
+    SqlAlchemyUserMapper,
+)
+from sqlalchemy.orm import Session
 
 
 class SqlAlchemyUserRepository(UserRepositoryPort):
-
     def __init__(self, db: Session):
         self.db = db
 
@@ -58,7 +62,6 @@ class SqlAlchemyUserRepository(UserRepositoryPort):
 
 
 class SqlAlchemyCompanyRepository(CompanyRepositoryPort):
-
     def __init__(self, db: Session):
         self.db = db
 
@@ -94,34 +97,42 @@ class SqlAlchemyCompanyRepository(CompanyRepositoryPort):
 
 
 class SqlAlchemyCompanyMemberRepository(CompanyMemberRepositoryPort):
-
     def __init__(self, db: Session):
         self.db = db
 
     async def get_membership(self, user_id: str, company_id: str) -> Optional[CompanyMember]:
-        orm_m = self.db.query(models.CompanyMember).filter(
-            models.CompanyMember.user_id == user_id,
-            models.CompanyMember.company_id == company_id,
-        ).first()
+        orm_m = (
+            self.db.query(models.CompanyMember)
+            .filter(
+                models.CompanyMember.user_id == user_id,
+                models.CompanyMember.company_id == company_id,
+            )
+            .first()
+        )
         return SqlAlchemyCompanyMemberMapper.to_domain(orm_m) if orm_m else None
 
     async def list_members_by_company(self, company_id: str) -> List[CompanyMember]:
-        orm_list = self.db.query(models.CompanyMember).filter(
-            models.CompanyMember.company_id == company_id
-        ).order_by(models.CompanyMember.sort_order.asc()).all()
+        orm_list = (
+            self.db.query(models.CompanyMember)
+            .filter(models.CompanyMember.company_id == company_id)
+            .order_by(models.CompanyMember.sort_order.asc())
+            .all()
+        )
         return [SqlAlchemyCompanyMemberMapper.to_domain(m) for m in orm_list]
 
     async def list_companies_by_user(self, user_id: str) -> List[CompanyMember]:
-        orm_list = self.db.query(models.CompanyMember).filter(
-            models.CompanyMember.user_id == user_id
-        ).all()
+        orm_list = self.db.query(models.CompanyMember).filter(models.CompanyMember.user_id == user_id).all()
         return [SqlAlchemyCompanyMemberMapper.to_domain(m) for m in orm_list]
 
     async def save(self, member: CompanyMember) -> CompanyMember:
-        existing = self.db.query(models.CompanyMember).filter(
-            models.CompanyMember.user_id == member.user_id,
-            models.CompanyMember.company_id == member.company_id,
-        ).first()
+        existing = (
+            self.db.query(models.CompanyMember)
+            .filter(
+                models.CompanyMember.user_id == member.user_id,
+                models.CompanyMember.company_id == member.company_id,
+            )
+            .first()
+        )
         if existing:
             existing.role = getattr(models.CompanyRole, member.role.value)
             existing.is_active = member.is_active

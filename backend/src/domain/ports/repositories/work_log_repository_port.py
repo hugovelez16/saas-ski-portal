@@ -1,16 +1,17 @@
 """
 Puertos de Repositorio para Company, CompanyMember y WorkLog.
 """
+
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Any
 from datetime import date
+from typing import List, Optional
+
 from domain.entities.company import Company
 from domain.entities.company_member import CompanyMember
 from domain.entities.work_log import WorkLog
 
 
 class CompanyRepositoryPort(ABC):
-
     @abstractmethod
     async def get_by_id(self, company_id: str) -> Optional[Company]:
         pass
@@ -29,7 +30,6 @@ class CompanyRepositoryPort(ABC):
 
 
 class CompanyMemberRepositoryPort(ABC):
-
     @abstractmethod
     async def get_membership(self, user_id: str, company_id: str) -> Optional[CompanyMember]:
         pass
@@ -48,7 +48,6 @@ class CompanyMemberRepositoryPort(ABC):
 
 
 class WorkLogRepositoryPort(ABC):
-
     @abstractmethod
     async def get_by_id(self, log_id: str) -> Optional[WorkLog]:
         pass

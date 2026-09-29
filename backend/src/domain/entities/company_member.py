@@ -1,10 +1,11 @@
 """
 Entidad de Dominio CompanyMember: Representa la membresia y permisos de un usuario en una empresa.
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, Dict, Any
 from enum import Enum
+from typing import Any, Dict, Optional
 
 
 class CompanyRole(str, Enum):

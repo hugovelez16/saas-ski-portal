@@ -4,6 +4,7 @@ Modulo de Sembrado Inicial de Datos (Seed Bootstrap).
 Inicializa la base de datos con un usuario administrador y empresa por defecto
 si se definen las variables de entorno correspondientes y la BD se encuentra vacia.
 """
+
 import os
 import uuid
 from datetime import datetime
@@ -52,18 +53,10 @@ def seed_initial_data(db: Session = None) -> bool:
                 fiscal_id="B00000000",
                 tax_config={"social_security": 0.0648},
                 worklog_definitions={
-                    "particular": {
-                        "unit": "hours",
-                        "label": "Clase Particular",
-                        "fields": []
-                    },
-                    "colectiva": {
-                        "unit": "hours",
-                        "label": "Clase Colectiva",
-                        "fields": []
-                    }
+                    "particular": {"unit": "hours", "label": "Clase Particular", "fields": []},
+                    "colectiva": {"unit": "hours", "label": "Clase Colectiva", "fields": []},
                 },
-                settings={"features": {"worker_daily_report": True}}
+                settings={"features": {"worker_daily_report": True}},
             )
             db.add(company)
             db.commit()
@@ -80,17 +73,18 @@ def seed_initial_data(db: Session = None) -> bool:
             is_active=True,
             is_2fa_enabled=False,
             must_change_password=False,
-            default_company_id=company.id
+            default_company_id=company.id,
         )
         db.add(admin_user)
         db.commit()
         db.refresh(admin_user)
 
         # 3. Vincular usuario a la empresa como manager/admin
-        member = db.query(models.CompanyMember).filter(
-            models.CompanyMember.user_id == admin_user.id,
-            models.CompanyMember.company_id == company.id
-        ).first()
+        member = (
+            db.query(models.CompanyMember)
+            .filter(models.CompanyMember.user_id == admin_user.id, models.CompanyMember.company_id == company.id)
+            .first()
+        )
 
         if not member:
             member = models.CompanyMember(
@@ -98,7 +92,7 @@ def seed_initial_data(db: Session = None) -> bool:
                 company_id=company.id,
                 role=models.CompanyRole.manager,
                 is_active=True,
-                sort_order=1
+                sort_order=1,
             )
             db.add(member)
             db.commit()
@@ -108,10 +102,14 @@ def seed_initial_data(db: Session = None) -> bool:
             modules = db.query(models.AppModule).filter(models.AppModule.is_active == True).all()
             now = datetime.utcnow()
             for mod in modules:
-                existing_sub = db.query(models.ModuleSubscription).filter(
-                    models.ModuleSubscription.module_id == mod.id,
-                    models.ModuleSubscription.company_id == company.id
-                ).first()
+                existing_sub = (
+                    db.query(models.ModuleSubscription)
+                    .filter(
+                        models.ModuleSubscription.module_id == mod.id,
+                        models.ModuleSubscription.company_id == company.id,
+                    )
+                    .first()
+                )
                 if not existing_sub:
                     sub = models.ModuleSubscription(
                         id=uuid.uuid4(),
@@ -120,7 +118,7 @@ def seed_initial_data(db: Session = None) -> bool:
                         scope="company",
                         status="active",
                         created_at=now,
-                        updated_at=now
+                        updated_at=now,
                     )
                     db.add(sub)
             db.commit()
@@ -142,6 +140,7 @@ def seed_initial_data(db: Session = None) -> bool:
     finally:
         if should_close:
             db.close()
+
 
 if __name__ == "__main__":
     seed_initial_data()

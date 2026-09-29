@@ -1,14 +1,16 @@
 """
 Value Object Money: Manejo inmutable y de precision para importes monetarios.
 """
+
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Union
 
 
 @dataclass(frozen=True)
 class Money:
     """Objeto de valor inmutable para representar montos monetarios."""
+
     amount: Decimal
 
     @classmethod

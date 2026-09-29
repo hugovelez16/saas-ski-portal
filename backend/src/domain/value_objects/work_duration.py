@@ -1,10 +1,11 @@
 """
 Value Object WorkDuration: Modela la duracion de una jornada o servicio.
 """
+
 from dataclasses import dataclass
 from datetime import date, time
-from typing import Optional
 from enum import Enum
+from typing import Optional
 
 
 class WorkUnit(str, Enum):
@@ -16,6 +17,7 @@ class WorkUnit(str, Enum):
 @dataclass(frozen=True)
 class WorkDuration:
     """Duracion de trabajo calculada segun unidad, horas o rango de fechas."""
+
     unit: WorkUnit
     value: float
 

@@ -1,9 +1,10 @@
 """
 Value Object CalculationSnapshot: Encapsula el desglose auditado del calculo salarial y fiscal.
 """
+
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 
 @dataclass(frozen=True)

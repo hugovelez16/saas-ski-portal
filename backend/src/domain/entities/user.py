@@ -1,10 +1,11 @@
 """
 Entidad de Dominio User: Representa la identidad de un usuario en el sistema.
 """
+
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 from enum import Enum
+from typing import Optional
 
 
 class UserRole(str, Enum):

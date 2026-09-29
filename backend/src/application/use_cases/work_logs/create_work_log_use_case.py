@@ -2,21 +2,26 @@
 Caso de Uso: Creacion y Liquidacion de Jornada / WorkLog.
 Orquesta reglas de aplicacion y negocio sin depender de frameworks web ni ORMs.
 """
+
 import uuid
-from datetime import date, time, datetime, timezone
-from typing import Optional, Dict, Any
+from datetime import date, datetime, time, timezone
+from typing import Any, Dict, Optional
+
 from domain.entities.work_log import WorkLog
-from domain.value_objects.money import Money
-from domain.value_objects.work_duration import WorkDuration, WorkUnit
-from domain.value_objects.tax_configuration import TaxConfiguration
-from domain.value_objects.rate_definition import RateDefinition
-from domain.services.work_log_calculation_service import WorkLogCalculationService
-from domain.ports.repositories.work_log_repository_port import WorkLogRepositoryPort, CompanyRepositoryPort, CompanyMemberRepositoryPort
 from domain.exceptions.domain_exceptions import EntityNotFoundException, InactiveMembershipException
+from domain.ports.repositories.work_log_repository_port import (
+    CompanyMemberRepositoryPort,
+    CompanyRepositoryPort,
+    WorkLogRepositoryPort,
+)
+from domain.services.work_log_calculation_service import WorkLogCalculationService
+from domain.value_objects.money import Money
+from domain.value_objects.rate_definition import RateDefinition
+from domain.value_objects.tax_configuration import TaxConfiguration
+from domain.value_objects.work_duration import WorkDuration, WorkUnit
 
 
 class CreateWorkLogUseCase:
-
     def __init__(
         self,
         work_log_repo: WorkLogRepositoryPort,

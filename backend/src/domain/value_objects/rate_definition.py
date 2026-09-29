@@ -1,9 +1,10 @@
 """
 Value Object RateDefinition: Define la estructura de tarifa aplicable a un trabajador.
 """
+
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass(frozen=True)

@@ -1,9 +1,10 @@
 """
 Value Object TaxConfiguration: Gestiona porcentajes y deducciones de impuestos (IRPF, SS, Extras).
 """
+
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 @dataclass(frozen=True)

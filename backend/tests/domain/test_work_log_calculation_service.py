@@ -1,13 +1,13 @@
 """
 Pruebas unitarias de caja negra para el motor de calculo salarial y fiscal WorkLogCalculationService.
 """
+
 from decimal import Decimal
-import pytest
-from domain.value_objects.money import Money
-from domain.value_objects.work_duration import WorkDuration, WorkUnit
-from domain.value_objects.tax_configuration import TaxConfiguration
-from domain.value_objects.rate_definition import RateDefinition, RateExtra
+
 from domain.services.work_log_calculation_service import WorkLogCalculationService
+from domain.value_objects.rate_definition import RateDefinition, RateExtra
+from domain.value_objects.tax_configuration import TaxConfiguration
+from domain.value_objects.work_duration import WorkDuration, WorkUnit
 
 
 def test_calculate_hourly_rate_net_to_gross():

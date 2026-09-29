@@ -12,12 +12,13 @@ from sqlalchemy.orm import Session
 
 router = APIRouter()
 
+
 @router.post("/token", response_model=schemas.Token)
 async def login_for_access_token(
     response: Response,
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Step 1: Validate email/password.
@@ -36,8 +37,7 @@ async def login_for_access_token(
     if user.is_2fa_enabled:
         # Issue provisional token (short lived, specific scope)
         provisional_token = auth.create_access_token(
-            data={"sub": str(user.id), "scope": "2fa_pending"},
-            expires_delta=timedelta(minutes=5)
+            data={"sub": str(user.id), "scope": "2fa_pending"}, expires_delta=timedelta(minutes=5)
         )
         # Set provisional access token as cookie
         response.set_cookie(
@@ -46,12 +46,12 @@ async def login_for_access_token(
             httponly=True,
             secure=True,
             samesite="lax",
-            max_age=300 # 5 mins
+            max_age=300,  # 5 mins
         )
         return {
-            "access_token": "cookie", # Signal that it's in a cookie
+            "access_token": "cookie",  # Signal that it's in a cookie
             "token_type": "bearer",
-            "requires_2fa": True
+            "requires_2fa": True,
         }
 
     # No 2FA: Create full session with default scope
@@ -63,7 +63,7 @@ async def login_for_access_token(
         user_id=str(user.id),
         refresh_token=refresh_token,
         device_name=request.headers.get("user-agent"),
-        ip_address=request.client.host
+        ip_address=request.client.host,
     )
 
     # Set HttpOnly Cookies for both tokens
@@ -73,7 +73,7 @@ async def login_for_access_token(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     response.set_cookie(
         key="refresh_token",
@@ -81,14 +81,11 @@ async def login_for_access_token(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400
+        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
-    return {
-        "access_token": "cookie",
-        "token_type": "bearer",
-        "requires_2fa": False
-    }
+    return {"access_token": "cookie", "token_type": "bearer", "requires_2fa": False}
+
 
 @router.post("/verify-2fa", response_model=schemas.Token)
 async def verify_2fa(
@@ -96,7 +93,7 @@ async def verify_2fa(
     response: Response,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
+    current_user: models.User = Depends(auth.get_current_user),
 ):
     """
     Verify TOTP code and issue final tokens.
@@ -119,7 +116,7 @@ async def verify_2fa(
         user_id=str(current_user.id),
         refresh_token=refresh_token,
         device_name=request.headers.get("user-agent"),
-        ip_address=request.client.host
+        ip_address=request.client.host,
     )
 
     # Cookies
@@ -129,7 +126,7 @@ async def verify_2fa(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     response.set_cookie(
         key="refresh_token",
@@ -137,21 +134,14 @@ async def verify_2fa(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400
+        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
-    return {
-        "access_token": "cookie",
-        "token_type": "bearer",
-        "requires_2fa": False
-    }
+    return {"access_token": "cookie", "token_type": "bearer", "requires_2fa": False}
+
 
 @router.post("/refresh-token")
-async def refresh_access_token(
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db)
-):
+async def refresh_access_token(request: Request, response: Response, db: Session = Depends(get_db)):
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token missing")
@@ -164,7 +154,7 @@ async def refresh_access_token(
     try:
         payload = auth.jwt.decode(refresh_token, auth.PUBLIC_KEY, algorithms=[auth.ALGORITHM])
         if payload.get("type") != "refresh":
-             raise auth.JWTError()
+            raise auth.JWTError()
         user_id = payload.get("sub")
     except auth.JWTError:
         auth.revoke_session(db, refresh_token)
@@ -183,17 +173,14 @@ async def refresh_access_token(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
     return {"access_token": "cookie", "token_type": "bearer"}
 
+
 @router.post("/logout")
-async def logout(
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db)
-):
+async def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     # 1. Get tokens from cookies
     access_token = request.cookies.get("access_token")
     refresh_token = request.cookies.get("refresh_token")
@@ -209,17 +196,18 @@ async def logout(
     # 4. Clear Cookies
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
-    response.delete_cookie("admin_access_token") # Also clear backups if any
+    response.delete_cookie("admin_access_token")  # Also clear backups if any
     response.delete_cookie("admin_refresh_token")
 
     return {"message": "Logged out successfully"}
+
 
 @router.post("/auth/switch-scope", response_model=schemas.Token)
 async def switch_scope(
     data: schemas.TokenData,
     response: Response,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user)
+    current_user: models.User = Depends(auth.get_verified_user),
 ):
     """
     SaaS: Switch active company and role context.
@@ -230,14 +218,21 @@ async def switch_scope(
         if not data.company_id:
             # Special case: Reset to Admin ONLY context
             access_token, refresh_token = auth.generate_user_tokens(
-                db, current_user, company_id=None, role=None, force_none=True,
-                scope=getattr(current_user, "token_scope", None)
+                db,
+                current_user,
+                company_id=None,
+                role=None,
+                force_none=True,
+                scope=getattr(current_user, "token_scope", None),
             )
         else:
             requested_role = data.company_role or "manager"
             access_token, refresh_token = auth.generate_user_tokens(
-                db, current_user, company_id=data.company_id, role=requested_role,
-                scope=getattr(current_user, "token_scope", None)
+                db,
+                current_user,
+                company_id=data.company_id,
+                role=requested_role,
+                scope=getattr(current_user, "token_scope", None),
             )
     else:
         # Verify membership and role for regular users
@@ -248,11 +243,15 @@ async def switch_scope(
         if not company or not company.is_active:
             raise HTTPException(status_code=403, detail="Empresa inactiva o suspendida")
 
-        membership = db.query(models.CompanyMember).filter(
-            models.CompanyMember.user_id == current_user.id,
-            models.CompanyMember.company_id == data.company_id,
-            models.CompanyMember.is_active == True
-        ).first()
+        membership = (
+            db.query(models.CompanyMember)
+            .filter(
+                models.CompanyMember.user_id == current_user.id,
+                models.CompanyMember.company_id == data.company_id,
+                models.CompanyMember.is_active == True,
+            )
+            .first()
+        )
 
         if not membership:
             raise HTTPException(status_code=403, detail="You are not a member of this company")
@@ -263,26 +262,35 @@ async def switch_scope(
                 raise HTTPException(status_code=403, detail="Insufficient permissions for manager scope")
 
         access_token, refresh_token = auth.generate_user_tokens(
-            db, current_user, company_id=data.company_id, role=requested_role,
-            scope=getattr(current_user, "token_scope", None)
+            db,
+            current_user,
+            company_id=data.company_id,
+            role=requested_role,
+            scope=getattr(current_user, "token_scope", None),
         )
 
     response.set_cookie(
-        key="access_token", value=access_token, httponly=True, secure=True, samesite="lax",
-        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     response.set_cookie(
-        key="refresh_token", value=refresh_token, httponly=True, secure=True, samesite="lax",
-        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
     return {"access_token": "cookie", "token_type": "bearer", "requires_2fa": False}
 
+
 @router.post("/admin/stop-impersonation")
-async def stop_impersonation(
-    request: Request,
-    response: Response
-):
+async def stop_impersonation(request: Request, response: Response):
     """
     SRE: Restore Admin session from backup cookies.
     """
@@ -302,7 +310,7 @@ async def stop_impersonation(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     response.set_cookie(
         key="refresh_token",
@@ -310,7 +318,7 @@ async def stop_impersonation(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400
+        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
     # Clear backups
@@ -319,21 +327,21 @@ async def stop_impersonation(
 
     return {"message": "Returned to admin session"}
 
+
 @router.post("/admin/impersonate/{user_id}", response_model=schemas.Token)
 async def impersonate_user(
     user_id: UUID,
     response: Response,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user)
+    current_user: models.User = Depends(auth.get_verified_user),
 ):
     """
     Impersonation: Global admin can log in as any user.
     """
     if not getattr(current_user, "is_platform_admin", False):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only global administrators can impersonate users"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Only global administrators can impersonate users"
         )
 
     target_user = db.query(models.User).filter(models.User.id == user_id).first()
@@ -349,11 +357,13 @@ async def impersonate_user(
 
     # Re-decode to update scope and exp
     payload = auth.jwt.decode(access_token, auth.PRIVATE_KEY, algorithms=[auth.ALGORITHM])
-    payload.update({
-        "scope": "impersonated",
-        "admin_user_id": str(current_user.id),
-        "exp": datetime.utcnow() + timedelta(minutes=10)
-    })
+    payload.update(
+        {
+            "scope": "impersonated",
+            "admin_user_id": str(current_user.id),
+            "exp": datetime.utcnow() + timedelta(minutes=10),
+        }
+    )
     access_token = auth.jwt.encode(payload, auth.PRIVATE_KEY, algorithm=auth.ALGORITHM)
     refresh_token = auth.create_refresh_token(data={"sub": str(target_user.id)})
 
@@ -365,7 +375,7 @@ async def impersonate_user(
             httponly=True,
             secure=True,
             samesite="lax",
-            max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
         response.set_cookie(
             key="admin_refresh_token",
@@ -373,7 +383,7 @@ async def impersonate_user(
             httponly=True,
             secure=True,
             samesite="lax",
-            max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400
+            max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         )
 
     # Create Session for the target user (marked as impersonated in audit)
@@ -382,7 +392,7 @@ async def impersonate_user(
         user_id=str(target_user.id),
         refresh_token=refresh_token,
         device_name=f"IMPERSONATED by Admin ({current_user.email})",
-        ip_address=request.client.host
+        ip_address=request.client.host,
     )
 
     # Set Cookies
@@ -392,7 +402,7 @@ async def impersonate_user(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=600 # 10 mins
+        max_age=600,  # 10 mins
     )
     response.set_cookie(
         key="refresh_token",
@@ -400,34 +410,29 @@ async def impersonate_user(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400
+        max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
-    return {
-        "access_token": "cookie",
-        "token_type": "bearer",
-        "requires_2fa": False
-    }
+    return {"access_token": "cookie", "token_type": "bearer", "requires_2fa": False}
+
 
 @router.post("/2fa/setup", response_model=schemas.TOTPSetupResponse)
-async def setup_2fa(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user)
-):
+async def setup_2fa(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
     """Generates a new TOTP secret for the user (not active yet)."""
     secret = auth.generate_totp_secret()
     current_user.otp_secret = auth.encrypt_secret(secret)
-    current_user.is_2fa_enabled = False # Not enabled until verified
+    current_user.is_2fa_enabled = False  # Not enabled until verified
     db.commit()
 
     uri = auth.get_totp_uri(secret, current_user.email)
     return {"secret": secret, "qr_code_uri": uri}
 
+
 @router.post("/2fa/activate")
 async def activate_2fa(
     data: schemas.TOTPActivate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user)
+    current_user: models.User = Depends(auth.get_verified_user),
 ):
     """Verifies the first code and enables 2FA."""
     if not current_user.otp_secret:
@@ -441,36 +446,32 @@ async def activate_2fa(
     db.commit()
     return {"message": "2FA activated successfully"}
 
+
 @router.post("/2fa/disable")
-async def disable_2fa(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user)
-):
+async def disable_2fa(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
     """Disables 2FA (Requires verified user)."""
     current_user.is_2fa_enabled = False
     current_user.otp_secret = None
     db.commit()
     return {"message": "2FA disabled"}
 
+
 @router.get("/sessions", response_model=list[schemas.SessionResponse])
-async def list_sessions(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user)
-):
+async def list_sessions(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
     """Lists all active sessions for the user."""
     return [s for s in current_user.sessions if s.is_active]
 
+
 @router.delete("/sessions/{session_id}")
 async def revoke_session(
-    session_id: str,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user)
+    session_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
 ):
     """Revokes a specific session."""
-    session = db.query(models.UserSession).filter(
-        models.UserSession.id == session_id,
-        models.UserSession.user_id == current_user.id
-    ).first()
+    session = (
+        db.query(models.UserSession)
+        .filter(models.UserSession.id == session_id, models.UserSession.user_id == current_user.id)
+        .first()
+    )
 
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -479,12 +480,11 @@ async def revoke_session(
     db.commit()
     return {"message": "Session revoked"}
 
+
 @router.post("/auth/forgot-password")
-async def forgot_password(
-    data: schemas.PasswordResetRequest,
-    db: Session = Depends(get_db)
-):
+async def forgot_password(data: schemas.PasswordResetRequest, db: Session = Depends(get_db)):
     import email_utils
+
     user = crud.get_user_by_email(db, data.email)
     if not user:
         # Avoid user enumeration by returning 200 anyway
@@ -502,11 +502,9 @@ async def forgot_password(
 
     return {"message": "If the email exists, a reset link has been sent."}
 
+
 @router.post("/auth/reset-password")
-async def reset_password(
-    data: schemas.PasswordResetConfirm,
-    db: Session = Depends(get_db)
-):
+async def reset_password(data: schemas.PasswordResetConfirm, db: Session = Depends(get_db)):
     email = auth.verify_reset_token(data.token)
     if not email:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token.")

@@ -1,16 +1,18 @@
 """
 Pruebas para mapeadores de persistencia SQLAlchemy.
 """
+
 from decimal import Decimal
-from domain.entities.user import User, UserRole
+
 from domain.entities.company import Company
-from domain.entities.company_member import CompanyMember, CompanyRole
+from domain.entities.user import User, UserRole
 from domain.entities.work_log import WorkLog
 from domain.value_objects.money import Money
-from infrastructure.persistence.sqlalchemy.mappers.user_mapper import SqlAlchemyUserMapper, SqlAlchemyCompanyMemberMapper
 from infrastructure.persistence.sqlalchemy.mappers.company_mapper import SqlAlchemyCompanyMapper
+from infrastructure.persistence.sqlalchemy.mappers.user_mapper import (
+    SqlAlchemyUserMapper,
+)
 from infrastructure.persistence.sqlalchemy.mappers.work_log_mapper import SqlAlchemyWorkLogMapper
-import models
 
 
 def test_user_mapper_bidirectional():
@@ -56,6 +58,7 @@ def test_company_mapper_bidirectional():
 
 def test_work_log_mapper_bidirectional():
     from datetime import date, time
+
     log = WorkLog(
         id="log-1",
         user_id="u1",

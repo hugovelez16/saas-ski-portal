@@ -1,14 +1,15 @@
 """
 Mapeador de persistencia para User y CompanyMember entre SQLAlchemy ORM y Entidades de Dominio.
 """
+
 from typing import Optional
-from domain.entities.user import User, UserRole
-from domain.entities.company_member import CompanyMember, CompanyRole
+
 import models
+from domain.entities.company_member import CompanyMember, CompanyRole
+from domain.entities.user import User, UserRole
 
 
 class SqlAlchemyUserMapper:
-
     @staticmethod
     def to_domain(orm_user: models.User) -> User:
         role_enum = UserRole.ADMIN if orm_user.role == models.UserRole.admin else UserRole.USER
@@ -45,10 +46,9 @@ class SqlAlchemyUserMapper:
 
 
 class SqlAlchemyCompanyMemberMapper:
-
     @staticmethod
     def to_domain(orm_member: models.CompanyMember) -> CompanyMember:
-        role_str = str(orm_member.role.value if hasattr(orm_member.role, 'value') else orm_member.role)
+        role_str = str(orm_member.role.value if hasattr(orm_member.role, "value") else orm_member.role)
         role_enum = CompanyRole(role_str) if role_str in ("admin", "manager", "worker") else CompanyRole.WORKER
         return CompanyMember(
             user_id=str(orm_member.user_id),

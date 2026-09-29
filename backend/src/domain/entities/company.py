@@ -1,9 +1,10 @@
 """
 Entidad de Dominio Company: Modela una organizacion o escuela en la plataforma.
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 @dataclass

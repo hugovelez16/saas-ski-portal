@@ -4,6 +4,7 @@ Authentication Module.
 This module handles password hashing, token creation/verification, and current user retrieval.
 It uses OAuth2 with Password Flow and JWT tokens.
 """
+
 import os
 import secrets
 from datetime import datetime, timedelta
@@ -42,15 +43,13 @@ try:
 
     passphrase = os.getenv("JWT_PRIVATE_KEY_PASSPHRASE")
     private_key_obj = serialization.load_pem_private_key(
-        private_key_data,
-        password=passphrase.encode() if passphrase else None,
-        backend=default_backend()
+        private_key_data, password=passphrase.encode() if passphrase else None, backend=default_backend()
     )
 
     PRIVATE_KEY = private_key_obj.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption()
+        encryption_algorithm=serialization.NoEncryption(),
     ).decode("utf-8")
 except (FileNotFoundError, ValueError, TypeError):
     # Fallback for dev/CI if keys don't exist yet or decryption fails
@@ -64,21 +63,16 @@ except (FileNotFoundError, ValueError, TypeError):
             from cryptography.hazmat.primitives.asymmetric import rsa
 
             # Generate new RSA key pair
-            private_key_obj = rsa.generate_private_key(
-                public_exponent=65537,
-                key_size=2048,
-                backend=default_backend()
-            )
+            private_key_obj = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
 
             # Serialize key pair (unencrypted for easy local development)
             pem_private = private_key_obj.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption()
+                encryption_algorithm=serialization.NoEncryption(),
             )
             pem_public = private_key_obj.public_key().public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
+                encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo
             )
 
             # Write key pair back to disk to persist across hot-reloads if writable
@@ -106,6 +100,7 @@ else:
     if len(_encryption_key_env) == 64:
         try:
             import base64
+
             raw_key = bytes.fromhex(_encryption_key_env)
             ENCRYPTION_KEY = base64.urlsafe_b64encode(raw_key).decode()
         except ValueError:
@@ -123,6 +118,7 @@ except Exception as e:
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
+
 def get_token_from_request(request: Request):
     """
     Extracts token from HttpOnly cookie (preferred) or Authorization header.
@@ -134,19 +130,24 @@ def get_token_from_request(request: Request):
             token = auth_header.split(" ")[1]
     return token
 
+
 def encrypt_secret(secret: str) -> str:
     return fernet.encrypt(secret.encode()).decode()
 
+
 def decrypt_secret(encrypted_secret: str) -> str:
     return fernet.decrypt(encrypted_secret.encode()).decode()
+
 
 def verify_password(plain_password, hashed_password):
     """Verifies a plain:hashed password match."""
     return pwd_context.verify(plain_password, hashed_password)
 
+
 def get_password_hash(password):
     """Generates a Bcrypt hash for a password."""
     return pwd_context.hash(password)
+
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     """Creates a JWT access token with an expiration time."""
@@ -157,6 +158,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode.update({"exp": expire, "iat": now, "type": "access", "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
 
+
 def create_refresh_token(data: dict):
     """Creates a long-lived JWT refresh token."""
     to_encode = data.copy()
@@ -165,7 +167,9 @@ def create_refresh_token(data: dict):
     to_encode.update({"exp": expire, "iat": now, "type": "refresh", "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
 
+
 _consumed_reset_jtis = set()
+
 
 def create_reset_token(email: str) -> str:
     """Creates a short-lived JWT reset token (valid for 30 minutes)."""
@@ -174,6 +178,7 @@ def create_reset_token(email: str) -> str:
     expire = now + timedelta(minutes=30)
     to_encode.update({"exp": expire, "iat": now, "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
+
 
 def verify_reset_token(token: str) -> str | None:
     """Verifies the reset token, ensuring it has not been consumed yet."""
@@ -187,6 +192,7 @@ def verify_reset_token(token: str) -> str | None:
         # Check Redis if available
         try:
             from redis_config import redis_manager
+
             redis_client = redis_manager.get_client()
             if redis_client and redis_client.get(f"revoked_reset_jti:{jti}"):
                 return None
@@ -198,6 +204,7 @@ def verify_reset_token(token: str) -> str | None:
     except JWTError:
         return None
 
+
 def consume_reset_token(token: str) -> bool:
     """Marks a reset token as consumed so it cannot be replayed."""
     try:
@@ -208,6 +215,7 @@ def consume_reset_token(token: str) -> bool:
         _consumed_reset_jtis.add(jti)
         try:
             from redis_config import redis_manager
+
             redis_client = redis_manager.get_client()
             if redis_client:
                 redis_client.setex(f"revoked_reset_jti:{jti}", 3600, "consumed")
@@ -217,7 +225,15 @@ def consume_reset_token(token: str) -> bool:
     except JWTError:
         return False
 
-def generate_user_tokens(db: Session, user: models.User, company_id: str | None = None, role: str | None = None, force_none: bool = False, scope: str | None = None):
+
+def generate_user_tokens(
+    db: Session,
+    user: models.User,
+    company_id: str | None = None,
+    role: str | None = None,
+    force_none: bool = False,
+    scope: str | None = None,
+):
     """
     SRE: Enhanced token generation with platform and company context.
     If company_id or role are not provided, it selects defaults based on user profile and memberships.
@@ -237,8 +253,7 @@ def generate_user_tokens(db: Session, user: models.User, company_id: str | None 
         if not active_cid or not active_role:
             # Try to find membership for default or any company
             query = db.query(models.CompanyMember).filter(
-                models.CompanyMember.user_id == user.id,
-                models.CompanyMember.is_active == True
+                models.CompanyMember.user_id == user.id, models.CompanyMember.is_active == True
             )
 
             if active_cid:
@@ -263,12 +278,13 @@ def generate_user_tokens(db: Session, user: models.User, company_id: str | None 
         "is_admin": is_platform_admin,
         "cid": active_cid,
         "role": active_role,
-        "scope": scope or "full"
+        "scope": scope or "full",
     }
 
     access_token = create_access_token(data=data)
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
     return access_token, refresh_token
+
 
 async def get_current_user(token: str = Depends(get_token_from_request), db: Session = Depends(get_db)):
     if not token:
@@ -300,7 +316,7 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
             company_role=payload.get("role"),
             is_platform_admin=payload.get("is_admin", False),
             scope=payload.get("scope", "full"),
-            admin_user_id=payload.get("admin_user_id")
+            admin_user_id=payload.get("admin_user_id"),
         )
     except JWTError:
         raise credentials_exception
@@ -317,6 +333,7 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
     user.admin_user_id = token_data.admin_user_id
 
     return user
+
 
 async def get_verified_user(token: str = Depends(get_token_from_request), db: Session = Depends(get_db)):
     if not token:
@@ -353,7 +370,7 @@ async def get_verified_user(token: str = Depends(get_token_from_request), db: Se
             raise credentials_exception
 
         if scope == "2fa_pending":
-             raise two_fa_exception
+            raise two_fa_exception
 
         token_data = schemas.TokenData(
             user_id=user_id,
@@ -361,7 +378,7 @@ async def get_verified_user(token: str = Depends(get_token_from_request), db: Se
             company_role=payload.get("role"),
             is_platform_admin=payload.get("is_admin", False),
             scope=payload.get("scope", "full"),
-            admin_user_id=payload.get("admin_user_id")
+            admin_user_id=payload.get("admin_user_id"),
         )
     except JWTError:
         raise credentials_exception
@@ -379,19 +396,25 @@ async def get_verified_user(token: str = Depends(get_token_from_request), db: Se
 
     return user
 
+
 # --- TOTP 2FA Logic ---
+
 
 def generate_totp_secret() -> str:
     return pyotp.random_base32()
 
+
 def get_totp_uri(secret: str, email: str, issuer_name: str = "Vesotel System") -> str:
     return pyotp.totp.TOTP(secret).provisioning_uri(name=email, issuer_name=issuer_name)
+
 
 def verify_totp_code(secret: str, code: str) -> bool:
     totp = pyotp.totp.TOTP(secret)
     return totp.verify(code)
 
+
 # --- Session Management ---
+
 
 def create_session(db: Session, user_id: str, refresh_token: str, device_name: str = None, ip_address: str = None):
     session = models.UserSession(
@@ -399,17 +422,20 @@ def create_session(db: Session, user_id: str, refresh_token: str, device_name: s
         refresh_token=refresh_token,
         device_name=device_name,
         ip_address=ip_address,
-        last_active=datetime.utcnow()
+        last_active=datetime.utcnow(),
     )
     db.add(session)
     db.commit()
     return session
 
+
 def get_session_by_token(db: Session, refresh_token: str):
-    return db.query(models.UserSession).filter(
-        models.UserSession.refresh_token == refresh_token,
-        models.UserSession.is_active == True
-    ).first()
+    return (
+        db.query(models.UserSession)
+        .filter(models.UserSession.refresh_token == refresh_token, models.UserSession.is_active == True)
+        .first()
+    )
+
 
 def revoke_session(db: Session, refresh_token: str):
     session = get_session_by_token(db, refresh_token)
@@ -417,6 +443,7 @@ def revoke_session(db: Session, refresh_token: str):
         session.is_active = False
         db.commit()
     return session
+
 
 def blacklist_token(token: str):
     """
@@ -433,6 +460,7 @@ def blacklist_token(token: str):
                 redis_manager.set(f"bl_{jti}", "1", ex=ttl)
     except JWTError:
         pass
+
 
 # TOTP is now the primary 2FA method. Legacy email-based 2FA logic removed.
 

@@ -2,13 +2,14 @@
 Puerto de Repositorio para la Entidad User.
 Define el contrato abstracto de persistencia independiente del ORM o motor de base de datos.
 """
+
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import List, Optional
+
 from domain.entities.user import User
 
 
 class UserRepositoryPort(ABC):
-
     @abstractmethod
     async def get_by_id(self, user_id: str) -> Optional[User]:
         pass
