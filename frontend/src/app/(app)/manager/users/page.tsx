@@ -187,7 +187,7 @@ export default function ManagerUsersPage() {
         memberStatusMutation.mutate({
             companyId: user._companyId,
             userId: user.id,
-            status: checked ? 'active' : 'rejected'
+            status: checked ? 'active' : 'inactive'
         });
     };
 

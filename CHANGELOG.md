@@ -29,10 +29,12 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 - **Gobernanza de Empresas en UI**:
   - Incorporados switches y distintivos visuales de estado (Activa vs Suspendida, Gestionada vs Autonoma) en el panel de administracion de empresas (`CompaniesPageClient.tsx`) y dialogo de alta (`CompanyDialog.tsx`).
+  - Incorporado alternador entre vista de tarjetas y vista de lista compacta con persistencia permanente en `localStorage` (`admin_companies_view_mode`).
   - Posibilidad de conmutar directamente el estado operativo y de gestion con persistencia inmediata.
 - **Seguridad Multi-Tenant y Restriccion RBAC**:
   - Corregida fuga de datos en la vista de detalle de trabajador (`manager/users/[userId]/page.tsx`), garantizando que los registros filtrados pertenezcan estrictamente al conjunto de empresas visibles.
   - Bloqueada la alteracion no autorizada de roles en la edicion de miembros por parte de managers mediante conversion del selector a distintivo informativo de solo lectura.
+  - Subsanado error de tipo en base de datos al activar/desactivar miembros con normalizacion booleana estricta y soporte para administradores de plataforma con contexto activo.
   - Protegida la configuracion de tasas contra valores invalidos (NaN) y solventado el bucle de renderizado en `CompanyMemberConfigCard`.
   - Auto-seleccion de la primera empresa gestionada en el panel de supervision de miembros (`manager/users/page.tsx`).
 - **Gobernanza de Tarifas en Perfil**:
