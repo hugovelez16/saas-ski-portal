@@ -10,9 +10,16 @@ from routers.utils import is_manager_of_company
 router = APIRouter(prefix="/companies", tags=["companies"])
 
 @router.get("", response_model=List[schemas.CompanyResponse]) 
-def read_companies(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    companies = db.query(models.Company).offset(skip).limit(limit).all()
-    return companies
+def read_companies(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+    if getattr(current_user, "is_platform_admin", False):
+        return db.query(models.Company).offset(skip).limit(limit).all()
+    # Usuario regular: retornar solo empresas donde tenga membresia activa
+    user_memberships = db.query(models.CompanyMember).filter(
+        models.CompanyMember.user_id == current_user.id,
+        models.CompanyMember.is_active == True
+    ).all()
+    company_ids = [m.company_id for m in user_memberships]
+    return db.query(models.Company).filter(models.Company.id.in_(company_ids)).offset(skip).limit(limit).all()
 
 @router.post("", response_model=schemas.CompanyResponse)
 def create_company(company: schemas.CompanyCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
@@ -92,7 +99,7 @@ def update_members_order(company_id: str, order_data: schemas.UpdateCompanyMembe
     return {"message": "Order updated successfully"}
 
 @router.post("/{company_id}/members/add", response_model=schemas.CompanyMemberResponse)
-def add_company_member(company_id: str, member_data: schemas.TokenData, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+def add_company_member(company_id: str, member_data: schemas.TokenData, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
     """
     Admin: Add a user to a company directly by email (bypass request).
     """

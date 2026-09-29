@@ -98,7 +98,6 @@ _encryption_key_env = os.getenv("ENCRYPTION_KEY")
 if not _encryption_key_env:
     ENCRYPTION_KEY = Fernet.generate_key().decode()
 else:
-    # If the key is hex-encoded (64 chars), convert it to url-safe base64 for Fernet
     if len(_encryption_key_env) == 64:
         try:
             import base64
@@ -109,7 +108,11 @@ else:
     else:
         ENCRYPTION_KEY = _encryption_key_env
 
-fernet = Fernet(ENCRYPTION_KEY.encode())
+try:
+    fernet = Fernet(ENCRYPTION_KEY.encode())
+except Exception:
+    ENCRYPTION_KEY = Fernet.generate_key().decode()
+    fernet = Fernet(ENCRYPTION_KEY.encode())
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
@@ -156,23 +159,57 @@ def create_refresh_token(data: dict):
     to_encode.update({"exp": expire, "iat": now, "type": "refresh", "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
 
+_consumed_reset_jtis = set()
+
 def create_reset_token(email: str) -> str:
-    """Creates a short-lived JWT reset token (valid for 2 hours)."""
+    """Creates a short-lived JWT reset token (valid for 30 minutes)."""
     to_encode = {"sub": email, "type": "reset"}
     now = datetime.utcnow()
-    expire = now + timedelta(hours=2)
+    expire = now + timedelta(minutes=30)
     to_encode.update({"exp": expire, "iat": now, "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
 
 def verify_reset_token(token: str) -> Optional[str]:
-    """Verifies the reset token and returns the email if valid."""
+    """Verifies the reset token, ensuring it has not been consumed yet."""
     try:
         payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
         if payload.get("type") != "reset":
             return None
+        jti = payload.get("jti")
+        if not jti:
+            return None
+        # Check Redis if available
+        try:
+            from redis_config import redis_manager
+            redis_client = redis_manager.get_client()
+            if redis_client and redis_client.get(f"revoked_reset_jti:{jti}"):
+                return None
+        except Exception:
+            pass
+        if jti in _consumed_reset_jtis:
+            return None
         return payload.get("sub")
     except JWTError:
         return None
+
+def consume_reset_token(token: str) -> bool:
+    """Marks a reset token as consumed so it cannot be replayed."""
+    try:
+        payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
+        jti = payload.get("jti")
+        if not jti:
+            return False
+        _consumed_reset_jtis.add(jti)
+        try:
+            from redis_config import redis_manager
+            redis_client = redis_manager.get_client()
+            if redis_client:
+                redis_client.setex(f"revoked_reset_jti:{jti}", 3600, "consumed")
+        except Exception:
+            pass
+        return True
+    except JWTError:
+        return False
 
 def generate_user_tokens(db: Session, user: models.User, company_id: Optional[str] = None, role: Optional[str] = None, force_none: bool = False, scope: Optional[str] = None):
     """

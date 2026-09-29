@@ -514,4 +514,7 @@ async def reset_password(
     user.must_change_password = False
     db.commit()
     
+    # Invalidate reset token to prevent replay attacks
+    auth.consume_reset_token(data.token)
+    
     return {"message": "Password updated successfully."}
