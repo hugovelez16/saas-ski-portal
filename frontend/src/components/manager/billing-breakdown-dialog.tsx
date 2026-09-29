@@ -65,8 +65,10 @@ export function BillingBreakdownDialog({ open, onOpenChange, row, worklogDefs }:
                                         const label = def?.label ?? typeKey;
                                         const qtyStr = unit === 'hours'
                                             ? `${summary.quantity.toFixed(2)} h`
-                                            : `${summary.quantity} días`;
-                                        const amount = summary.grossAmount || summary.netAmount;
+                                            : unit === 'fixed'
+                                                ? `${summary.quantity} serv.`
+                                                : `${summary.quantity} días`;
+                                        const amount = summary.grossAmount ?? summary.netAmount ?? 0;
                                         return (
                                             <TableRow key={typeKey}>
                                                 <TableCell className="font-medium">{label}</TableCell>
@@ -78,7 +80,7 @@ export function BillingBreakdownDialog({ open, onOpenChange, row, worklogDefs }:
                                 }
                                 <TableRow className="bg-muted/50 font-bold">
                                     <TableCell colSpan={2}>Total</TableCell>
-                                    <TableCell className="text-right text-emerald-600">{formatCurrency(row.totalGross || row.totalNet)}</TableCell>
+                                    <TableCell className="text-right text-emerald-600">{formatCurrency(row.totalGross ?? row.totalNet ?? 0)}</TableCell>
                                 </TableRow>
                             </TableBody>
                         </Table>

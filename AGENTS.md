@@ -24,8 +24,9 @@ Este repositorio contiene la plataforma SaaS de gestion de escuelas de esqui, re
      - No usar emojis en respuestas o resumenes dirigidos al usuario.
    - El estilo debe ser 100% sobrio, tecnico y profesional en texto plano y markdown estandar.
 
-4. CREACION DE PULL REQUESTS CON PREFIJO WIP:
-   - Cada vez que el agente cree o proponga un Pull Request a peticion del usuario, el titulo debe comenzar obligatoriamente con el prefijo WIP: (ejemplo: WIP: feat(backend): implementar calculo de tarifas).
+4. TITULOS Y DESCRIPCIONES DE PULL REQUESTS (SIN PREFIJO WIP):
+   - Los titulos de los Pull Requests deben redactarse obligatoriamente en ESPANOL, siguiendo el formato convencional `<tipo>(<ambito>): <descripcion concisa>` o `<tipo>: <descripcion concisa>` directamente sin prefijo WIP: (ejemplo: `feat(backend): implementar calculo de tarifas`).
+   - No usar prefijo WIP: en titulos de Pull Requests.
 
 5. VERIFICACION OBLIGATORIA DE RAMA ANTES DE MODIFICAR CODIGO:
    - Antes de iniciar cambios o desarrollos, el agente DEBE verificar obligatoriamente en que rama se encuentra (git branch --show-current).
@@ -40,6 +41,21 @@ Este repositorio contiene la plataforma SaaS de gestion de escuelas de esqui, re
    - Queda TERMINANTEMENTE PROHIBIDO usar comandos de consola bash (`cat << 'EOF'`, `echo >`, `sed -i` o similares) para inyectar o modificar contenido en archivos del repositorio. La consola bash solo debe utilizarse para ejecutar tests, linters, git o comandos del sistema.
 
 8. ENTORNO DE DESARROLLO LOCAL BASADO EN GATEWAY UNIFICADO:
-   - El desarrollo en local se ejecuta a traves de `docker-compose.dev.yml` con el servicio `gateway` (Nginx) expuesto en el puerto `8080:80`.
+   - El desarrollo en local se ejecuta a traves de `docker-compose.dev.yml` con el servicio `gateway` (Nginx) expuesto en el puerto `8080:80` por defecto.
    - El frontend atiende en `/` y el backend en `/api/`.
    - Todo montaje de volumen debe utilizar el sufijo `:z` para compatibilidad con SELinux y Podman rootless.
+
+9. INCREMENTO OBLIGATORIO DE VERSION SEMVER POR PULL REQUEST:
+   - Cada Pull Request que introduzca nuevas funcionalidades (minor), correcciones de errores (patch) o cambios estructurales (major) debe incluir obligatoriamente un incremento de version SemVer (siguiendo PRINCIPAL.MENOR.PARCHE, ej: 0.1.0 -> 0.1.1 o 0.2.0).
+   - Excepcion: No es obligatorio incrementar la version si el Pull Request corresponde a cambios puramente internos de configuracion de desarrollo local o tooling menor que no afecte al despliegue o a la aplicacion.
+   - Justificacion tecnica y operativa: Cada merge a `develop` o `main` desencadena la compilacion y publicacion automatica de imagenes en GitHub Container Registry (GHCR) etiquetadas con la version SemVer canonica (`dev-vX.Y.Z` o `vX.Y.Z`). Sin este incremento, se perderia la trazabilidad, la capacidad de auditoria y la posibilidad de rollback en Komodo.
+   - Archivos obligatorios a actualizar cuando aplique incremento de version:
+     1. `package.json` (campo `version` en raiz, fuente de verdad principal).
+     2. `frontend/package.json` (campo `version`).
+     3. `CHANGELOG.md` (nueva seccion con version, fecha y resumen de cambios bajo el estandar Keep a Changelog).
+   - Los mensajes de commit NO deben llevar el numero de version en su titulo; los commits deben describir concisamente el cambio tecnico realizado.
+
+10. ORQUESTACION MULTI-WORKTREE, SEMBRADO INICIAL Y SINCRONIZACION DE BASE DE DATOS:
+    - Parametrizacion por Worktree: Al trabajar con multiples agentes o workspaces en paralelo en el mismo host, se deben parametrizar los puertos y el nombre de proyecto en el archivo `.env` local (`COMPOSE_PROJECT_NAME`, `GATEWAY_PORT`, `POSTGRES_PORT`, `REDIS_PORT`, `ALLOWED_ORIGINS`).
+    - Sembrado Inicial de Administrador: Al arrancar una base de datos nueva, el backend inicializa automaticamente un usuario administrador y empresa si se configuran `INITIAL_ADMIN_EMAIL` e `INITIAL_ADMIN_PASSWORD` en `.env`. Tambien puede ejecutarse manualmente con `./bin/seed` tras ejecutar `./bin/migrate`.
+    - Sincronizacion de Base de Datos: El script `./scripts/sync_db.sh` permite sincronizar datos desde el servidor de produccion hacia el contenedor local de desarrollo. Esta operacion requiere acceso SSH autorizado y solo debe ejecutarse por administradores autorizados con acceso al servidor remoto.

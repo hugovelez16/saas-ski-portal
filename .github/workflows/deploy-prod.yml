@@ -11,8 +11,25 @@ env:
   IMAGE_BASE: ghcr.io/${{ github.repository }}
 
 jobs:
+  get-version:
+    name: Obtener Version SemVer
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.versioning.outputs.version }}
+    steps:
+      - name: Checkout Repositorio
+        uses: actions/checkout@v4
+
+      - name: Leer Version SemVer
+        id: versioning
+        run: |
+          VERSION=$(grep '"version"' package.json | head -1 | cut -d'"' -f4)
+          echo "Version detectada: ${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
   build-backend:
     name: Compilar y Publicar Backend Produccion
+    needs: [get-version]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,10 +53,11 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE_BASE }}/backend:latest
-            ${{ env.IMAGE_BASE }}/backend:sha-${{ github.sha }}
+            ${{ env.IMAGE_BASE }}/backend:v${{ needs.get-version.outputs.version }}
 
   build-frontend:
     name: Compilar y Publicar Frontend Produccion
+    needs: [get-version]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -65,10 +83,11 @@ jobs:
             NEXT_PUBLIC_API_URL=/api
           tags: |
             ${{ env.IMAGE_BASE }}/frontend:latest
-            ${{ env.IMAGE_BASE }}/frontend:sha-${{ github.sha }}
+            ${{ env.IMAGE_BASE }}/frontend:v${{ needs.get-version.outputs.version }}
 
   build-gateway:
     name: Compilar y Publicar Gateway Produccion
+    needs: [get-version]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -92,11 +111,11 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE_BASE }}/gateway:latest
-            ${{ env.IMAGE_BASE }}/gateway:sha-${{ github.sha }}
+            ${{ env.IMAGE_BASE }}/gateway:v${{ needs.get-version.outputs.version }}
 
   deploy-komodo:
     name: Desplegar Stack Produccion en Komodo
-    needs: [build-backend, build-frontend, build-gateway]
+    needs: [get-version, build-backend, build-frontend, build-gateway]
     runs-on: ubuntu-latest
     steps:
       - name: Disparar Webhook Komodo

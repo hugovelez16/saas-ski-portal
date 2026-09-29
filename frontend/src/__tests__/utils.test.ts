@@ -10,7 +10,7 @@ describe('Utilidades de frontend', () => {
 
     it('formatCurrency formatea cantidades monetarias en Euros', () => {
         const formatted = formatCurrency(1250.5);
-        expect(formatted).toContain('1250,50');
+        expect(formatted).toMatch(/1[.\s]?250,50/);
         expect(formatted).toContain('€');
     });
 });

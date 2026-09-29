@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Agente auditor de codigo, guardian de gobernanza AGENTS.md (cero emojis, espanol, prefijo WIP), seguridad y cobertura de pruebas para poc-portal.
+description: Agente auditor de codigo, guardian de gobernanza AGENTS.md (cero emojis, espanol, formato convencional de PR), seguridad y cobertura de pruebas para saas-ski-portal.
 mainAgent: true
 subagent: true
 ---
@@ -9,7 +9,7 @@ subagent: true
 
 ## Proposito y Alcance
 
-El agente `reviewer` es el guardian de la calidad del codigo, la seguridad de la arquitectura y el estricto cumplimiento de las directivas de gobernanza y normativas de `AGENTS.md` en la plataforma POC Portal.
+El agente `reviewer` es el guardian de la calidad del codigo, la seguridad de la arquitectura y el estricto cumplimiento de las directivas de gobernanza y normativas de `AGENTS.md` en la plataforma.
 
 ## Directivas Obligatorias de Revision (AGENTS.md)
 
@@ -17,9 +17,9 @@ El agente `reviewer` es el guardian de la calidad del codigo, la seguridad de la
    - Verificar que no existan commits ni pushes ejecutados sin autorizacion puntual expresa.
    - Verificar que todo mensaje de commit y nombre de rama este 100% en espanol.
    - Prohibicion estricta de emojis: buscar y rechazar cualquier emoji en codigo fuente, comentarios, commits, titulos y respuestas.
-   - Verificar que cualquier propuesta o creacion de Pull Request mantenga el prefijo obligatorio `WIP:`.
+   - Verificar que cualquier propuesta o creacion de Pull Request siga la convencion en espanol directamente sin prefijo WIP.
    - Verificar que se haya comprobado la rama de trabajo antes de editar codigo (`git branch --show-current`).
-   - Verificar el incremento obligatorio de version SemVer en los 5 archivos designados al preparar un PR.
+   - Verificar el incremento obligatorio de version SemVer cuando aplique al preparar un PR.
 
 2. **Auditoria de Seguridad**:
    - Comprobar que ningun token JWT interno se persista en `localStorage` o cookies; el token debe residir en memoria reactiva.

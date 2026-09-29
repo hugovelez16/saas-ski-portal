@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Users, GripVertical } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,14 @@ export default function ManagerUsersPage() {
         queryKey: ["companiesDetailed"],
     });
 
+    const activeCompanyId = companyIdParam || (companies.length > 0 ? companies[0].id : null);
+
+    useEffect(() => {
+        if (!companyIdParam && companies.length > 0) {
+            router.replace(`/manager/users?companyId=${companies[0].id}`);
+        }
+    }, [companyIdParam, companies, router]);
+
     const memberStatusMutation = useMutation({
         mutationFn: ({ companyId, userId, status }: { companyId: string; userId: string; status: string }) =>
             updateMemberStatus(companyId, userId, status),
@@ -89,8 +97,9 @@ export default function ManagerUsersPage() {
 
     const usersWithMeta = useMemo(() => {
         const map = new Map<string, any>();
-        const filteredCompanies = companyIdParam
-            ? companies.filter((c: any) => c.id === companyIdParam)
+        const targetCompanyId = activeCompanyId;
+        const filteredCompanies = targetCompanyId
+            ? companies.filter((c: any) => c.id === targetCompanyId)
             : companies;
 
         filteredCompanies.forEach((company: any) => {
@@ -99,15 +108,15 @@ export default function ManagerUsersPage() {
                 if (!map.has(member.userId)) {
                     map.set(member.userId, {
                         ...member.user,
-                        _companyId: companyIdParam ? company.id : null,
-                        _status: companyIdParam ? (member.isActive ? 'active' : 'inactive') : null,
-                        _role: companyIdParam ? member.role : null
+                        _companyId: targetCompanyId ? company.id : null,
+                        _status: targetCompanyId ? (member.isActive ? 'active' : 'inactive') : null,
+                        _role: targetCompanyId ? member.role : null
                     });
                 }
             });
         });
         return Array.from(map.values());
-    }, [companies, companyIdParam]);
+    }, [companies, activeCompanyId]);
 
     const sortedUsersWithMeta = useMemo(() => {
         let list = [...usersWithMeta];
@@ -151,9 +160,9 @@ export default function ManagerUsersPage() {
     const toggleEditOrder = async () => {
         if (isEditingOrder) {
             // Save
-            if (companyIdParam && userOrder.length > 0) {
+            if (activeCompanyId && userOrder.length > 0) {
                 try {
-                    await updateCompanyMembersOrder(companyIdParam, userOrder);
+                    await updateCompanyMembersOrder(activeCompanyId, userOrder);
                     toast({ title: "Orden guardado correctamente" });
                     queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
                 } catch (err) {
@@ -164,7 +173,7 @@ export default function ManagerUsersPage() {
             setIsEditingOrder(false);
         } else {
             // Start editing
-            if (!companyIdParam) {
+            if (!activeCompanyId) {
                 toast({ title: "Selecciona una empresa primero", variant: "destructive" });
                 return;
             }
@@ -178,7 +187,7 @@ export default function ManagerUsersPage() {
         memberStatusMutation.mutate({
             companyId: user._companyId,
             userId: user.id,
-            status: checked ? 'active' : 'rejected'
+            status: checked ? 'active' : 'inactive'
         });
     };
 
@@ -226,6 +235,7 @@ export default function ManagerUsersPage() {
                     <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
                         <Switch
                             checked={user._status === 'active'}
+                            disabled={memberStatusMutation.isPending}
                             onCheckedChange={(checked) => handleToggle(user, checked)}
                         />
                         <span className={user._status === 'active' ? "text-green-600 text-xs font-semibold" : "text-red-600 text-xs font-semibold"}>
@@ -248,7 +258,7 @@ export default function ManagerUsersPage() {
                     <Users className="h-6 w-6 text-indigo-600" />
                     <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Panel de Supervisión</h1>
                 </div>
-                {companyIdParam && (
+                {activeCompanyId && (
                     <Button onClick={toggleEditOrder} variant={isEditingOrder ? "default" : "outline"}>
                         {isEditingOrder ? "Guardar orden" : "Modificar orden"}
                     </Button>
@@ -272,7 +282,7 @@ export default function ManagerUsersPage() {
                     searchKey="email"
                     searchPlaceholder="Buscar por email..."
                     onRowClick={(user) => {
-                        const query = companyIdParam ? `?companyId=${companyIdParam}` : "";
+                        const query = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
                         router.push(`/manager/users/${user.id}${query}`);
                     }}
                 />

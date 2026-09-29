@@ -1,23 +1,24 @@
 import unittest
 import uuid
 from datetime import date
-from fastapi import HTTPException
-from database import SessionLocal
+
 import models
-import schemas
+from database import SessionLocal
+from fastapi import HTTPException
 from routers.work_logs import get_billing_summary
+
 
 class TestBillingSummaryEndpoint(unittest.TestCase):
     def setUp(self):
         self.db = SessionLocal()
-        
+
         # Create a test company
         self.company = models.Company(
             name=f"Test Billing Company {uuid.uuid4().hex[:6]}"
         )
         self.db.add(self.company)
         self.db.flush()
-        
+
         # Create user 1 (the manager)
         self.user_manager = models.User(
             email=f"manager_{uuid.uuid4().hex[:6]}@test.com",
@@ -28,7 +29,7 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
         )
         self.db.add(self.user_manager)
         self.db.flush()
-        
+
         # Create user 2 (the worker)
         self.user_worker = models.User(
             email=f"worker_{uuid.uuid4().hex[:6]}@test.com",
@@ -39,7 +40,7 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
         )
         self.db.add(self.user_worker)
         self.db.flush()
-        
+
         # Create company memberships with rates_config in JSONB format
         self.membership1 = models.CompanyMember(
             user_id=self.user_manager.id,
@@ -80,12 +81,12 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
         )
         self.db.add(self.log)
         self.db.flush()
-        
+
         # Set up active contexts
         self.user_manager.active_company_id = str(self.company.id)
         self.user_manager.active_role = "manager"
         self.user_manager.is_platform_admin = False
-        
+
         self.user_worker.active_company_id = str(self.company.id)
         self.user_worker.active_role = "worker"
         self.user_worker.is_platform_admin = False
@@ -121,11 +122,11 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
         )
         self.assertIsInstance(response, list)
         self.assertGreaterEqual(len(response), 2)
-        
+
         # Find the items by user_id
         worker_item = next((x for x in response if x.user_id == self.user_worker.id), None)
         manager_item = next((x for x in response if x.user_id == self.user_manager.id), None)
-        
+
         self.assertIsNotNone(worker_item)
         self.assertEqual(worker_item.type, "particular")
         self.assertEqual(worker_item.total_hours, 8.0)
@@ -133,7 +134,7 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
         self.assertEqual(worker_item.total_gross, 200.0)
         self.assertEqual(worker_item.unique_days, 1)
         self.assertEqual(worker_item.logs_count, 1)
-        
+
         self.assertIsNotNone(manager_item)
         self.assertIsNone(manager_item.type)
         self.assertEqual(manager_item.total_hours, 0.0)

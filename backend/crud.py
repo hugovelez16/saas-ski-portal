@@ -4,17 +4,19 @@ CRUD Operations Module.
 This module contains functions to interact with the database using the SQLAlchemy session.
 It abstracts the database queries for creating, reading, updating, and deleting records.
 """
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_
-import models, schemas, auth
-from sqlalchemy.orm.attributes import flag_modified
-import uuid
-from datetime import date, datetime
-from typing import Any, Dict, List, Optional
 import json
-from pydantic import TypeAdapter
-from redis_config import redis_manager, logger
+import uuid
+from datetime import date
+from datetime import datetime as _dt
+from typing import Any
 
+import models
+import schemas
+from pydantic import TypeAdapter
+from redis_config import logger, redis_manager
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm.attributes import flag_modified
 
 
 def get_user_by_email(db: Session, email: str):
@@ -42,7 +44,7 @@ def create_user(db: Session, user: schemas.UserCreate):
     # Basic name splitting logic or defaults
     first_name = user.first_name
     last_name = user.last_name
-    
+
     # If schema has full_name but model needs split
     if hasattr(user, 'full_name') and user.full_name:
         parts = user.full_name.split(' ', 1)
@@ -68,7 +70,7 @@ def create_user(db: Session, user: schemas.UserCreate):
         db.commit()
         db.refresh(db_user)
         _invalidate_company_rates(personal_company.id)
-        
+
     return db_user
 
 def update_user_status(db: Session, user_id: str, is_active: bool):
@@ -79,10 +81,15 @@ def update_user_status(db: Session, user_id: str, is_active: bool):
         db.refresh(user)
     return user
 
-def get_company_member(db: Session, user_id: str, company_id: str):
+def get_company_member(db: Session, user_id: Any, company_id: Any):
+    try:
+        cid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
+        uid = uuid.UUID(str(user_id)) if not isinstance(user_id, uuid.UUID) else user_id
+    except (ValueError, TypeError, AttributeError):
+        return None
     return db.query(models.CompanyMember).filter(
-        models.CompanyMember.user_id == user_id,
-        models.CompanyMember.company_id == company_id
+        models.CompanyMember.user_id == uid,
+        models.CompanyMember.company_id == cid
     ).first()
 
 def get_worklog_unit(type_def: dict) -> str:
@@ -108,7 +115,7 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     manual_amount = log_data.get('amount')
     if manual_amount is None:
         manual_amount = log_data.get('net_amount')
-        
+
     if manual_amount is not None:
         amount = _safe_float(manual_amount)
         return {
@@ -123,22 +130,22 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     unit = get_worklog_unit(company_def)
     base_rate = _safe_float(user_rate.get("base_rate", 0))
     is_gross = user_rate.get("is_gross", False)
-    
+
     # Tax configuration (Priority: rate override > company default > 0)
     user_overrides = user_rate.get("tax_overrides", {})
     company_defaults = company_tax_config if company_tax_config else {}
-    
+
     irpf_val = user_overrides.get("irpf")
     irpf = _safe_float(irpf_val if irpf_val is not None else company_defaults.get("irpf_base", 0))
-    
+
     ss_val = user_overrides.get("ss")
     ss = _safe_float(ss_val if ss_val is not None else company_defaults.get("social_security", 0))
-    
+
     extra_val = user_overrides.get("extra")
     extra = _safe_float(extra_val if extra_val is not None else company_defaults.get("extra", 0))
-    
+
     duration = 0.0
-    
+
     # 3. Calculate Base Amount by Unit
     if unit == "hours":
         duration = _safe_float(log_data.get('duration_hours') or 0)
@@ -149,10 +156,11 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
             start_h = st.hour + st.minute / 60.0
             end_h = et.hour + et.minute / 60.0
             diff = end_h - start_h
-            if diff < 0: diff += 24.0
+            if diff < 0:
+                diff += 24.0
             duration = diff
         amount_base = duration * base_rate
-        
+
     elif unit == "days":
         start_date = log_data.get('start_date')
         end_date = log_data.get('end_date')
@@ -170,11 +178,11 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     extras_total = 0.0
     applied_extras = {}
     user_extras = user_rate.get("extras", {})
-    
+
     # Get extra inputs from extra_data
     log_extras = log_data.get("extra_data", {})
     log_options = log_extras.get("opciones", {})
-    
+
     for extra_key, extra_val in user_extras.items():
         # If log has the key as True in extra_data['opciones']
         if log_options.get(extra_key) is True:
@@ -189,7 +197,7 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
 
     # 5. Apply Taxes and handle Gross/Net modes
     total_tax_rate = irpf + ss + extra
-    
+
     if is_gross:
         # Rate is Gross: Gross -> Net
         gross_total = amount_base + extras_total
@@ -201,22 +209,24 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
             gross_total = net_total / (1.0 - total_tax_rate)
         else:
             gross_total = net_total # Fallback
-            
+
     # 6. Generate Structured Display Lines (Option A: Structured Snapshot)
     # These are used by the frontend to render the "ticket" with proper styling.
     display_lines = []
-    
+
     # Base Income line
     base_label = f"{duration} {unit}"
-    if unit == "hours": base_label = f"{round(duration, 2)}h x {base_rate}€/h"
-    elif unit == "days": base_label = f"{round(duration, 1)}d x {base_rate}€/d"
-    
+    if unit == "hours":
+        base_label = f"{round(duration, 2)}h x {base_rate}€/h"
+    elif unit == "days":
+        base_label = f"{round(duration, 1)}d x {base_rate}€/d"
+
     display_lines.append({
         "type": "income",
         "label": base_label if is_gross else f"{base_label} (Neto)",
         "value": round(float(amount_base), 2)
     })
-    
+
     # Extras lines
     for ex_k, ex_v in applied_extras.items():
         display_lines.append({
@@ -224,14 +234,14 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
             "label": f"Extra: {ex_k}",
             "value": round(float(ex_v), 2)
         })
-        
+
     # Gross Total line
     display_lines.append({
         "type": "subtotal",
         "label": "Total Bruto",
         "value": round(float(gross_total), 2)
     })
-    
+
     # Taxes lines
     if ss > 0:
         display_lines.append({
@@ -254,7 +264,7 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
             "label": f"Otros ({round(extra*100, 2)}%)",
             "value": -round(float(gross_total * extra), 2)
         })
-        
+
     # Final Net line
     display_lines.append({
         "type": "total",
@@ -293,7 +303,7 @@ def get_company_rates(db: Session, company_id: str):
     Includes Redis caching with Failover.
     """
     cache_key = f"company_rates:{company_id}"
-    
+
     # 1. Try Cache
     cached_data = redis_manager.get(cache_key)
     if cached_data:
@@ -306,11 +316,11 @@ def get_company_rates(db: Session, company_id: str):
     members = db.query(models.CompanyMember) \
              .options(joinedload(models.CompanyMember.user)) \
              .filter(models.CompanyMember.company_id == company_id).all()
-    
+
     # 3. Serialize and Store
     try:
         # We use CompanyMemberResponse schema for consistent serialization (handles UUIDs/Dates)
-        adapter = TypeAdapter(List[schemas.CompanyMemberResponse])
+        adapter = TypeAdapter(list[schemas.CompanyMemberResponse])
         serialized = adapter.dump_python(members, mode='json')
         redis_manager.set(cache_key, json.dumps(serialized), ex=3600)
     except Exception as e:
@@ -329,11 +339,11 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
     """
     company_id = work_log.company_id
     user_id = str(work_log.user_id)
-    
+
     # Get definitions and rates
     company = db.query(models.Company).filter(models.Company.id == company_id).first()
     member = get_company_member(db, user_id, str(company_id))
-    
+
     if not company or not member:
         # Fallback or error handling - for now, basic defaults if missing
         defs = {}
@@ -346,7 +356,7 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
     work_type = work_log.type.value if hasattr(work_log.type, 'value') else work_log.type
     type_def = defs.get(work_type, {"unit": "hours", "label": work_type})
     type_rate = rates.get(work_type, {})
-    
+
     # Validation: Ensure rate is set (and non-zero) unless it's a manual override
     has_manual_override = getattr(work_log, 'amount', None) is not None or work_log.net_amount is not None
     if not has_manual_override and _safe_float(type_rate.get("base_rate", 0)) <= 0:
@@ -382,7 +392,7 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
         duration=calc["duration"],
         calculation_snapshot=calc["snapshot"]
     )
-    
+
     db.add(db_work_log)
     db.commit()
     db.refresh(db_work_log)
@@ -394,35 +404,35 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
     """
     group_id = work_log_bulk.group_id or uuid.uuid4()
     company_id = work_log_bulk.company_id
-    
+
     company = db.query(models.Company).filter(models.Company.id == company_id).first()
     tax_config = company.tax_config if company else None
     defs = company.worklog_definitions or {} if company else {}
-    
+
     # Identify work type definition
     work_type = work_log_bulk.type.value if hasattr(work_log_bulk.type, 'value') else work_log_bulk.type
     type_def = defs.get(work_type, {"unit": "hours", "label": work_type})
-    
+
     created_logs = []
-    
+
     for user_id in work_log_bulk.user_ids:
         member = get_company_member(db, str(user_id), str(company_id))
         rates = member.rates_config or {} if member else {}
         type_rate = rates.get(work_type, {})
-        
+
         # Validation: Ensure rate is set (and non-zero) unless it's a manual override
         has_manual_override = getattr(work_log_bulk, 'amount', None) is not None or work_log_bulk.net_amount is not None
         if not has_manual_override and _safe_float(type_rate.get("base_rate", 0)) <= 0:
             user_obj = db.query(models.User).filter(models.User.id == user_id).first()
             user_name = f"{user_obj.first_name} {user_obj.last_name}" if user_obj else str(user_id)
             raise ValueError(f"El usuario {user_name} no tiene un precio (rate) configurado para el tipo '{work_type}'.")
-        
+
         # Build individual log data
         individual_log_data = work_log_bulk.model_dump(by_alias=False)
         individual_log_data.pop('user_ids', None)
         individual_log_data['user_id'] = user_id
         individual_log_data['group_id'] = group_id
-        
+
         # Adjust end_date if it crosses midnight
         if get_worklog_unit(type_def) == "hours" and individual_log_data.get('start_time') and individual_log_data.get('end_time'):
             if individual_log_data['end_time'] < individual_log_data['start_time']:
@@ -431,19 +441,19 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
 
         # Use Dynamic Engine
         calc = calculate_dynamic_work_log(individual_log_data, type_def, type_rate, tax_config)
-        
+
         # Prepare DB Obj
         # Remove calculated and renamed fields
         for k in ['net_amount', 'gross_amount', 'rate_applied', 'duration', 'amount']:
             individual_log_data.pop(k, None)
-            
+
         # Handle group_id which is not a dedicated column
         group_id_val = individual_log_data.pop('group_id', None)
         extra_data_val = individual_log_data.get('extra_data') or {}
         if group_id_val:
             extra_data_val['group_id'] = str(group_id_val)
         individual_log_data['extra_data'] = extra_data_val
-            
+
         db_work_log = models.WorkLog(
             **individual_log_data,
             net_amount=calc["net_amount"],
@@ -451,15 +461,15 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
             duration=calc["duration"],
             calculation_snapshot=calc["snapshot"]
         )
-        
+
         db.add(db_work_log)
         created_logs.append(db_work_log)
-    
+
     db.commit()
     for log in created_logs:
         db.refresh(log)
-    
-    return created_logs[0] if created_logs else None 
+
+    return created_logs[0] if created_logs else None
 
 def get_work_logs(db: Session, skip: int = 0, limit: int = 100, user_id: str = None, company_id: str = None, start_date: date = None, end_date: date = None):
     query = db.query(models.WorkLog)
@@ -467,10 +477,10 @@ def get_work_logs(db: Session, skip: int = 0, limit: int = 100, user_id: str = N
         query = query.filter(models.WorkLog.user_id == user_id)
     if company_id:
         query = query.filter(models.WorkLog.company_id == company_id)
-    
+
     if start_date:
         query = query.filter(models.WorkLog.end_date >= start_date)
-    
+
     if end_date:
         query = query.filter(models.WorkLog.start_date <= end_date)
 
@@ -484,28 +494,27 @@ def update_work_log(db: Session, work_log_id: str, work_log: schemas.WorkLogCrea
     db_work_log = db.query(models.WorkLog).filter(models.WorkLog.id == work_log_id).first()
     if not db_work_log:
         return None
-    
+
     # If apply_to_group is true and we have a group_id
     group_id = getattr(db_work_log, 'group_id', None) or (db_work_log.extra_data.get('group_id') if db_work_log.extra_data else None)
-    
+
     if apply_to_group and group_id:
         # Find all logs in the group
-        import sqlalchemy
         logs_in_group = db.query(models.WorkLog).filter(
             or_(
                 models.WorkLog.group_id == group_id,
                 models.WorkLog.extra_data['group_id'].astext == str(group_id)
             )
         ).all()
-        
+
         primary_updated = None
         for log in logs_in_group:
             updated = _update_single_work_log(db, log, work_log)
             if str(log.id) == work_log_id:
                 primary_updated = updated
-        
+
         return primary_updated or (logs_in_group[0] if logs_in_group else None)
-    
+
     return _update_single_work_log(db, db_work_log, work_log)
 
 def _update_single_work_log(db: Session, db_work_log: models.WorkLog, work_log: schemas.WorkLogCreate):
@@ -513,21 +522,21 @@ def _update_single_work_log(db: Session, db_work_log: models.WorkLog, work_log: 
     current_data = {c.name: getattr(db_work_log, c.name) for c in db_work_log.__table__.columns}
     new_data = work_log.model_dump(exclude_unset=True)
     merged_data = {**current_data, **new_data}
-    
+
     # Recalculate
     owner_id = str(db_work_log.user_id)
     company_id = merged_data.get('company_id')
-    
+
     company = db.query(models.Company).filter(models.Company.id == company_id).first()
     member = get_company_member(db, owner_id, str(company_id))
-    
+
     defs = company.worklog_definitions or {} if company else {}
     rates = member.rates_config or {} if member else {}
-    
+
     work_type = merged_data.get('type')
     type_def = defs.get(work_type, {"unit": "hours", "label": str(work_type)})
     type_rate = rates.get(work_type, {})
-    
+
     # Force recalculation if net_amount not in NEW data
     if 'net_amount' not in new_data:
         merged_data.pop('net_amount', None)
@@ -540,16 +549,16 @@ def _update_single_work_log(db: Session, db_work_log: models.WorkLog, work_log: 
             new_data['end_date'] = merged_data['end_date']
 
     calc = calculate_dynamic_work_log(merged_data, type_def, type_rate, company.tax_config if company else None)
-    
+
     # Apply changes
     for key, value in new_data.items():
         setattr(db_work_log, key, value)
-        
+
     db_work_log.net_amount = calc["net_amount"]
     db_work_log.gross_amount = calc["gross_amount"]
     db_work_log.duration = calc["duration"]
     db_work_log.calculation_snapshot = calc["snapshot"]
-    
+
     db.commit()
     db.refresh(db_work_log)
     return db_work_log
@@ -578,38 +587,39 @@ def join_company(db: Session, user_id: str, company_id: str):
          db.refresh(new_member)
          _invalidate_company_rates(company_id)
          return new_member
-    
+
     # Healing: If existing member has NULL rates_config, fix it
     if member.rates_config is None:
         member.rates_config = {}
         db.commit()
         db.refresh(member)
         _invalidate_company_rates(company_id)
-    
+
     return member
 
 
 def get_user_companies(db: Session, user_id: str, include_inactive: bool = False):
     """Get companies the user is a member of (joined), merging member-specific settings."""
-    query = db.query(models.CompanyMember).filter(
+    query = db.query(models.CompanyMember).join(models.Company).filter(
         models.CompanyMember.user_id == user_id
     )
     if not include_inactive:
-        query = query.filter(models.CompanyMember.is_active == True)
-        
+        query = query.filter(models.CompanyMember.is_active == True, models.Company.is_active == True)
+
     members = query.all()
-    
+
     results = []
     for m in members:
         company = m.company
-        if not company: continue
-        
+        if not company:
+            continue
+
         c_settings = company.settings if isinstance(company.settings, dict) else {}
         m_settings = m.settings if isinstance(m.settings, dict) else {}
-        
+
         effective = c_settings.copy()
         effective.update(m_settings)
-        
+
         # Construct response object (dict compatible with Pydantic)
         results.append({
             "id": company.id,
@@ -617,6 +627,8 @@ def get_user_companies(db: Session, user_id: str, include_inactive: bool = False
             "fiscal_id": company.fiscal_id,
             "tax_config": company.tax_config,
             "worklog_definitions": company.worklog_definitions,
+            "is_active": company.is_active,
+            "is_managed": company.is_managed,
             "created_at": company.created_at,
             "updated_at": company.updated_at,
             "settings": effective,
@@ -637,27 +649,32 @@ def update_company_members_order(db: Session, company_id: str, user_ids: list[st
         models.CompanyMember.company_id == company_id,
         models.CompanyMember.user_id.in_(user_ids)
     ).all()
-    
+
     order_map = {str(uid): idx for idx, uid in enumerate(user_ids)}
-    
+
     for member in members:
         uid_str = str(member.user_id)
         if uid_str in order_map:
             member.sort_order = order_map[uid_str]
-            
+
     db.commit()
 
-def update_company_member_status(db: Session, company_id: str, user_id: str, is_active: bool):
+def update_company_member_status(db: Session, company_id: str, user_id: str, is_active: Any):
+    if isinstance(is_active, str):
+        is_active_bool = is_active.lower() in ("active", "true", "1", "approved")
+    else:
+        is_active_bool = bool(is_active)
+
     member = db.query(models.CompanyMember).filter(
         models.CompanyMember.company_id == company_id,
         models.CompanyMember.user_id == user_id
     ).first()
-    
+
     if member:
-        member.is_active = is_active
-        
+        member.is_active = is_active_bool
+
         # If deactivating, check if this company was the user's default company
-        if not is_active:
+        if not is_active_bool:
             user = db.query(models.User).filter(models.User.id == member.user_id).first()
             if user and user.default_company_id and str(user.default_company_id) == str(member.company_id):
                 # Find the next active membership
@@ -667,7 +684,7 @@ def update_company_member_status(db: Session, company_id: str, user_id: str, is_
                     models.CompanyMember.is_active == True
                 ).first()
                 user.default_company_id = next_active.company_id if next_active else None
-                
+
         db.commit()
         db.refresh(member)
         _invalidate_company_rates(company_id)
@@ -686,11 +703,11 @@ def update_company_member(db: Session, company_id: Any, user_id: Any, member_upd
         models.CompanyMember.company_id == cid,
         models.CompanyMember.user_id == uid
     ).first()
-    
+
     if member:
         # Use model_dump(exclude_unset=True)
         update_data = member_update.model_dump(exclude_unset=True, by_alias=False)
-        
+
         for key, value in update_data.items():
             if value is None and key in ["role", "is_active"]:
                 continue # Hardening: do not allow setting role or is_active to NULL
@@ -704,7 +721,7 @@ def update_company_member(db: Session, company_id: Any, user_id: Any, member_upd
                 setattr(member, key, value)
             if key in ["settings", "rates_config"]:
                  flag_modified(member, key)
-                 
+
         # Protection: if is_active is set to False, reassign user's default_company_id
         if update_data.get("is_active") == False:
             user = db.query(models.User).filter(models.User.id == member.user_id).first()
@@ -739,11 +756,19 @@ def create_company(db: Session, company: schemas.CompanyCreate):
     db.refresh(db_company)
     return db_company
 
-def get_company(db: Session, company_id: str):
-    return db.query(models.Company).filter(models.Company.id == company_id).first()
+def get_company(db: Session, company_id: Any):
+    try:
+        cid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return db.query(models.Company).filter(models.Company.id == cid).first()
 
-def update_company(db: Session, company_id: str, company: schemas.CompanyUpdate):
-    db_company = db.query(models.Company).filter(models.Company.id == company_id).first()
+def update_company(db: Session, company_id: Any, company: schemas.CompanyUpdate):
+    try:
+        cid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
+    except (ValueError, TypeError, AttributeError):
+        return None
+    db_company = db.query(models.Company).filter(models.Company.id == cid).first()
     if db_company:
         # Use model_dump(by_alias=False) to ensure we get snake_case property names for setattr
         update_data = company.model_dump(exclude_unset=True, by_alias=False)
@@ -765,7 +790,7 @@ def update_user(db: Session, user_id: Any, user: schemas.UserUpdate):
         uid = UUID(str(user_id)) if not isinstance(user_id, UUID) else user_id
     except ValueError:
         return None
-        
+
     db_user = db.query(models.User).filter(models.User.id == uid).first()
     if db_user:
         # Use model_dump(exclude_unset=True) to get only provided fields
@@ -789,7 +814,6 @@ def update_user(db: Session, user_id: Any, user: schemas.UserUpdate):
 
 # ─── Module & Subscription CRUD ────────────────────────────────────────────
 
-from datetime import datetime as _dt
 
 def get_modules(db: Session, include_inactive: bool = False):
     """Lista todos los módulos del catálogo."""
@@ -873,7 +897,7 @@ def delete_subscription(db: Session, sub_id: str):
         db.commit()
     return db_sub
 
-def user_has_module(db: Session, user_id: str, company_id: Optional[str], code_name: str) -> bool:
+def user_has_module(db: Session, user_id: str, company_id: str | None, code_name: str) -> bool:
     """
     Comprueba si un usuario tiene acceso a un módulo.
     Prioridad:
