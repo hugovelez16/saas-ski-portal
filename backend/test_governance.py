@@ -36,7 +36,7 @@ class TestCompanyGovernance(unittest.TestCase):
             first_name="Platform",
             last_name="Admin",
             role=models.UserRole.admin,
-            is_active=True
+            is_active=True,
         )
         self.platform_admin.is_platform_admin = True
 
@@ -48,7 +48,7 @@ class TestCompanyGovernance(unittest.TestCase):
             first_name="Manager",
             last_name="User",
             role=models.UserRole.user,
-            is_active=True
+            is_active=True,
         )
         self.manager_user.is_platform_admin = False
 
@@ -60,7 +60,7 @@ class TestCompanyGovernance(unittest.TestCase):
             first_name="Worker",
             last_name="User",
             role=models.UserRole.user,
-            is_active=True
+            is_active=True,
         )
         self.worker_user.is_platform_admin = False
 
@@ -72,38 +72,34 @@ class TestCompanyGovernance(unittest.TestCase):
             first_name="Other",
             last_name="Worker",
             role=models.UserRole.user,
-            is_active=True
+            is_active=True,
         )
         self.other_worker.is_platform_admin = False
 
         # Managed Company (is_managed=True, is_active=True)
-        self.managed_company = models.Company(
-            id=uuid.uuid4(),
-            name="Managed Corp",
-            is_active=True,
-            is_managed=True
-        )
+        self.managed_company = models.Company(id=uuid.uuid4(), name="Managed Corp", is_active=True, is_managed=True)
 
         # Autonomous Company (is_managed=False, is_active=True)
         self.autonomous_company = models.Company(
-            id=uuid.uuid4(),
-            name="Autonomous Freelancers",
-            is_active=True,
-            is_managed=False
+            id=uuid.uuid4(), name="Autonomous Freelancers", is_active=True, is_managed=False
         )
 
         # Inactive Company (is_active=False)
         self.inactive_company = models.Company(
-            id=uuid.uuid4(),
-            name="Suspended Company",
-            is_active=False,
-            is_managed=False
+            id=uuid.uuid4(), name="Suspended Company", is_active=False, is_managed=False
         )
 
-        self.db.add_all([
-            self.platform_admin, self.manager_user, self.worker_user, self.other_worker,
-            self.managed_company, self.autonomous_company, self.inactive_company
-        ])
+        self.db.add_all(
+            [
+                self.platform_admin,
+                self.manager_user,
+                self.worker_user,
+                self.other_worker,
+                self.managed_company,
+                self.autonomous_company,
+                self.inactive_company,
+            ]
+        )
         self.db.commit()
 
         # Memberships in Managed Company
@@ -111,20 +107,20 @@ class TestCompanyGovernance(unittest.TestCase):
             company_id=self.managed_company.id,
             user_id=self.manager_user.id,
             role=models.CompanyRole.manager,
-            is_active=True
+            is_active=True,
         )
         self.m_worker = models.CompanyMember(
             company_id=self.managed_company.id,
             user_id=self.worker_user.id,
             role=models.CompanyRole.worker,
             is_active=True,
-            rates_config={"particular": 30.0}
+            rates_config={"particular": 30.0},
         )
         self.m_other = models.CompanyMember(
             company_id=self.managed_company.id,
             user_id=self.other_worker.id,
             role=models.CompanyRole.worker,
-            is_active=True
+            is_active=True,
         )
 
         # Memberships in Autonomous Company
@@ -133,7 +129,7 @@ class TestCompanyGovernance(unittest.TestCase):
             user_id=self.worker_user.id,
             role=models.CompanyRole.worker,
             is_active=True,
-            rates_config={"particular": 25.0}
+            rates_config={"particular": 25.0},
         )
 
         # Memberships in Inactive Company
@@ -141,13 +137,10 @@ class TestCompanyGovernance(unittest.TestCase):
             company_id=self.inactive_company.id,
             user_id=self.worker_user.id,
             role=models.CompanyRole.worker,
-            is_active=True
+            is_active=True,
         )
 
-        self.db.add_all([
-            self.m_manager, self.m_worker, self.m_other,
-            self.m_auto_worker, self.m_inactive_worker
-        ])
+        self.db.add_all([self.m_manager, self.m_worker, self.m_other, self.m_auto_worker, self.m_inactive_worker])
         self.db.commit()
 
         # Set active scopes on user objects
@@ -169,7 +162,7 @@ class TestCompanyGovernance(unittest.TestCase):
                 user_id=str(self.other_worker.id),
                 member_data=update_data,
                 db=self.db,
-                current_user=self.manager_user
+                current_user=self.manager_user,
             )
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertIn("Solo los administradores", ctx.exception.detail)
@@ -182,7 +175,7 @@ class TestCompanyGovernance(unittest.TestCase):
             user_id=str(self.other_worker.id),
             member_data=update_data,
             db=self.db,
-            current_user=self.platform_admin
+            current_user=self.platform_admin,
         )
         self.assertEqual(result.role, "admin")
 
@@ -195,7 +188,7 @@ class TestCompanyGovernance(unittest.TestCase):
                 user_id=str(self.worker_user.id),
                 member_data=update_data,
                 db=self.db,
-                current_user=self.worker_user
+                current_user=self.worker_user,
             )
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertIn("tarifas son fijadas por los administradores", ctx.exception.detail)
@@ -209,28 +202,20 @@ class TestCompanyGovernance(unittest.TestCase):
             user_id=str(self.worker_user.id),
             member_data=update_data,
             db=self.db,
-            current_user=self.worker_user
+            current_user=self.worker_user,
         )
         self.assertEqual(result.rates_config, {"particular": 45.0})
 
     def test_inactive_company_blocks_access_to_non_admin(self):
         """Una empresa inactiva (is_active=False) rechaza el acceso a usuarios no plataforma."""
         with self.assertRaises(HTTPException) as ctx:
-            read_company(
-                company_id=str(self.inactive_company.id),
-                db=self.db,
-                current_user=self.worker_user
-            )
+            read_company(company_id=str(self.inactive_company.id), db=self.db, current_user=self.worker_user)
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertIn("Empresa inactiva o suspendida", ctx.exception.detail)
 
     def test_inactive_company_allows_access_to_platform_admin(self):
         """Un admin de plataforma si puede acceder a una empresa inactiva."""
-        comp = read_company(
-            company_id=str(self.inactive_company.id),
-            db=self.db,
-            current_user=self.platform_admin
-        )
+        comp = read_company(company_id=str(self.inactive_company.id), db=self.db, current_user=self.platform_admin)
         self.assertEqual(comp.id, self.inactive_company.id)
 
     def test_cannot_create_work_log_in_inactive_company(self):
@@ -241,14 +226,10 @@ class TestCompanyGovernance(unittest.TestCase):
             type="particular",
             startDate="2026-09-28",
             endDate="2026-09-28",
-            duration=2.0
+            duration=2.0,
         )
         with self.assertRaises(HTTPException) as ctx:
-            create_work_log(
-                work_log=log_data,
-                db=self.db,
-                current_user=self.worker_user
-            )
+            create_work_log(work_log=log_data, db=self.db, current_user=self.worker_user)
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertIn("Empresa inactiva o suspendida", ctx.exception.detail)
 
@@ -262,18 +243,14 @@ class TestCompanyGovernance(unittest.TestCase):
             type="particular",
             start_date=models.datetime.utcnow().date(),
             end_date=models.datetime.utcnow().date(),
-            duration=2.0
+            duration=2.0,
         )
         self.db.add(log)
         self.db.commit()
 
         # Intentar borrar como trabajador
         with self.assertRaises(HTTPException) as ctx:
-            delete_work_log(
-                work_log_id=str(log.id),
-                db=self.db,
-                current_user=self.worker_user
-            )
+            delete_work_log(work_log_id=str(log.id), db=self.db, current_user=self.worker_user)
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertIn("no pueden eliminar turnos", ctx.exception.detail)
 
@@ -284,15 +261,10 @@ class TestCompanyGovernance(unittest.TestCase):
             type="particular",
             startDate="2026-09-28",
             endDate="2026-09-28",
-            duration=3.0
+            duration=3.0,
         )
         with self.assertRaises(HTTPException) as ctx:
-            update_work_log(
-                work_log_id=str(log.id),
-                work_log=update_data,
-                db=self.db,
-                current_user=self.worker_user
-            )
+            update_work_log(work_log_id=str(log.id), work_log=update_data, db=self.db, current_user=self.worker_user)
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertIn("no pueden modificar turnos", ctx.exception.detail)
 

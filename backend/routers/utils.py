@@ -12,7 +12,9 @@ def check_manager_access(db: Session, manager: models.User, target_user_id: str)
     """
     Check if manager has active manager scope for target user's company.
     """
-    is_platform_admin = getattr(manager, "is_platform_admin", False) or getattr(manager, "role", None) == models.UserRole.admin
+    is_platform_admin = (
+        getattr(manager, "is_platform_admin", False) or getattr(manager, "role", None) == models.UserRole.admin
+    )
     if is_platform_admin:
         return True
 
@@ -23,13 +25,18 @@ def check_manager_access(db: Session, manager: models.User, target_user_id: str)
         return False
 
     # Check if target_user is a member of THIS active company
-    access = db.query(models.CompanyMember).filter(
-        models.CompanyMember.user_id == target_user_id,
-        models.CompanyMember.company_id == active_cid,
-        models.CompanyMember.is_active == True
-    ).first()
+    access = (
+        db.query(models.CompanyMember)
+        .filter(
+            models.CompanyMember.user_id == target_user_id,
+            models.CompanyMember.company_id == active_cid,
+            models.CompanyMember.is_active == True,
+        )
+        .first()
+    )
 
     return bool(access)
+
 
 def is_manager_of_company(db: Session, user: models.User, company_id: Any) -> bool:
     """
@@ -61,10 +68,8 @@ def require_module(code_name: str):
         ):
             ...
     """
-    def dependency(
-        current_user: models.User = Depends(auth.get_verified_user),
-        db: Session = Depends(get_db)
-    ):
+
+    def dependency(current_user: models.User = Depends(auth.get_verified_user), db: Session = Depends(get_db)):
         # Platform Admin siempre tiene acceso a todo
         if getattr(current_user, "is_platform_admin", False):
             return
@@ -77,8 +82,7 @@ def require_module(code_name: str):
         if not has_access:
             raise HTTPException(
                 status_code=403,
-                detail=f"Tu cuenta no tiene acceso al módulo '{code_name}'. Contacta con el administrador."
+                detail=f"Tu cuenta no tiene acceso al módulo '{code_name}'. Contacta con el administrador.",
             )
 
     return dependency
-

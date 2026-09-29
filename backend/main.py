@@ -4,6 +4,7 @@ Main API Application Module.
 This module defines the FastAPI application, API endpoints, and middleware configuration.
 It serves as the entry point for the backend service.
 """
+
 import asyncio
 import os
 from contextlib import asynccontextmanager
@@ -25,10 +26,15 @@ def perform_session_cleanup():
     from datetime import datetime, timedelta
 
     import models
+
     db = SessionLocal()
     try:
         limit_date = datetime.utcnow() - timedelta(days=30)
-        deleted_count = db.query(models.UserSession).filter(models.UserSession.last_active < limit_date).delete(synchronize_session=False)
+        deleted_count = (
+            db.query(models.UserSession)
+            .filter(models.UserSession.last_active < limit_date)
+            .delete(synchronize_session=False)
+        )
         db.commit()
         print(f"Session Cleanup: Borradas {deleted_count} sesiones inactivas expiradas.")
     except Exception as e:
@@ -36,6 +42,7 @@ def perform_session_cleanup():
         db.rollback()
     finally:
         db.close()
+
 
 async def cleanup_expired_sessions_loop():
     """
@@ -49,6 +56,7 @@ async def cleanup_expired_sessions_loop():
             print(f"Error en bucle de limpieza de sesiones: {e}")
         # Esperar 24 horas
         await asyncio.sleep(86400)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -85,6 +93,7 @@ async def lifespan(app: FastAPI):
     # Sembrado inicial de datos si procede
     try:
         from seed import seed_initial_data
+
         seed_initial_data()
     except Exception as seed_err:
         print(f"[Seed] No se pudo ejecutar el sembrado inicial en arranque: {seed_err}")
@@ -102,12 +111,14 @@ async def lifespan(app: FastAPI):
         print("Tarea periódica de limpieza de sesiones cancelada.")
     # Shutdown logic can be added here if needed (e.g. closing Redis connections)
 
+
 app = FastAPI(
     title="Vesotel Gestor Jornada API",
     description="API for managing work logs and user settings.",
     root_path="/api",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
+
 
 @app.get("/health", tags=["system"])
 def health_check():
@@ -124,6 +135,7 @@ async def log_requests(request: Request, call_next):
     except Exception as e:
         print(f"Request Failed: {e}")
         raise e
+
 
 # CORS Configuration
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
@@ -146,4 +158,5 @@ app.include_router(modules.router)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
