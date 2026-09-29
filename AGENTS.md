@@ -24,8 +24,9 @@ Este repositorio contiene la plataforma SaaS de gestion de escuelas de esqui, re
      - No usar emojis en respuestas o resumenes dirigidos al usuario.
    - El estilo debe ser 100% sobrio, tecnico y profesional en texto plano y markdown estandar.
 
-4. CREACION DE PULL REQUESTS CON PREFIJO WIP:
-   - Cada vez que el agente cree o proponga un Pull Request a peticion del usuario, el titulo debe comenzar obligatoriamente con el prefijo WIP: (ejemplo: WIP: feat(backend): implementar calculo de tarifas).
+4. TITULOS Y DESCRIPCIONES DE PULL REQUESTS (SIN PREFIJO WIP):
+   - Los titulos de los Pull Requests deben redactarse obligatoriamente en ESPANOL, siguiendo el formato convencional `<tipo>(<ambito>): <descripcion concisa>` o `<tipo>: <descripcion concisa>` directamente sin prefijo WIP: (ejemplo: `feat(backend): implementar calculo de tarifas`).
+   - No usar prefijo WIP: en titulos de Pull Requests.
 
 5. VERIFICACION OBLIGATORIA DE RAMA ANTES DE MODIFICAR CODIGO:
    - Antes de iniciar cambios o desarrollos, el agente DEBE verificar obligatoriamente en que rama se encuentra (git branch --show-current).
