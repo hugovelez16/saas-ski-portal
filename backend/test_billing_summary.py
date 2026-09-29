@@ -13,9 +13,7 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
         self.db = SessionLocal()
 
         # Create a test company
-        self.company = models.Company(
-            name=f"Test Billing Company {uuid.uuid4().hex[:6]}"
-        )
+        self.company = models.Company(name=f"Test Billing Company {uuid.uuid4().hex[:6]}")
         self.db.add(self.company)
         self.db.flush()
 
@@ -25,7 +23,7 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
             hashed_password="dummy_password",
             first_name="Manager",
             last_name="Test",
-            role=models.UserRole.user
+            role=models.UserRole.user,
         )
         self.db.add(self.user_manager)
         self.db.flush()
@@ -36,17 +34,14 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
             hashed_password="dummy_password",
             first_name="Worker",
             last_name="Test",
-            role=models.UserRole.user
+            role=models.UserRole.user,
         )
         self.db.add(self.user_worker)
         self.db.flush()
 
         # Create company memberships with rates_config in JSONB format
         self.membership1 = models.CompanyMember(
-            user_id=self.user_manager.id,
-            company_id=self.company.id,
-            role=models.CompanyRole.manager,
-            is_active=True
+            user_id=self.user_manager.id, company_id=self.company.id, role=models.CompanyRole.manager, is_active=True
         )
         self.membership2 = models.CompanyMember(
             user_id=self.user_worker.id,
@@ -57,12 +52,9 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
                 "particular": {
                     "base_rate": 20.0,
                     "is_gross": False,
-                    "tax_overrides": {
-                        "deduction_ss": 0.05,
-                        "deduction_irpf": 0.15
-                    }
+                    "tax_overrides": {"deduction_ss": 0.05, "deduction_irpf": 0.15},
                 }
-            }
+            },
         )
         self.db.add(self.membership1)
         self.db.add(self.membership2)
@@ -77,7 +69,7 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
             duration=8.0,
             net_amount=160.0,
             gross_amount=200.0,
-            type="particular"
+            type="particular",
         )
         self.db.add(self.log)
         self.db.flush()
@@ -97,7 +89,7 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
             hashed_password="dummy_password",
             first_name="Admin",
             last_name="Test",
-            role=models.UserRole.user
+            role=models.UserRole.user,
         )
         self.db.add(self.user_admin)
         self.db.flush()
@@ -118,7 +110,7 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
             start_date=date(2026, 7, 1),
             end_date=date(2026, 7, 31),
             db=self.db,
-            current_user=self.user_manager
+            current_user=self.user_manager,
         )
         self.assertIsInstance(response, list)
         self.assertGreaterEqual(len(response), 2)
@@ -153,7 +145,7 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
                 start_date=date(2026, 7, 1),
                 end_date=date(2026, 7, 31),
                 db=self.db,
-                current_user=self.user_worker
+                current_user=self.user_worker,
             )
         self.assertEqual(context.exception.status_code, 403)
 
@@ -166,10 +158,11 @@ class TestBillingSummaryEndpoint(unittest.TestCase):
             start_date=date(2026, 7, 1),
             end_date=date(2026, 7, 31),
             db=self.db,
-            current_user=self.user_admin
+            current_user=self.user_admin,
         )
         self.assertIsInstance(response, list)
         self.assertGreaterEqual(len(response), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

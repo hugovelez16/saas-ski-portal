@@ -7,10 +7,12 @@ import redis
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class RedisManager:
     """
     Manages Redis connections and operations with failover support.
     """
+
     def __init__(self):
         self.redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
         self._pool: redis.ConnectionPool | None = None
@@ -29,7 +31,7 @@ class RedisManager:
                     decode_responses=True,
                     socket_timeout=2.0,
                     socket_connect_timeout=2.0,
-                    retry_on_timeout=True
+                    retry_on_timeout=True,
                 )
                 self._client = redis.Redis(connection_pool=self._pool)
             except Exception as e:
@@ -96,6 +98,7 @@ class RedisManager:
             return self.client.ping()
         except Exception:
             return False
+
 
 # Global instance
 redis_manager = RedisManager()

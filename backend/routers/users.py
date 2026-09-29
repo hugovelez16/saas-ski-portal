@@ -1,4 +1,3 @@
-
 import auth
 import crud
 import email_utils
@@ -12,6 +11,7 @@ from routers.utils import check_manager_access
 
 router = APIRouter(prefix="/users", tags=["users"])
 
+
 @router.post("/", response_model=schemas.UserCreate)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     """
@@ -22,11 +22,12 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email already registered")
     return crud.create_user(db=db, user=user)
 
+
 @router.get("/me", response_model=schemas.UserResponse)
 def read_users_me(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user),
-    token: str = Depends(auth.get_token_from_request)
+    token: str = Depends(auth.get_token_from_request),
 ):
     # Detect impersonation from JWT scope
     is_impersonated = False
@@ -38,12 +39,12 @@ def read_users_me(
         except Exception:
             pass
 
-
     # Compute flags (is_manager and is_active_worker)
-    memberships = db.query(models.CompanyMember).filter(
-        models.CompanyMember.user_id == current_user.id,
-        models.CompanyMember.is_active == True
-    ).all()
+    memberships = (
+        db.query(models.CompanyMember)
+        .filter(models.CompanyMember.user_id == current_user.id, models.CompanyMember.is_active == True)
+        .all()
+    )
 
     current_user.is_manager = any(m.role in [models.CompanyRole.manager, models.CompanyRole.admin] for m in memberships)
     current_user.is_active_worker = len(memberships) > 0
@@ -59,6 +60,7 @@ def read_users_me(
 
     return user_data
 
+
 @router.get("/me/companies", response_model=list[schemas.CompanyResponse])
 def read_user_companies(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
     """
@@ -68,19 +70,22 @@ def read_user_companies(db: Session = Depends(get_db), current_user: models.User
         companies = db.query(models.Company).all()
         results = []
         for company in companies:
-            results.append({
-                "id": company.id,
-                "name": company.name,
-                "fiscal_id": company.fiscal_id,
-                "tax_config": company.tax_config,
-                "worklog_definitions": company.worklog_definitions,
-                "created_at": company.created_at,
-                "updated_at": company.updated_at,
-                "settings": company.settings if isinstance(company.settings, dict) else {},
-                "role": "admin"
-            })
+            results.append(
+                {
+                    "id": company.id,
+                    "name": company.name,
+                    "fiscal_id": company.fiscal_id,
+                    "tax_config": company.tax_config,
+                    "worklog_definitions": company.worklog_definitions,
+                    "created_at": company.created_at,
+                    "updated_at": company.updated_at,
+                    "settings": company.settings if isinstance(company.settings, dict) else {},
+                    "role": "admin",
+                }
+            )
         return results
     return crud.get_user_companies(db, str(current_user.id))
+
 
 @router.get("/{user_id}", response_model=schemas.UserResponse)
 def read_user(user_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
@@ -92,15 +97,24 @@ def read_user(user_id: str, db: Session = Depends(get_db), current_user: models.
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+
 @router.get("", response_model=list[schemas.UserResponse])
-def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+def read_users(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
     if not getattr(current_user, "is_platform_admin", False):
         raise HTTPException(status_code=403, detail="Not authorized")
     users = crud.get_users(db, skip=skip, limit=limit)
     return users
 
+
 @router.post("", response_model=schemas.UserResponse)
-async def create_user_admin(user: schemas.UserCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+async def create_user_admin(
+    user: schemas.UserCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+):
     if not getattr(current_user, "is_platform_admin", False):
         raise HTTPException(status_code=403, detail="Not authorized")
     db_user = crud.get_user_by_email(db, email=user.email)
@@ -109,8 +123,9 @@ async def create_user_admin(user: schemas.UserCreate, db: Session = Depends(get_
 
     # Option A: Random unusable Password
     import secrets
+
     unusable_password = secrets.token_urlsafe(32)
-    user.password = unusable_password # Override with random secure string
+    user.password = unusable_password  # Override with random secure string
 
     created_user = crud.create_user(db=db, user=user)
 
@@ -131,23 +146,39 @@ async def create_user_admin(user: schemas.UserCreate, db: Session = Depends(get_
 
     return created_user
 
+
 @router.put("/{user_id}/status")
-def toggle_user_status(user_id: str, is_active: bool, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+def toggle_user_status(
+    user_id: str,
+    is_active: bool,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
     if not getattr(current_user, "is_platform_admin", False):
         raise HTTPException(status_code=403, detail="Not authorized")
     user = crud.update_user_status(db, user_id=user_id, is_active=is_active)
     if not user:
-         raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found")
     return {"message": "Status updated", "is_active": user.is_active}
 
+
 @router.put("/me", response_model=schemas.UserResponse)
-def update_user_me(user: schemas.UserSelfUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+def update_user_me(
+    user: schemas.UserSelfUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
     # Create a full UserUpdate object but only with allowed fields
     db_user = crud.update_user(db, str(current_user.id), schemas.UserUpdate(**user.dict()))
     return db_user
 
+
 @router.post("/me/change-password")
-def change_password(data: schemas.PasswordChange, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+def change_password(
+    data: schemas.PasswordChange,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
     # Verify current password
     if not auth.verify_password(data.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect current password")
@@ -159,8 +190,11 @@ def change_password(data: schemas.PasswordChange, db: Session = Depends(get_db),
     db.commit()
     return {"message": "Password updated successfully"}
 
+
 @router.post("/{user_id}/reset-password-email")
-async def reset_password_via_email(user_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+async def reset_password_via_email(
+    user_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+):
     """
     Admin only: Reset user password to a random one and email it.
     """
@@ -168,7 +202,7 @@ async def reset_password_via_email(user_id: str, db: Session = Depends(get_db), 
         # Manager check
         is_manager = check_manager_access(db, current_user, user_id)
         if not is_manager:
-             raise HTTPException(status_code=403, detail="Not authorized")
+            raise HTTPException(status_code=403, detail="Not authorized")
 
     user = crud.get_user(db, user_id)
     if not user:
@@ -188,8 +222,14 @@ async def reset_password_via_email(user_id: str, db: Session = Depends(get_db), 
 
     return {"message": "Password reset and email sent"}
 
+
 @router.put("/{user_id}", response_model=schemas.UserResponse)
-def update_user(user_id: str, user: schemas.UserUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+def update_user(
+    user_id: str,
+    user: schemas.UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
     if not getattr(current_user, "is_platform_admin", False):
         raise HTTPException(status_code=403, detail="Not authorized")
     db_user = crud.update_user(db, user_id, user)
@@ -197,8 +237,11 @@ def update_user(user_id: str, user: schemas.UserUpdate, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="User not found")
     return db_user
 
+
 @router.get("/{user_id}/companies", response_model=list[schemas.CompanyResponse])
-def read_user_companies_admin(user_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+def read_user_companies_admin(
+    user_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+):
     is_platform_admin = getattr(current_user, "is_platform_admin", False)
     if not is_platform_admin and not check_manager_access(db, current_user, user_id):
         raise HTTPException(status_code=403, detail="Not authorized")

@@ -19,7 +19,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
-## [0.5.0] - 2026-09-29
+## [0.6.0] - 2026-09-29
 
 ### Tipo de Cambio SemVer
 
@@ -46,6 +46,33 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - **Suite de Pruebas**:
   - Nuevos tests frontend en `manager-dashboard.test.tsx`, `companies.test.ts` y `utils.test.ts` (85 pruebas unitarias passing).
   - Nuevos tests backend en `test_dashboard_summary.py` (cálculo de métricas, control de acceso y RBAC).
+
+---
+
+## [0.5.0] - 2026-09-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Transicion estructural a Arquitectura Hexagonal (Puertos y Adaptadores) y Clean Architecture, desacoplamiento del motor de calculo salarial y fiscal en capas de dominio puras, proteccion de endpoints y saneamiento contra replay attacks.
+
+### Funcionalidades y Mejoras
+
+- **Arquitectura Hexagonal en Backend (`backend/src/`)**:
+  - Implementadas entidades de dominio puras (`User`, `Company`, `CompanyMember`, `WorkLog`) y Value Objects inmutables (`Money`, `WorkDuration`, `TaxConfiguration`, `RateDefinition`, `CalculationSnapshot`).
+  - Creado `WorkLogCalculationService` para liquidacion de jornadas y retenciones impositivas, 100% aislado de SQLAlchemy, FastAPI y Redis.
+  - Definidos puertos abstractos de repositorio (`UserRepositoryPort`, `CompanyRepositoryPort`, `WorkLogRepositoryPort`).
+  - Desarrollados casos de uso de aplicacion (`CreateWorkLogUseCase`).
+  - Implementados adaptadores y mappers de persistencia bidireccionales (`SqlAlchemyUserMapper`, `SqlAlchemyCompanyMapper`, `SqlAlchemyWorkLogMapper`, `SqlAlchemyWorkLogRepository`, `SqlAlchemyUserRepository`, `SqlAlchemyCompanyRepository`).
+- **Seguridad, Autenticacion y Endpoints**:
+  - Protegido el endpoint `GET /companies` requiriendo autenticacion obligatoria con `auth.get_verified_user` y filtrado multi-tenant por rol.
+  - Subsanada vulnerabilidad de replay attack en reseteo de contrasenas mediante un solo uso de `jti` en tokens criptograficos.
+  - Prevenido bypass de 2FA en incorporacion de miembros de empresa (`add_company_member`).
+- **Clean Architecture en Frontend (`frontend/src/`)**:
+  - Implementados Value Objects (`Money.ts`), entidades de dominio (`WorkLog.ts`) y servicios de calculo mensuales desacoplados (`WorkLogCalculationService.ts`).
+  - Creado cliente HTTP tipado (`AxiosHttpClient.ts`) implementando el puerto `IHttpClient.ts`.
+  - Desarrollados mappers (`WorkLogMapper.ts`) y repositorios API (`ApiWorkLogRepository.ts`).
+- **Aseguramiento de Calidad**:
+  - 100% de aprobacion en las suites de pruebas automatizadas en Pytest (backend) y Vitest (frontend).
 
 ---
 
