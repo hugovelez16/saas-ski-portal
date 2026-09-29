@@ -115,12 +115,8 @@ else:
 
 try:
     fernet = Fernet(ENCRYPTION_KEY.encode())
-<<<<<<< HEAD
-except Exception:
-=======
 except Exception as e:
     print(f"Warning: Invalid ENCRYPTION_KEY ({e}). Generating a new ephemeral Fernet key for local development.")
->>>>>>> origin/develop
     ENCRYPTION_KEY = Fernet.generate_key().decode()
     fernet = Fernet(ENCRYPTION_KEY.encode())
 
