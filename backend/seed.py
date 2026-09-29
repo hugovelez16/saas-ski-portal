@@ -22,13 +22,13 @@ def seed_initial_data(db: Session = None) -> bool:
     Es idempotente: si el usuario ya existe, no realiza modificaciones.
     """
     admin_email = os.getenv("INITIAL_ADMIN_EMAIL")
-    admin_password = os.getenv("INITIAL_ADMIN_PASSWORD", "123456")
+    admin_password = os.getenv("INITIAL_ADMIN_PASSWORD")
     first_name = os.getenv("INITIAL_ADMIN_FIRST_NAME", "Admin")
     last_name = os.getenv("INITIAL_ADMIN_LAST_NAME", "Vesotel")
     company_name = os.getenv("INITIAL_COMPANY_NAME", "Vesotel Ski School")
 
-    if not admin_email:
-        print("[Seed] INITIAL_ADMIN_EMAIL no configurado. Omitiendo sembrado inicial.")
+    if not admin_email or not admin_password:
+        print("[Seed] INITIAL_ADMIN_EMAIL o INITIAL_ADMIN_PASSWORD no configurados. Omitiendo sembrado inicial.")
         return False
 
     should_close = False
