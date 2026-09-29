@@ -69,8 +69,12 @@ type MemberConfigValues = z.infer<typeof memberConfigSchema>;
 
 function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, company: any, onUpdate: () => void }) {
     const { toast } = useToast();
-    const worklogDefinitions = company.worklogDefinitions || {};
-    const ratesConfig = company.ratesConfig || {};
+    const worklogDefinitionsStr = JSON.stringify(company.worklogDefinitions || {});
+    const ratesConfigStr = JSON.stringify(company.ratesConfig || {});
+
+    const worklogDefinitions = useMemo(() => {
+        return company.worklogDefinitions || {};
+    }, [worklogDefinitionsStr]);
 
     const form = useForm<MemberConfigValues>({
         resolver: zodResolver(memberConfigSchema),
@@ -88,14 +92,16 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
     });
 
     useEffect(() => {
-        const shiftKeys = Object.keys(worklogDefinitions);
+        const definitions = JSON.parse(worklogDefinitionsStr);
+        const rates = JSON.parse(ratesConfigStr);
+        const shiftKeys = Object.keys(definitions);
         const initialRates: Record<string, number> = {};
         let isGross = false;
         let taxOverrides: { ss: number | null, irpf: number, extra: number } = { ss: null, irpf: 0, extra: 0 };
 
         let foundTaxes = false;
         for (const key of shiftKeys) {
-            const shiftData = ratesConfig[key];
+            const shiftData = rates[key];
             if (shiftData && typeof shiftData === 'object') {
                 initialRates[key] = shiftData.base_rate || 0;
                 if (!foundTaxes) {
@@ -121,7 +127,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
             rates: initialRates,
             taxOverrides
         });
-    }, [company, worklogDefinitions, ratesConfig, form]);
+    }, [company.id, company.role, company.isActiveMember, worklogDefinitionsStr, ratesConfigStr, form]);
 
     const mutation = useMutation({
         mutationFn: (data: any) => updateCompanyMember(company.id, user.id, data),
@@ -137,19 +143,20 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
         const shiftKeys = Object.keys(worklogDefinitions);
 
         for (const key of shiftKeys) {
+            const ssVal = values.taxOverrides.ss;
+            const validSS = ssVal !== null && ssVal !== undefined && !isNaN(Number(ssVal)) ? Number(ssVal) / 100 : null;
             newRatesConfig[key] = {
                 base_rate: Number(values.rates[key]) || 0,
                 is_gross: values.isGross,
                 tax_overrides: {
-                    ss: values.taxOverrides.ss !== null ? Number(values.taxOverrides.ss) / 100 : null,
-                    irpf: Number(values.taxOverrides.irpf) / 100,
-                    extra: Number(values.taxOverrides.extra) / 100
+                    ss: validSS,
+                    irpf: !isNaN(Number(values.taxOverrides.irpf)) ? Number(values.taxOverrides.irpf) / 100 : 0,
+                    extra: !isNaN(Number(values.taxOverrides.extra)) ? Number(values.taxOverrides.extra) / 100 : 0
                 }
             };
         }
 
         mutation.mutate({
-            role: values.role,
             isActive: values.isActive,
             ratesConfig: newRatesConfig
         });
@@ -190,28 +197,14 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                     <Shield className="h-4 w-4" />
                                     Membresía
                                 </h3>
-                                <FormField
-                                    control={form.control}
-                                    name="role"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel className="text-xs uppercase text-muted-foreground font-bold tracking-wider">Rol en Empresa</FormLabel>
-                                            <Select onValueChange={field.onChange} value={field.value}>
-                                                <FormControl>
-                                                    <SelectTrigger className="h-9">
-                                                        <SelectValue placeholder="Seleccionar rol" />
-                                                    </SelectTrigger>
-                                                </FormControl>
-                                                <SelectContent>
-                                                    <SelectItem value="worker">Trabajador</SelectItem>
-                                                    <SelectItem value="manager">Gestor / Supervisor</SelectItem>
-                                                    <SelectItem value="admin">Administrador Empresa</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
+                                <div className="space-y-1">
+                                    <label className="text-xs uppercase text-muted-foreground font-bold tracking-wider">Rol en Empresa</label>
+                                    <div className="pt-1">
+                                        <Badge variant="outline" className="text-xs font-medium">
+                                            {company.role === 'admin' ? 'Administrador' : company.role === 'manager' ? 'Gestor' : 'Trabajador'}
+                                        </Badge>
+                                    </div>
+                                </div>
                                 <FormField
                                     control={form.control}
                                     name="isActive"
@@ -454,7 +447,7 @@ export default function ManagerUserDetailsPage({ params }: { params: Promise<{ u
 
     const visibleWorkLogs = useMemo(() => {
         return workLogs.filter((log: any) =>
-            !log.companyId || visibleCompanies.some((c: any) => c.id === log.companyId)
+            Boolean(log.companyId) && visibleCompanies.some((c: any) => c.id === log.companyId)
         );
     }, [workLogs, visibleCompanies]);
 
@@ -470,7 +463,7 @@ export default function ManagerUserDetailsPage({ params }: { params: Promise<{ u
     }, [selectedLog, memberConfigs, companies]);
 
     const filteredLogs = useMemo(() => {
-        let result = [...workLogs];
+        let result = [...visibleWorkLogs];
         if (filters.date) {
             const { from, to } = filters.date;
             result = result.filter((log: any) => {
@@ -539,7 +532,7 @@ export default function ManagerUserDetailsPage({ params }: { params: Promise<{ u
         }
 
         return result;
-    }, [workLogs, filters, sortConfig, companies]);
+    }, [visibleWorkLogs, filters, sortConfig, companies]);
 
 
     // Stats Calculation

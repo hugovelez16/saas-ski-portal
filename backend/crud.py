@@ -659,17 +659,22 @@ def update_company_members_order(db: Session, company_id: str, user_ids: list[st
 
     db.commit()
 
-def update_company_member_status(db: Session, company_id: str, user_id: str, is_active: bool):
+def update_company_member_status(db: Session, company_id: str, user_id: str, is_active: Any):
+    if isinstance(is_active, str):
+        is_active_bool = is_active.lower() in ("active", "true", "1", "approved")
+    else:
+        is_active_bool = bool(is_active)
+
     member = db.query(models.CompanyMember).filter(
         models.CompanyMember.company_id == company_id,
         models.CompanyMember.user_id == user_id
     ).first()
 
     if member:
-        member.is_active = is_active
+        member.is_active = is_active_bool
 
         # If deactivating, check if this company was the user's default company
-        if not is_active:
+        if not is_active_bool:
             user = db.query(models.User).filter(models.User.id == member.user_id).first()
             if user and user.default_company_id and str(user.default_company_id) == str(member.company_id):
                 # Find the next active membership

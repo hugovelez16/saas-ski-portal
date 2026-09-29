@@ -20,7 +20,7 @@ export function PrintableReport({ workLogs, companies, title, subtitle, dateRang
 
     // --- Stats Calculation (Similar to OverviewV3) ---
     const stats = useMemo(() => {
-        const income = workLogs.reduce((acc, log) => acc + (Number(log.amount) || 0), 0);
+        const income = workLogs.reduce((acc, log) => acc + Number(log.netAmount ?? log.grossAmount ?? log.amount ?? 0), 0);
 
         // Detailed Calc
         let particularHours = 0;
@@ -31,19 +31,24 @@ export function PrintableReport({ workLogs, companies, title, subtitle, dateRang
 
         workLogs.forEach(log => {
             const logDate = log.date || log.startDate;
-            if (log.type === 'tutorial' && log.startDate && log.endDate) {
+            let days = 1;
+            if (log.startDate && log.endDate && log.startDate !== log.endDate) {
                 try {
                     const range = eachDayOfInterval({
                         start: parseISO(log.startDate),
                         end: parseISO(log.endDate)
                     });
                     range.forEach(d => tutorialDates.add(format(d, 'yyyy-MM-dd')));
-                    // Tutorial hours calc: 6 * days.
-                    tutorialHours += (range.length * 6);
-                } catch (e) { }
-            } else if (log.type === 'particular' && logDate) {
+                    days = range.length;
+                } catch (e) {
+                    days = 1;
+                }
+                const dur = Number(log.durationHours ?? log.duration ?? days);
+                tutorialHours += dur;
+            } else if (logDate) {
                 particularDates.add(format(new Date(logDate), 'yyyy-MM-dd'));
-                particularHours += (Number(log.durationHours) || 0);
+                const dur = Number(log.durationHours ?? log.duration ?? 1);
+                particularHours += dur;
             }
         });
 
@@ -104,7 +109,7 @@ export function PrintableReport({ workLogs, companies, title, subtitle, dateRang
             const dStr = log.date || (log.startDate ? format(new Date(log.startDate), 'yyyy-MM-dd') : '');
             if (dStr) {
                 const current = grouped.get(dStr) || 0;
-                grouped.set(dStr, current + (Number(log.amount) || 0));
+                grouped.set(dStr, current + Number(log.netAmount ?? log.grossAmount ?? log.amount ?? 0));
             }
         });
 
@@ -297,7 +302,7 @@ export function PrintableReport({ workLogs, companies, title, subtitle, dateRang
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right font-bold py-2 text-xs text-slate-800">
-                                            {log.amount ? formatCurrency(Number(log.amount)) : '-'}
+                                            {formatCurrency(Number(log.netAmount ?? log.grossAmount ?? log.amount ?? 0))}
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -305,7 +310,7 @@ export function PrintableReport({ workLogs, companies, title, subtitle, dateRang
                                 <TableRow className="bg-slate-100 font-bold border-t-2 border-slate-900">
                                     <TableCell colSpan={4} className="text-right py-2 text-xs uppercase">Total {month}</TableCell>
                                     <TableCell className="text-right py-2 text-xs">
-                                        {formatCurrency(logs.reduce((sum, l) => sum + (Number(l.amount) || 0), 0))}
+                                        {formatCurrency(logs.reduce((sum, l) => sum + Number(l.netAmount ?? l.grossAmount ?? l.amount ?? 0), 0))}
                                     </TableCell>
                                 </TableRow>
                             </TableBody>

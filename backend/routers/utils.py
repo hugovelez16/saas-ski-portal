@@ -12,14 +12,14 @@ def check_manager_access(db: Session, manager: models.User, target_user_id: str)
     """
     Check if manager has active manager scope for target user's company.
     """
-    is_platform_admin = getattr(manager, "is_platform_admin", False)
+    is_platform_admin = getattr(manager, "is_platform_admin", False) or getattr(manager, "role", None) == models.UserRole.admin
     if is_platform_admin:
         return True
 
     active_cid = getattr(manager, "active_company_id", None)
     active_role = getattr(manager, "active_role", None)
 
-    if not active_cid or active_role != "manager":
+    if not active_cid or active_role not in ("manager", "admin"):
         return False
 
     # Check if target_user is a member of THIS active company
@@ -35,13 +35,13 @@ def is_manager_of_company(db: Session, user: models.User, company_id: Any) -> bo
     """
     Check if user has active manager scope in the specified company.
     """
-    if getattr(user, "is_platform_admin", False):
+    if getattr(user, "is_platform_admin", False) or getattr(user, "role", None) == models.UserRole.admin:
         return True
 
     active_cid = getattr(user, "active_company_id", None)
     active_role = getattr(user, "active_role", None)
 
-    if str(active_cid) == str(company_id) and active_role == "manager":
+    if str(active_cid) == str(company_id) and active_role in ("manager", "admin"):
         return True
 
     return False

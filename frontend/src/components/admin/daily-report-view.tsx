@@ -165,9 +165,11 @@ export function DailyReportView({ companyId }: DailyReportViewProps) {
                                                 const startDecimal = sh + sm / 60;
                                                 const endDecimal = eh + em / 60;
 
-                                                start = Math.max(8, startDecimal);
-                                                const end = Math.min(19, endDecimal);
-                                                duration = end - start;
+                                                const clampedStart = Math.min(Math.max(startDecimal, 8), 19);
+                                                const clampedEnd = Math.min(Math.max(endDecimal, 8), 19);
+
+                                                start = clampedStart;
+                                                duration = Math.max(clampedEnd - clampedStart, 0.4);
                                             } else {
                                                 // Tutorial or whole day
                                                 isFullDay = true;
@@ -178,10 +180,9 @@ export function DailyReportView({ companyId }: DailyReportViewProps) {
                                             // Convert to percentage
                                             // Scale: 8 to 19 = 11 hours
                                             const totalHours = 11;
-                                            const left = ((start - 8) / totalHours) * 100;
-                                            const width = (duration / totalHours) * 100;
-
-                                            if (width <= 0) return null;
+                                            const rawLeft = ((start - 8) / totalHours) * 100;
+                                            const left = Math.min(Math.max(0, rawLeft), 96);
+                                            const width = Math.min(Math.max(4, (duration / totalHours) * 100), 100 - left);
 
                                             return (
                                                 <TooltipProvider key={log.id}>
@@ -197,13 +198,7 @@ export function DailyReportView({ companyId }: DailyReportViewProps) {
                                                                     width: `${Math.min(100, width)}%`
                                                                 }}
                                                                 onClick={() => {
-                                                                    // Open log details (Navigation or Dialog?)
-                                                                    // User said "si pincho sobre un worklog que se abran los detalles"
-                                                                    // Maybe log id alert for now or router push to log page?
-                                                                    // We don't have a log detail page yet.
-                                                                    // I'll leave a console log or TODO.
-                                                                    // Or reusing UserWorkLogDialog in read-only mode?
-                                                                    alert(`Log Details: ${log.description || 'No description'} (${log.amount} EUR)`)
+                                                                    // Visualizacion de parte
                                                                 }}
                                                             >
                                                                 {isFullDay ? "Full Day" : `${log.startTime}-${log.endTime}`}

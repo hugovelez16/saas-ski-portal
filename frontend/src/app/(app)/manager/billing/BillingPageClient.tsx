@@ -86,8 +86,8 @@ export default function ManagerBillingPage() {
                 const unit = def?.unit ?? 'hours';
                 const label = def?.label ?? item.type;
 
-                // Quantity is totalHours if unit is hours, otherwise uniqueDays
-                const quantity = unit === 'hours' ? item.totalHours : item.uniqueDays;
+                // Quantity is totalHours if unit is hours, logsCount if unit is fixed, otherwise uniqueDays
+                const quantity = unit === 'hours' ? item.totalHours : unit === 'fixed' ? item.logsCount : item.uniqueDays;
 
                 row.byType[item.type] = {
                     typeKey: item.type,
@@ -140,8 +140,9 @@ export default function ManagerBillingPage() {
     const handleExportCsv = () => {
         if (billingData.length === 0) return;
         const csvConfig = mkConfig({
-            fieldSeparator: ',',
-            decimalSeparator: '.',
+            fieldSeparator: ';',
+            decimalSeparator: ',',
+            useBom: true,
             useKeysAsHeaders: true,
             filename: `Facturacion_Mensual_${date?.from ? format(date.from, 'MM-yyyy') : 'report'}`
         });
@@ -150,15 +151,16 @@ export default function ManagerBillingPage() {
             const base: Record<string, any> = {
                 Nombre: row.userName,
                 Email: row.userEmail,
+                Registros: row.logsCount,
             };
             Object.entries(worklogDefs).forEach(([typeKey, def]) => {
                 const summary = row.byType[typeKey];
-                const unitLabel = def.unit === 'hours' ? 'h' : 'días';
+                const unitLabel = def.unit === 'hours' ? 'h' : def.unit === 'fixed' ? 'serv.' : 'días';
                 base[`${def.label} (${unitLabel})`] = summary
                     ? summary.quantity.toFixed(def.unit === 'hours' ? 2 : 0)
                     : '0';
             });
-            base['Total Bruto (€)'] = (row.totalGross || row.totalNet).toFixed(2);
+            base['Total Bruto (€)'] = (row.totalGross ?? row.totalNet ?? 0).toFixed(2);
             base['Total Neto (€)'] = row.totalNet.toFixed(2);
             return base;
         });

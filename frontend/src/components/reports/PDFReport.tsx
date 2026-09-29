@@ -297,7 +297,7 @@ export const PDFReport = ({ workLogs, companies, title, subtitle, dateRange }: P
 
     // --- Logic Reuse (Stats) ---
     const stats = useMemo(() => {
-        const income = workLogs.reduce((acc, log) => acc + (Number(log.amount) || 0), 0);
+        const income = workLogs.reduce((acc, log) => acc + Number(log.netAmount ?? log.grossAmount ?? log.amount ?? 0), 0);
 
         let particularHours = 0;
         let tutorialHours = 0;
@@ -310,15 +310,21 @@ export const PDFReport = ({ workLogs, companies, title, subtitle, dateRange }: P
             if (logDate) allLogDates.push(new Date(logDate));
             if (log.endDate) allLogDates.push(new Date(log.endDate));
 
-            if (log.type === 'tutorial' && log.startDate && log.endDate) {
+            let days = 1;
+            if (log.startDate && log.endDate && log.startDate !== log.endDate) {
                 try {
                     const range = eachDayOfInterval({ start: parseISO(log.startDate), end: parseISO(log.endDate) });
                     range.forEach(d => tutorialDates.add(format(d, 'yyyy-MM-dd')));
-                    tutorialHours += (range.length * 6);
-                } catch (e) { }
-            } else if (log.type === 'particular' && logDate) {
+                    days = range.length;
+                } catch (e) {
+                    days = 1;
+                }
+                const dur = Number(log.durationHours ?? log.duration ?? days);
+                tutorialHours += dur;
+            } else if (logDate) {
                 particularDates.add(format(new Date(logDate), 'yyyy-MM-dd'));
-                particularHours += (Number(log.durationHours) || 0);
+                const dur = Number(log.durationHours ?? log.duration ?? 1);
+                particularHours += dur;
             }
         });
 
@@ -578,7 +584,7 @@ export const PDFReport = ({ workLogs, companies, title, subtitle, dateRange }: P
                                     </View>
                                     <View style={styles.colAmount}>
                                         <Text style={[styles.tableCell, { fontWeight: 'bold' }]}>
-                                            {log.amount ? formatCurrency(Number(log.amount)) : '-'}
+                                            {formatCurrency(Number(log.netAmount ?? log.grossAmount ?? log.amount ?? 0))}
                                         </Text>
                                     </View>
                                 </View>
@@ -589,7 +595,7 @@ export const PDFReport = ({ workLogs, companies, title, subtitle, dateRange }: P
                                 <View style={{ flex: 1 }}><Text style={[styles.tableCell, { textAlign: 'right', fontWeight: 'bold', textTransform: 'uppercase', marginRight: 10 }]}>Total {month}</Text></View>
                                 <View style={styles.colAmount}>
                                     <Text style={[styles.tableCell, { fontWeight: 'bold' }]}>
-                                        {formatCurrency(logs.reduce((sum, l) => sum + (Number(l.amount) || 0), 0))}
+                                        {formatCurrency(logs.reduce((sum, l) => sum + Number(l.netAmount ?? l.grossAmount ?? l.amount ?? 0), 0))}
                                     </Text>
                                 </View>
                             </View>

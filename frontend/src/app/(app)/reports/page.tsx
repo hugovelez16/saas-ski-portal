@@ -315,29 +315,60 @@ export default function ReportsPage() {
             if (reportType === 'company') {
                 const { CompanyPDFReport } = await import("@/components/reports/CompanyPDFReport");
 
-                const statsMap = new Map<string, { name: string, hours: number, amount: number, days: number, dates: Set<string> }>();
+                const statsMap = new Map<string, { 
+                    name: string; 
+                    hours: number; 
+                    amount: number; 
+                    grossAmount: number;
+                    netAmount: number;
+                    days: number; 
+                    dates: Set<string>;
+                }>();
+
+                const company = companies.find(c => c.id === selectedCompanyId) || { 
+                    id: '0', 
+                    name: 'Company', 
+                    settings: {},
+                    taxConfig: { social_security: 0, irpf_base: 0 },
+                    worklogDefinitions: {}
+                } as any;
 
                 logs.forEach(log => {
                     const u = userOptions.find(o => o.id === log.userId);
                     const name = u ? u.name : `User ${log.userId}`;
 
                     if (!statsMap.has(log.userId)) {
-                        statsMap.set(log.userId, { name, hours: 0, amount: 0, days: 0, dates: new Set() });
+                        statsMap.set(log.userId, { 
+                            name, 
+                            hours: 0, 
+                            amount: 0, 
+                            grossAmount: 0,
+                            netAmount: 0,
+                            days: 0, 
+                            dates: new Set() 
+                        });
                     }
                     const s = statsMap.get(log.userId)!;
 
-                    s.amount += Number(log.amount) || 0;
+                    const effectiveGross = Number(log.grossAmount ?? log.netAmount ?? log.amount ?? 0);
+                    const effectiveNet = Number(log.netAmount ?? log.grossAmount ?? log.amount ?? 0);
+                    s.grossAmount += effectiveGross;
+                    s.netAmount += effectiveNet;
+                    s.amount += effectiveNet;
 
                     const d = log.date || (log.startDate ? format(new Date(log.startDate), 'yyyy-MM-dd') : null);
                     if (d) s.dates.add(d);
 
-                    if (log.type === 'particular') s.hours += (Number(log.durationHours) || 0);
-                    else if (log.type === 'tutorial') {
+                    let days = 1;
+                    if (log.startDate && log.endDate && log.startDate !== log.endDate) {
                         try {
-                            const days = (new Date(log.endDate!).getTime() - new Date(log.startDate!).getTime()) / (86400000) + 1;
-                            s.hours += days * 6;
-                        } catch (e) { }
+                            days = Math.round(Math.abs((new Date(log.endDate).getTime() - new Date(log.startDate).getTime()) / 86400000)) + 1;
+                        } catch (e) {}
                     }
+                    const isMultiDay = days > 1;
+
+                    const durationVal = Number(log.durationHours ?? log.duration ?? (isMultiDay ? days : 1));
+                    s.hours += durationVal;
                 });
 
                 const employeeStats = Array.from(statsMap.entries()).map(([uid, stat]) => ({
@@ -345,10 +376,10 @@ export default function ReportsPage() {
                     name: stat.name,
                     totalHours: stat.hours,
                     totalAmount: stat.amount,
+                    totalGross: stat.grossAmount,
+                    totalNet: stat.netAmount,
                     totalDays: stat.dates.size
                 }));
-
-                const company = companies.find(c => c.id === selectedCompanyId) || { id: '0', name: 'Company', settings: {} } as any;
 
                 blob = await pdf(
                     <CompanyPDFReport
@@ -466,7 +497,7 @@ export default function ReportsPage() {
                     Type: log.type,
                     Company: companyName,
                     User: userOptions.find(u => u.id === log.userId)?.name || log.userId,
-                    Amount: log.amount
+                    Amount: Number(log.netAmount ?? log.grossAmount ?? log.amount ?? 0)
                 };
             });
             const csv = generateCsv(csvConfig)(data);
