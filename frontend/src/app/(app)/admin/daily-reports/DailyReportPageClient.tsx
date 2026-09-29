@@ -80,7 +80,14 @@ export default function DailyReportPage() {
             const logDate = log.date ? parseISO(log.date) : (log.startDate ? parseISO(log.startDate) : null);
             if (!logDate) return false;
 
-            if (log.type === 'tutorial' && log.startDate && log.endDate) {
+            const company = companies.find((c: any) => c.id === companyId);
+            const def = company?.worklogDefinitions?.[log.type];
+            const isCrossDay = Boolean(
+                (log.startDate && log.endDate && log.startDate !== log.endDate) ||
+                def?.unit === 'days'
+            );
+
+            if (isCrossDay && log.startDate && log.endDate) {
                 const s = startOfDay(parseISO(log.startDate));
                 const e = startOfDay(parseISO(log.endDate));
                 const currentDay = startOfDay(date);
@@ -99,9 +106,6 @@ export default function DailyReportPage() {
                 <div>
                     <h1 className="text-2xl font-bold">Admin Daily Report</h1>
                     <p className="text-muted-foreground text-sm">Overview of activities across all companies.</p>
-                    <p className="text-xs text-red-500 font-mono mt-1">
-                        DEBUG: Fetched {workLogs.length} logs Total.
-                    </p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -215,16 +219,16 @@ export default function DailyReportPage() {
                                                             endDecimal = 16;
                                                         }
 
-                                                        // Bounds Check (8:00 to 20:00)
-                                                        if (endDecimal < 8 || startDecimal > 20) return null;
-
-                                                        const visibleStart = Math.max(startDecimal, 8);
-                                                        const visibleEnd = Math.min(endDecimal, 20);
+                                                        // Clamp to visible grid range without silently discarding early morning or night shifts
+                                                        const clampedStart = Math.min(Math.max(startDecimal, 8), 20);
+                                                        const clampedEnd = Math.min(Math.max(endDecimal, 8), 20);
                                                         const totalHours = 12; // 8:00 to 20:00
 
-                                                        // Calculate %
-                                                        const offset = ((visibleStart - 8) / totalHours) * 100;
-                                                        const duration = ((visibleEnd - visibleStart) / totalHours) * 100;
+                                                        // Ensure visual representation for shifts at boundaries
+                                                        const rawOffset = ((clampedStart - 8) / totalHours) * 100;
+                                                        const rawDuration = ((clampedEnd - clampedStart) / totalHours) * 100;
+                                                        const offset = Math.min(rawOffset, 96);
+                                                        const duration = Math.min(Math.max(rawDuration, 4), 100 - offset);
 
 
                                                         return (
