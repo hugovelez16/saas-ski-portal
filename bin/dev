@@ -14,9 +14,13 @@ fi
 echo "Iniciando entorno de desarrollo con Gateway unificado..."
 docker compose -f docker-compose.dev.yml up -d --build "$@"
 
+# Obtener GATEWAY_PORT desde .env o variable de entorno, con fallback a 8080
+GATEWAY_PORT=$(grep -E '^GATEWAY_PORT=' .env 2>/dev/null | cut -d '=' -f2 | tr -d ' "\r' || true)
+GATEWAY_PORT="${GATEWAY_PORT:-8080}"
+
 echo "--------------------------------------------------------"
 echo "Entorno local iniciado correctamente."
-echo "Aplicacion disponible en: http://localhost:8080"
-echo "Documentacion API (Swagger): http://localhost:8080/api/docs"
+echo "Aplicacion disponible en: http://localhost:${GATEWAY_PORT}"
+echo "Documentacion API (Swagger): http://localhost:${GATEWAY_PORT}/api/docs"
 echo "Para seguir los logs en tiempo real: ./bin/logs"
 echo "--------------------------------------------------------"

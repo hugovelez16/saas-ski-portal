@@ -1,9 +1,9 @@
-name: ski_dev
+name: ${COMPOSE_PROJECT_NAME:-ski_dev}
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ski-dev-postgres
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_dev}-postgres
     restart: unless-stopped
     env_file:
       - .env
@@ -14,7 +14,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data:z
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     networks:
       - internal_db
     healthcheck:
@@ -25,11 +25,11 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: ski-dev-redis
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_dev}-redis
     restart: unless-stopped
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     networks:
       - internal_db
     healthcheck:
@@ -42,7 +42,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ski-dev-backend
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_dev}-backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -53,6 +53,7 @@ services:
       - .env
     environment:
       - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./backend:/app:z
@@ -73,7 +74,7 @@ services:
       target: deps
       args:
         NEXT_PUBLIC_API_URL: /api
-    container_name: ski-dev-frontend
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_dev}-frontend
     restart: unless-stopped
     depends_on:
       backend:
@@ -98,10 +99,10 @@ services:
     build:
       context: ./gateway
       dockerfile: Dockerfile
-    container_name: ski-dev-gateway
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_dev}-gateway
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "${GATEWAY_PORT:-8080}:80"
     volumes:
       - ./gateway/nginx.dev.conf:/etc/nginx/nginx.conf:ro,z
     depends_on:
