@@ -51,7 +51,9 @@ export function BillingTable({ data, worklogDefs, isLoading }: BillingTableProps
                     }
                     const qty = def.unit === 'hours'
                         ? `${summary.quantity.toFixed(2)} h`
-                        : `${summary.quantity} días`;
+                        : def.unit === 'fixed'
+                            ? `${summary.quantity} serv.`
+                            : `${summary.quantity} días`;
                     return <div className="text-right">{qty}</div>;
                 },
             } as ColumnDef<DynamicBillingRow>)),
@@ -63,7 +65,7 @@ export function BillingTable({ data, worklogDefs, isLoading }: BillingTableProps
                 cell: ({ row }) => (
                     <div className="text-right font-bold text-emerald-600 dark:text-emerald-400">
                         {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' })
-                            .format(row.original.totalGross || row.original.totalNet)}
+                            .format(row.original.totalGross ?? row.original.totalNet ?? 0)}
                     </div>
                 ),
             },
