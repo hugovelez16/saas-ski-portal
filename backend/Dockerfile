@@ -4,7 +4,8 @@ FROM python:3.12-slim
 # 2. VARIABLES DE ENTORNO (Sin caché de bytecode y logs en tiempo real)
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    WEB_CONCURRENCY=2
 
 # 3. DIRECTORIO DE TRABAJO
 WORKDIR /app
