@@ -81,6 +81,8 @@ jobs:
           push: true
           build-args: |
             NEXT_PUBLIC_API_URL=/api
+            NEXT_PUBLIC_POSTHOG_KEY=${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
+            NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com
           tags: |
             ${{ env.IMAGE_BASE }}/frontend:dev-latest
             ${{ env.IMAGE_BASE }}/frontend:dev-v${{ needs.get-version.outputs.version }}
