@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import api, { setAuthToken } from "@/lib/api";
 import { UserProfile } from "@/lib/types";
 import { useRouter } from 'next/navigation';
+import posthog from 'posthog-js';
 
 interface AuthContextType {
     user: UserProfile | null;
@@ -33,6 +34,21 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+const analyticsEnabled = () => Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY) && posthog.__loaded;
+
+function identifyUser(u: UserProfile) {
+  if (!analyticsEnabled() || !u?.id) return;
+  posthog.identify(String(u.id), {
+    role: u.role,
+    company_id: u.activeCompanyId ?? null,
+  });
+}
+
+function resetAnalytics() {
+  if (!analyticsEnabled()) return;
+  posthog.reset();
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
@@ -42,6 +58,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         try {
             const response = await api.get<UserProfile>('/users/me');
             setUser(response.data);
+            identifyUser(response.data);
             return response.data;
         } catch (error: any) {
             if (error.response?.status === 401 && retryDev && process.env.NEXT_PUBLIC_DEV_LOGIN_BYPASS === 'true') {
@@ -177,6 +194,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } finally {
             setAuthToken(null);
             setUser(null);
+            resetAnalytics();
             localStorage.removeItem('token');
             sessionStorage.removeItem('token');
             router.push('/login');

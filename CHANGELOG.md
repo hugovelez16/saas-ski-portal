@@ -19,6 +19,30 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.7.0] - 2026-10-05
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Integracion de analitica de producto con PostHog: inyeccion en build-time, inicializacion condicionada a la clave e identificacion de usuario sin datos personales.
+
+### Funcionalidades y Mejoras
+
+- **Analitica (`frontend/src/components/providers.tsx`)**:
+  - Inicializacion de `posthog-js` solo si `NEXT_PUBLIC_POSTHOG_KEY` esta definida; sin clave no hace nada (desarrollo y tests).
+  - Host por defecto `https://eu.i.posthog.com`, perfiles solo para usuarios identificados y grabacion de sesion con enmascarado de campos.
+  - **Pageviews en SPA**: `capture_pageview: "history_change"` para capturar cambios de ruta en App Router sin reloads.
+  - **Sanitizacion de URLs**: helper `sanitizeEvent` elimina query string y fragmentos en `$current_url`, `$referrer`, `$initial_current_url`, `$initial_referrer` (con tolerancia a valores no-URL) para evitar filtrar tokens en URLs como `/reset-password?token=...`.
+  - **Proteccion en pagina de reset**: `disable_session_recording` desactiva la grabacion en `/reset-password` para no capturar el token en la sesion.
+  - **Privacidad**: `persistence: "memory"` (sin almacenamiento entre sesiones) y `maskTextSelector: "*"` (enmascarado total de texto en replay).
+- **Ciclo de vida de autenticacion (`frontend/src/context/AuthContext.tsx`)**:
+  - `posthog.identify` con el id de usuario, el rol y el id de empresa; no se envia email ni nombre.
+  - `posthog.reset` al cerrar sesion.
+- **CI/CD**:
+  - `frontend/Dockerfile` y workflows `deploy-dev.yml` y `deploy-prod.yml` pasan `NEXT_PUBLIC_POSTHOG_KEY` y `NEXT_PUBLIC_POSTHOG_HOST` como `build-args`.
+- **Pruebas**: tests de vitest para `Providers` y `AuthProvider` (caso sin clave, identify y reset).
+
+---
+
 ## [0.6.0] - 2026-09-29
 
 ### Tipo de Cambio SemVer
