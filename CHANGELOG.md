@@ -19,6 +19,23 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.6.1] - 2026-10-05
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Cabeceras de seguridad HTTP en el gateway Nginx.
+
+### Seguridad
+
+- **Gateway Nginx (`gateway/nginx.conf` y `gateway/nginx.dev.conf`)**:
+  - `server_tokens off` para no exponer la version de Nginx.
+  - Cabeceras `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` y `Permissions-Policy` restrictiva, todas con `always`.
+  - `Content-Security-Policy-Report-Only` compatible con Next.js y react-pdf. En desarrollo permite ademas `'unsafe-eval'` y `ws:` por el HMR. Pendiente de pasar a modo `Content-Security-Policy` tras revisar la consola del navegador.
+  - `proxy_hide_header X-Powered-By` en la ruta del frontend.
+  - HSTS no incluido: la terminacion TLS esta fuera de este repositorio y debe confirmarse antes de anadirlo.
+
+---
+
 ## [0.6.0] - 2026-09-29
 
 ### Tipo de Cambio SemVer
