@@ -60,4 +60,5 @@ Orca crea un git worktree aislado por tarea. Configuracion en `orca.yaml` (raiz)
 - **Un worktree, una tarea, un PR.** Evitar que dos worktrees toquen los mismos ficheros.
 - **Version**: el incremento SemVer (regla 8) genera conflicto si varios PRs paralelos editan `package.json` y `CHANGELOG.md`. Hacerlo al final, sobre `develop` actualizado, justo antes del PR.
 - **Revision y entrega**: revisar el diff en Orca con comentarios en linea que vuelven al agente. Commit, push y PR solo cuando el usuario lo ordene (regla 3), incluso si Orca ofrece botones para ello.
+- **Pestanas en el mismo worktree**: para un agente extra sobre el mismo codigo (revision, investigacion, segundo frente sin solapar ficheros) abrir una pestana nueva con `orca terminal create --worktree active --command claude`. Para una tarea con rama propia, un worktree nuevo: `orca worktree create --name <tarea> --agent claude --prompt "<brief>"` (cargar antes `orca skills get orca-cli`).
 - Varios agentes en paralelo: cada uno en su worktree. Para comparar enfoques, el mismo prompt en varios worktrees y quedarse con el mejor.
