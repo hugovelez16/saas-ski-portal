@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Hook de Orca (scripts.archive): libera contenedores y volumenes del worktree
+# antes de que Orca lo archive o lo elimine.
+set -euo pipefail
+
+cd "${ORCA_WORKTREE_PATH:-$(pwd)}"
+
+if [ -f .env ] && [ -f docker-compose.dev.yml ]; then
+    docker compose -f docker-compose.dev.yml down -v --remove-orphans || true
+    echo "[INFO] Stack de desarrollo del worktree detenido y volumenes eliminados."
+fi
