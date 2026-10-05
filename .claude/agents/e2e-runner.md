@@ -57,4 +57,3 @@ Nota: no existe actualmente una suite E2E de navegador (Playwright/Cypress); si 
 ## Skills y Recursos Asociados
 
 - [`python-testing`](../skills/python-testing/SKILL.md): Estrategias pytest, fixtures y mocking.
-- [`tdd-workflow`](../skills/tdd-workflow/SKILL.md): Flujo TDD y cobertura.
