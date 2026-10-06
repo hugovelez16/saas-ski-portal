@@ -25,5 +25,5 @@ El rol completo lo define el agente `planner` (`.claude/agents/planner.md`). Est
 ## Skills de apoyo
 
 - `api-design`: patrones REST, nombres y codigos HTTP.
-- `tdd-workflow`: flujo dirigido por pruebas.
+- `python-testing`: pruebas con pytest, fixtures y mocking.
 - `writing-plans`: metodologia de planes tecnicos.

@@ -19,7 +19,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
-## [0.6.1] - 2026-10-05
+## [0.7.1] - 2026-10-06
 
 ### Tipo de Cambio SemVer
 
@@ -33,6 +33,49 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
   - `Content-Security-Policy-Report-Only` compatible con Next.js y react-pdf. En desarrollo permite ademas `'unsafe-eval'` y `ws:` por el HMR. Pendiente de pasar a modo `Content-Security-Policy` tras revisar la consola del navegador.
   - `proxy_hide_header X-Powered-By` en la ruta del frontend.
   - HSTS no incluido: la terminacion TLS esta fuera de este repositorio y debe confirmarse antes de anadirlo.
+
+---
+
+## [0.7.0] - 2026-10-05
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Integracion de analitica de producto con PostHog: inyeccion en build-time, inicializacion condicionada a la clave e identificacion de usuario sin datos personales.
+
+### Funcionalidades y Mejoras
+
+- **Analitica (`frontend/src/components/providers.tsx`)**:
+  - Inicializacion de `posthog-js` solo si `NEXT_PUBLIC_POSTHOG_KEY` esta definida; sin clave no hace nada (desarrollo y tests).
+  - Host por defecto `https://eu.i.posthog.com`, perfiles solo para usuarios identificados y grabacion de sesion con enmascarado de campos.
+  - **Pageviews en SPA**: `capture_pageview: "history_change"` para capturar cambios de ruta en App Router sin reloads.
+  - **Sanitizacion de URLs**: helper `sanitizeEvent` elimina query string y fragmentos en `$current_url`, `$referrer`, `$initial_current_url`, `$initial_referrer` (con tolerancia a valores no-URL) para evitar filtrar tokens en URLs como `/reset-password?token=...`.
+  - **Proteccion en pagina de reset**: `disable_session_recording` desactiva la grabacion en `/reset-password` para no capturar el token en la sesion.
+  - **Privacidad**: `persistence: "memory"` (sin almacenamiento entre sesiones) y `maskTextSelector: "*"` (enmascarado total de texto en replay).
+- **Ciclo de vida de autenticacion (`frontend/src/context/AuthContext.tsx`)**:
+  - `posthog.identify` con el id de usuario, el rol y el id de empresa; no se envia email ni nombre.
+  - `posthog.reset` al cerrar sesion.
+- **CI/CD**:
+  - `frontend/Dockerfile` y workflows `deploy-dev.yml` y `deploy-prod.yml` pasan `NEXT_PUBLIC_POSTHOG_KEY` y `NEXT_PUBLIC_POSTHOG_HOST` como `build-args`.
+- **Pruebas**: tests de vitest para `Providers` y `AuthProvider` (caso sin clave, identify y reset).
+
+---
+
+## [0.6.1] - 2026-10-05
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Endurecimiento operativo del despliegue de produccion: rotacion de logs, limites de recursos y workers de Uvicorn parametrizables.
+
+### Funcionalidades y Mejoras
+
+- **Despliegue (`docker-compose.prod.yml`)**:
+  - Rotacion de logs `json-file` (`max-size: 20m`, `max-file: 5`) en todos los servicios mediante el ancla `x-logging`.
+  - Limites de CPU y memoria (`deploy.resources.limits`) en `postgres`, `backend` y `frontend`, parametrizables con `POSTGRES_*_LIMIT`, `BACKEND_*_LIMIT` y `FRONTEND_*_LIMIT`.
+  - Variable `WEB_CONCURRENCY` (por defecto 2) propagada al backend.
+- **Backend (`backend/Dockerfile`)**:
+  - `WEB_CONCURRENCY=2` por defecto para que Uvicorn arranque con 2 workers en produccion.
+- **Documentacion**:
+  - Nuevo analisis tecnico `docs/ANALISIS_DOCKER_COMPOSE.md` de los manifiestos Docker Compose.
 
 ---
 
