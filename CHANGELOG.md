@@ -43,6 +43,25 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.6.1] - 2026-10-05
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Endurecimiento operativo del despliegue de produccion: rotacion de logs, limites de recursos y workers de Uvicorn parametrizables.
+
+### Funcionalidades y Mejoras
+
+- **Despliegue (`docker-compose.prod.yml`)**:
+  - Rotacion de logs `json-file` (`max-size: 20m`, `max-file: 5`) en todos los servicios mediante el ancla `x-logging`.
+  - Limites de CPU y memoria (`deploy.resources.limits`) en `postgres`, `backend` y `frontend`, parametrizables con `POSTGRES_*_LIMIT`, `BACKEND_*_LIMIT` y `FRONTEND_*_LIMIT`.
+  - Variable `WEB_CONCURRENCY` (por defecto 2) propagada al backend.
+- **Backend (`backend/Dockerfile`)**:
+  - `WEB_CONCURRENCY=2` por defecto para que Uvicorn arranque con 2 workers en produccion.
+- **Documentacion**:
+  - Nuevo analisis tecnico `docs/ANALISIS_DOCKER_COMPOSE.md` de los manifiestos Docker Compose.
+
+---
+
 ## [0.6.0] - 2026-09-29
 
 ### Tipo de Cambio SemVer
