@@ -19,6 +19,18 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.8.1] - 2026-10-08
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Migraciones Alembic automaticas en el despliegue de produccion.
+
+### Corregido
+
+- **`docker-compose.prod.yml`**: nuevo servicio one-shot `migrate` que ejecuta `python3 -m alembic upgrade head` con la imagen del backend. El `backend` depende de `migrate` con `service_completed_successfully`, de modo que no arranca si la migracion falla. Tras el paso a Komodo ningun paso aplicaba las migraciones y las bases nuevas quedaban sin esquema.
+
+---
+
 ## [0.8.0] - 2026-10-08
 
 ### Tipo de Cambio SemVer
