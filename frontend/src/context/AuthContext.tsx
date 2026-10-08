@@ -11,8 +11,7 @@ interface AuthContextType {
     loading: boolean;
     login: (email: string, password: string) => Promise<{ requires2FA: boolean }>;
     devLogin: () => Promise<{ requires2FA: boolean }>;
-    verify2FA: (code: string, trustDevice?: boolean) => Promise<void>;
-    resend2FA: () => Promise<void>;
+    verify2FA: (code: string) => Promise<void>;
     logout: () => void;
     stopImpersonation: () => Promise<void>;
     switchScope: (companyId: string, role: string) => Promise<void>;
@@ -25,7 +24,6 @@ const AuthContext = createContext<AuthContextType>({
     login: async () => { return { requires2FA: false } },
     devLogin: async () => { return { requires2FA: false } },
     verify2FA: async () => { },
-    resend2FA: async () => { },
     logout: () => { },
     stopImpersonation: async () => { },
     switchScope: async () => { },
@@ -164,8 +162,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return { requires2FA: false };
     };
 
-    const verify2FA = async (code: string, trustDevice: boolean = false) => {
-        const response = await api.post('/verify-2fa', { code, trustDevice });
+    const verify2FA = async (code: string) => {
+        const response = await api.post('/verify-2fa', { code });
         // Backend returns snake_case
         const tokenData = response.data;
         // setAuthToken handles the 'cookie' signal
@@ -180,10 +178,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } else {
             router.push('/dashboard');
         }
-    };
-
-    const resend2FA = async () => {
-        await api.post('/resend-2fa');
     };
 
     const logout = async () => {
@@ -231,7 +225,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, devLogin, verify2FA, resend2FA, logout, stopImpersonation, switchScope, checkAuth }}>
+        <AuthContext.Provider value={{ user, loading, login, devLogin, verify2FA, logout, stopImpersonation, switchScope, checkAuth }}>
             {children}
         </AuthContext.Provider>
     );

@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { TwoFactorCard } from "@/components/auth/two-factor-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -440,6 +441,9 @@ export default function ProfilePage() {
             </Form>
           </CardContent>
         </Card>
+
+        {/* Two-Factor Authentication Section */}
+        <TwoFactorCard />
 
         <div className="space-y-6">
 
