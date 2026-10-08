@@ -31,7 +31,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updateUser } from "@/lib/api/users";
+import { updateUser, resetUser2fa } from "@/lib/api/users";
 import { useToast } from "@/hooks/use-toast";
 import { Pencil } from "lucide-react";
 import { User } from "@/lib/types";
@@ -187,6 +187,28 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
                                 Generate & Email Password
                             </Button>
                         </div>
+                        {user.is2faEnabled && (
+                            <div className="flex justify-end -mt-2 mb-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs h-8"
+                                    onClick={async () => {
+                                        if (!confirm("Only reset 2FA after confirming the user's identity (call or message). This disables 2FA and signs the user out of all sessions. Continue?")) return;
+                                        try {
+                                            await resetUser2fa(user.id);
+                                            queryClient.invalidateQueries({ queryKey: ["users"] });
+                                            toast({ title: "2FA reset", description: "The user can enable 2FA again from their profile." });
+                                        } catch (e) {
+                                            toast({ title: "Error", description: "Failed to reset 2FA.", variant: "destructive" });
+                                        }
+                                    }}
+                                >
+                                    Reset 2FA
+                                </Button>
+                            </div>
+                        )}
                         <FormField
                             control={form.control}
                             name="email"

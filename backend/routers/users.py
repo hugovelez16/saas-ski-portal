@@ -223,6 +223,47 @@ async def reset_password_via_email(
     return {"message": "Password reset and email sent"}
 
 
+@router.post("/{user_id}/reset-2fa")
+def reset_user_2fa(
+    user_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+):
+    """
+    Platform admin only: disable 2FA for a user who lost access to their authenticator app.
+    Revokes the user's active sessions and leaves an audit entry. The user can enrol 2FA again afterwards.
+    """
+    if not getattr(current_user, "is_platform_admin", False):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    user = crud.get_user(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.is_2fa_enabled and not user.otp_secret:
+        raise HTTPException(status_code=400, detail="2FA not enabled for this user")
+
+    user.is_2fa_enabled = False
+    user.otp_secret = None
+
+    db.query(models.UserSession).filter(
+        models.UserSession.user_id == user.id, models.UserSession.is_active.is_(True)
+    ).update({"is_active": False}, synchronize_session=False)
+
+    db.add(
+        models.AuditLog(
+            action="2fa_reset",
+            impersonated_user_id=user.id,
+            admin_user_id=current_user.id,
+            extra_data={"target_email": user.email},
+        )
+    )
+    db.commit()
+
+    # Un reset deja al usuario sin bloqueo por intentos fallidos previos
+    auth.redis_manager.delete(f"2fa_fail_{user.id}")
+
+    return {"message": "2FA reset"}
+
+
 @router.put("/{user_id}", response_model=schemas.UserResponse)
 def update_user(
     user_id: str,

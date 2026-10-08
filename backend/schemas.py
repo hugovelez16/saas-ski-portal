@@ -257,6 +257,10 @@ class TOTPActivate(CamelModel):
     code: str
 
 
+class TOTPDisable(CamelModel):
+    code: str
+
+
 class TokenData(CamelModel):
     user_id: str | None = None
     company_id: str | None = None

@@ -66,6 +66,33 @@ export const resetPasswordEmail = async (userId: string) => {
     return response.data;
 };
 
+// Two-Factor Authentication (TOTP)
+export interface TwoFactorSetup {
+    secret: string;
+    qrCodeUri: string;
+}
+
+export const setup2fa = async (): Promise<TwoFactorSetup> => {
+    const response = await api.post<TwoFactorSetup>("/2fa/setup");
+    return response.data;
+};
+
+export const activate2fa = async (code: string): Promise<{ message: string }> => {
+    const response = await api.post("/2fa/activate", { code });
+    return response.data;
+};
+
+export const disable2fa = async (code: string): Promise<{ message: string }> => {
+    const response = await api.post("/2fa/disable", { code });
+    return response.data;
+};
+
+// Platform admin: reset 2FA for a user who lost their authenticator app
+export const resetUser2fa = async (userId: string): Promise<{ message: string }> => {
+    const response = await api.post(`/users/${userId}/reset-2fa`);
+    return response.data;
+};
+
 // Master Admin: Impersonation
 export const impersonateUser = async (userId: string): Promise<Token> => {
     const response = await api.post<Token>(`/admin/impersonate/${userId}`);

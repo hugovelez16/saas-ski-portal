@@ -1,4 +1,5 @@
 import os
+import time
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -170,14 +171,27 @@ async def verify_2fa(
     """
     Verify TOTP code and issue final tokens.
     """
+    # Solo el token provisional emitido tras validar la contrasena puede completar el 2FA
+    if getattr(current_user, "token_scope", None) != "2fa_pending":
+        raise HTTPException(status_code=403, detail="Se requiere un token de verificacion 2FA")
+
     if not current_user.is_2fa_enabled or not current_user.otp_secret:
         raise HTTPException(status_code=400, detail="2FA not enabled for this user")
 
-    # Decrypt secret
-    decrypted_secret = auth.decrypt_secret(current_user.otp_secret)
-
-    if not auth.verify_totp_code(decrypted_secret, data.code):
+    if not auth.verify_totp_with_protection(current_user, data.code):
         raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    # El token provisional queda invalidado: no se puede reutilizar
+    pending_token = auth.get_token_from_request(request)
+    if pending_token:
+        try:
+            pending_payload = auth.jwt.decode(pending_token, auth.PUBLIC_KEY, algorithms=[auth.ALGORITHM])
+            pending_jti = pending_payload.get("jti")
+            if pending_jti:
+                ttl = max(int(pending_payload.get("exp", 0) - time.time()), 1)
+                auth.redis_manager.set(f"bl_{pending_jti}", "1", ex=ttl)
+        except auth.JWTError:
+            pass
 
     # Issue Full Tokens with default scope
     access_token, refresh_token = auth.generate_user_tokens(db, current_user)
@@ -491,6 +505,9 @@ async def impersonate_user(
 @router.post("/2fa/setup", response_model=schemas.TOTPSetupResponse)
 async def setup_2fa(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
     """Generates a new TOTP secret for the user (not active yet)."""
+    if current_user.is_2fa_enabled:
+        raise HTTPException(status_code=409, detail="El 2FA ya esta activo. Desactivalo antes de configurarlo de nuevo")
+
     secret = auth.generate_totp_secret()
     current_user.otp_secret = auth.encrypt_secret(secret)
     current_user.is_2fa_enabled = False  # Not enabled until verified
@@ -510,8 +527,7 @@ async def activate_2fa(
     if not current_user.otp_secret:
         raise HTTPException(status_code=400, detail="2FA setup not initiated")
 
-    decrypted_secret = auth.decrypt_secret(current_user.otp_secret)
-    if not auth.verify_totp_code(decrypted_secret, data.code):
+    if not auth.verify_totp_with_protection(current_user, data.code):
         raise HTTPException(status_code=400, detail="Invalid verification code")
 
     current_user.is_2fa_enabled = True
@@ -520,8 +536,18 @@ async def activate_2fa(
 
 
 @router.post("/2fa/disable")
-async def disable_2fa(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
-    """Disables 2FA (Requires verified user)."""
+async def disable_2fa(
+    data: schemas.TOTPDisable,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
+    """Disables 2FA. Requires a valid TOTP code."""
+    if not current_user.is_2fa_enabled or not current_user.otp_secret:
+        raise HTTPException(status_code=400, detail="2FA not enabled for this user")
+
+    if not auth.verify_totp_with_protection(current_user, data.code):
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
     current_user.is_2fa_enabled = False
     current_user.otp_secret = None
     db.commit()
