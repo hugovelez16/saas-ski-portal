@@ -1,20 +1,22 @@
-import redis
-import os
 import logging
-from typing import Optional
+import os
+
+import redis
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class RedisManager:
     """
     Manages Redis connections and operations with failover support.
     """
+
     def __init__(self):
         self.redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
-        self._pool: Optional[redis.ConnectionPool] = None
-        self._client: Optional[redis.Redis] = None
+        self._pool: redis.ConnectionPool | None = None
+        self._client: redis.Redis | None = None
 
     @property
     def client(self) -> redis.Redis:
@@ -25,11 +27,11 @@ class RedisManager:
             try:
                 logger.info(f"Initializing Redis connection pool to {self.redis_url}")
                 self._pool = redis.ConnectionPool.from_url(
-                    self.redis_url, 
+                    self.redis_url,
                     decode_responses=True,
                     socket_timeout=2.0,
                     socket_connect_timeout=2.0,
-                    retry_on_timeout=True
+                    retry_on_timeout=True,
                 )
                 self._client = redis.Redis(connection_pool=self._pool)
             except Exception as e:
@@ -37,7 +39,7 @@ class RedisManager:
                 # We return a dummy client or handle it in the methods
         return self._client
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         """
         Safely gets a value from Redis. Returns None on failure or miss.
         """
@@ -73,6 +75,21 @@ class RedisManager:
             logger.error(f"Redis DELETE error for key {key}: {e}")
         return False
 
+    def delete_pattern(self, pattern: str) -> int:
+        """
+        Safely deletes keys matching a pattern from Redis.
+        """
+        deleted_count = 0
+        try:
+            client = self.client
+            if client:
+                keys = list(client.scan_iter(match=pattern, count=100))
+                if keys:
+                    deleted_count = client.delete(*keys)
+        except Exception as e:
+            logger.error(f"Redis DELETE_PATTERN error for pattern {pattern}: {e}")
+        return deleted_count
+
     def ping(self) -> bool:
         """
         Checks if Redis is alive.
@@ -81,6 +98,7 @@ class RedisManager:
             return self.client.ping()
         except Exception:
             return False
+
 
 # Global instance
 redis_manager = RedisManager()

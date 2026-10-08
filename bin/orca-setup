@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Hook de Orca (scripts.setup): prepara un worktree recien creado.
+# Genera .env con puertos y nombre de proyecto propios para que varios
+# worktrees puedan levantar su stack Docker en paralelo sin colisiones.
+set -euo pipefail
+
+WT="${ORCA_WORKTREE_PATH:-$(pwd)}"
+ROOT="${ORCA_ROOT_PATH:-$WT}"
+cd "${WT}"
+
+# Base del .env: el del checkout principal (secretos y config), o .env.example
+if [ -f "${ROOT}/.env" ]; then
+    cp "${ROOT}/.env" .env
+elif [ -f .env.example ]; then
+    cp .env.example .env
+else
+    echo "[ERROR] No hay .env en ${ROOT} ni .env.example en ${WT}" >&2
+    exit 1
+fi
+
+set_var() {
+    local key="$1" value="$2"
+    grep -v "^${key}=" .env > .env.tmp || true
+    printf '%s=%s\n' "${key}" "${value}" >> .env.tmp
+    mv .env.tmp .env
+}
+
+port_free() {
+    ! (ss -ltn 2>/dev/null | awk '{print $4}' | grep -q ":$1\$")
+}
+
+# Desplazamiento determinista por ruta del worktree (1..499), saltando puertos ocupados
+offset=$(( $(printf '%s' "${WT}" | cksum | cut -d' ' -f1) % 499 + 1 ))
+while ! port_free $((8080 + offset)) || ! port_free $((5432 + offset)) || ! port_free $((6379 + offset)); do
+    offset=$(( offset % 499 + 1 ))
+done
+
+name="ski_$(basename "${WT}" | tr -c 'a-zA-Z0-9\n' '_' | tr 'A-Z' 'a-z')"
+
+set_var COMPOSE_PROJECT_NAME "${name}"
+set_var GATEWAY_PORT "$((8080 + offset))"
+set_var POSTGRES_PORT "$((5432 + offset))"
+set_var REDIS_PORT "$((6379 + offset))"
+set_var ALLOWED_ORIGINS "http://localhost:$((8080 + offset)),http://127.0.0.1:$((8080 + offset))"
+
+echo "[INFO] Worktree ${name}: gateway http://localhost:$((8080 + offset)), postgres $((5432 + offset)), redis $((6379 + offset))"
+echo "[INFO] Siguiente paso: ./bin/dev && ./bin/migrate && ./bin/seed"

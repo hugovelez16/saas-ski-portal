@@ -37,7 +37,7 @@ export default function ManagerDashboardPage() {
     }, [isLoading, managedCompanies, companyId, pathname, router]);
 
     if (isLoading) {
-        return <div className="p-8">Loading...</div>;
+        return <div className="p-8 text-sm text-muted-foreground">Cargando empresas...</div>;
     }
 
     // Determine current view
@@ -48,9 +48,9 @@ export default function ManagerDashboardPage() {
     // If no company selected yet (and effect hasn't fired or list empty)
     if (!selectedCompany) {
         if (managedCompanies.length === 0) {
-            return <div className="p-8 text-muted-foreground">You do not manage any companies.</div>;
+            return <div className="p-8 text-sm text-muted-foreground">No tienes asignada la gestión de ninguna empresa activa.</div>;
         }
-        return <div className="p-8">Redirecting...</div>;
+        return <div className="p-8 text-sm text-muted-foreground">Redirigiendo al panel de gestión...</div>;
     }
 
     return (

@@ -5,20 +5,18 @@ Revises: 2314c15d1a0f
 Create Date: 2026-07-13 19:56:28.687691
 
 """
-from typing import Sequence, Union
+import uuid
+from collections.abc import Sequence
+from datetime import datetime
 
 from alembic import op
 from sqlalchemy import text
-import sqlalchemy as sa
-import uuid
-from datetime import datetime
-
 
 # revision identifiers, used by Alembic.
 revision: str = '0fb22f01dd7d'
-down_revision: Union[str, Sequence[str], None] = '2314c15d1a0f'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = '2314c15d1a0f'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 MODULES_TO_SEED = [

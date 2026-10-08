@@ -1,5 +1,5 @@
 from database import SessionLocal
-from models import CompanyMember, Company
+from models import Company, CompanyMember
 
 db = SessionLocal()
 companies = db.query(Company).all()

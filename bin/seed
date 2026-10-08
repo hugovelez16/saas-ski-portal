@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+cd "${ROOT_DIR}"
+
+echo "Ejecutando sembrado inicial de datos en contenedor de backend..."
+docker compose -f docker-compose.dev.yml run --rm backend python3 -c "import seed; seed.seed_initial_data()"
+echo "Sembrado completado."

@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { TwoFactorCard } from "@/components/auth/two-factor-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -87,8 +88,14 @@ export default function ProfilePage() {
 
   const activeCompanyId = user?.activeCompanyId;
   const currentCompany = myCompanies.find((c: Company) => c.id === activeCompanyId);
-  const companySettings = currentCompany?.settings || {};
   const worklogDefinitions = currentCompany?.worklogDefinitions || {};
+
+  const isCompanyManaged = Boolean(
+    currentCompany?.settings?.is_managed || 
+    (currentCompany as any)?.is_managed
+  );
+  const isWorker = !user?.isPlatformAdmin && currentCompany?.role !== "manager" && currentCompany?.role !== "admin";
+  const canEditRates = !isCompanyManaged || !isWorker;
 
   const { data: rates, isLoading: isLoadingRates } = useQuery({
     queryKey: ["rates", activeCompanyId],
@@ -224,8 +231,9 @@ export default function ProfilePage() {
       return updateUserRates(companyId, user!.id, data);
     },
     onSuccess: () => {
-      toast({ title: "Tarifas actualizadas" });
+      toast({ title: "Tarifas actualizadas correctamente" });
       queryClient.invalidateQueries({ queryKey: ["rates", activeCompanyId] });
+      queryClient.invalidateQueries({ queryKey: ["myCompanies"] });
     },
     onError: (error: any) => {
       toast({ 
@@ -242,7 +250,19 @@ export default function ProfilePage() {
       return;
     }
 
-    const ratesConfig: Record<string, any> = {};
+    if (!canEditRates) {
+      toast({
+        title: "Acción no permitida",
+        description: "Esta empresa está en modo gestionado. Las tarifas son administradas por la dirección.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const member = rates && rates.length > 0 ? (rates[0] as CompanyMember) : null;
+    const existingRatesConfig = member?.ratesConfig ? { ...member.ratesConfig } : {};
+
+    const ratesConfig: Record<string, any> = { ...existingRatesConfig };
     const shiftKeys = Object.keys(worklogDefinitions || {});
     
     for (const key of shiftKeys) {
@@ -259,7 +279,8 @@ export default function ProfilePage() {
 
     const payload = {
       companyId: activeCompanyId,
-      ...ratesConfig
+      ratesConfig,
+      existingSettings: member?.settings
     };
 
     rateMutation.mutate(payload);
@@ -421,13 +442,29 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
+        {/* Two-Factor Authentication Section */}
+        <TwoFactorCard />
+
         <div className="space-y-6">
 
             {/* Rates Section */}
             <Card>
               <CardHeader>
-                <CardTitle>Tarifas de la Empresa</CardTitle>
-                <CardDescription>Gestiona tus tarifas para la empresa activa.</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Tarifas de la Empresa</CardTitle>
+                    <CardDescription>
+                      {canEditRates 
+                        ? "Gestiona tus tarifas para la empresa activa."
+                        : "Consulta las tarifas fijadas por la dirección (Modo Gestionado)."}
+                    </CardDescription>
+                  </div>
+                  {isCompanyManaged && (
+                    <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      Modo Gestionado
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {!activeCompanyId ? (
@@ -437,150 +474,172 @@ export default function ProfilePage() {
                 ) : (
                   <>
                     {currentCompany && (
-                      <div className="mb-6 flex items-center gap-2 px-4 py-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900 rounded-lg">
-                        <Building2 className="h-5 w-5 text-indigo-600" />
-                        <div>
-                          <p className="text-sm font-medium text-indigo-900 dark:text-indigo-100">Gestionando tarifas para:</p>
-                          <p className="text-lg font-bold text-indigo-700 dark:text-indigo-400">{currentCompany.name}</p>
+                      <div className="mb-6 flex items-center justify-between px-4 py-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-5 w-5 text-indigo-600" />
+                          <div>
+                            <p className="text-sm font-medium text-indigo-900 dark:text-indigo-100">Empresa activa:</p>
+                            <p className="text-lg font-bold text-indigo-700 dark:text-indigo-400">{currentCompany.name}</p>
+                          </div>
                         </div>
+                        {isCompanyManaged && (
+                          <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-300">
+                            Tarifas fijadas por empresa
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+
+                    {isCompanyManaged && !canEditRates && (
+                      <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-800 dark:text-amber-200">
+                        La administración de esta empresa gestiona directamente los convenios y tarifas. Los valores mostrados a continuación son exclusivamente de consulta.
                       </div>
                     )}
 
                     <Form {...rateForm}>
                       <form className="space-y-8" onSubmit={rateForm.handleSubmit(onRateSubmit)}>
-                        <div className="grid gap-4 md:grid-cols-2">
-                      {Object.entries(worklogDefinitions || {}).map(([key, def]: [string, any]) => (
-                        <FormField
-                          key={key}
-                          control={rateForm.control}
-                          name={`rates.${key}`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Tarifa para {def.label} (€)</FormLabel>
-                              <FormControl>
-                                <Input 
-                                  type="number" 
-                                  step="0.01" 
-                                  {...field} 
-                                  value={field.value ?? ""} 
-                                  onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} 
+                        <fieldset disabled={!canEditRates} className="space-y-8">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            {Object.entries(worklogDefinitions || {}).map(([key, def]: [string, any]) => (
+                              <FormField
+                                key={key}
+                                control={rateForm.control}
+                                name={`rates.${key}`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Tarifa para {def.label} (€)</FormLabel>
+                                    <FormControl>
+                                      <Input 
+                                        type="number" 
+                                        step="0.01" 
+                                        disabled={!canEditRates}
+                                        {...field} 
+                                        value={field.value ?? ""} 
+                                        onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} 
+                                      />
+                                    </FormControl>
+                                    {def.is_range ? (
+                                      <FormDescription>Se calculará por día</FormDescription>
+                                    ) : def.unit === "fixed" ? (
+                                      <FormDescription>Se calculará por evento fijo</FormDescription>
+                                    ) : (
+                                      <FormDescription>Se calculará por hora</FormDescription>
+                                    )}
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            ))}
+                            {Object.keys(worklogDefinitions || {}).length === 0 && (
+                              <div className="col-span-2 text-center p-4 text-muted-foreground border rounded-md">
+                                La empresa no ha definido tipos de turnos todavía.
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-4 border-t pt-4">
+                            <div className="flex items-center justify-between">
+                              <div className="space-y-0.5">
+                                <h3 className="text-base font-semibold">Configuración de Impuestos</h3>
+                                <p className="text-sm text-muted-foreground">Configura las retenciones para tus tarifas.</p>
+                              </div>
+                              <FormField
+                                control={rateForm.control}
+                                name="isGross"
+                                render={({ field }) => (
+                                  <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                                    <FormLabel className="text-base">Precios en Bruto</FormLabel>
+                                    <FormControl>
+                                      <Switch
+                                        disabled={!canEditRates}
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+
+                            {rateForm.watch("isGross") && (
+                              <div className="grid gap-4 md:grid-cols-3">
+                                <FormField
+                                  control={rateForm.control}
+                                  name="deductionSs"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Seguridad Social (SS) (%)</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          type="number"
+                                          step="0.0001"
+                                          disabled={!canEditRates}
+                                          placeholder={(currentCompany as any)?.taxConfig?.social_security ? `Por Defecto: ${((currentCompany as any).taxConfig.social_security * 100).toFixed(2)}` : "0"}
+                                          {...field}
+                                          value={field.value ?? ""}
+                                          onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+                                        />
+                                      </FormControl>
+                                      <FormDescription>
+                                        Déjalo en blanco para valor por defecto ({(currentCompany as any)?.taxConfig?.social_security ? ((currentCompany as any).taxConfig.social_security * 100).toFixed(2) : 0}%)
+                                      </FormDescription>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
                                 />
-                              </FormControl>
-                              {def.is_range ? (
-                                <FormDescription>Se calculará por día</FormDescription>
-                              ) : def.unit === "fixed" ? (
-                                <FormDescription>Se calculará por evento fijo</FormDescription>
-                              ) : (
-                                <FormDescription>Se calculará por hora</FormDescription>
-                              )}
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      ))}
-                      {Object.keys(worklogDefinitions || {}).length === 0 && (
-                        <div className="col-span-2 text-center p-4 text-muted-foreground border rounded-md">
-                          La empresa no ha definido tipos de turnos todavía.
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-4 border-t pt-4">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                          <h3 className="text-base font-semibold">Configuración de Impuestos</h3>
-                          <p className="text-sm text-muted-foreground">Configura las retenciones para tus tarifas.</p>
-                        </div>
-                        <FormField
-                          control={rateForm.control}
-                          name="isGross"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-center gap-2 space-y-0">
-                              <FormLabel className="text-base">Precios en Bruto</FormLabel>
-                              <FormControl>
-                                <Switch
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
+                                <FormField
+                                  control={rateForm.control}
+                                  name="deductionIrpf"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>IRPF (%)</FormLabel>
+                                      <FormControl>
+                                        <Input 
+                                          type="number" 
+                                          step="0.01" 
+                                          disabled={!canEditRates}
+                                          {...field} 
+                                          value={field.value ?? ""} 
+                                          onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} 
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
                                 />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      </div>
+                                <FormField
+                                  control={rateForm.control}
+                                  name="deductionExtra"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Extra (%)</FormLabel>
+                                      <FormControl>
+                                        <Input 
+                                          type="number" 
+                                          step="0.01" 
+                                          disabled={!canEditRates}
+                                          {...field} 
+                                          value={field.value ?? ""} 
+                                          onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} 
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </fieldset>
 
-                      {rateForm.watch("isGross") && (
-                        <div className="grid gap-4 md:grid-cols-3">
-                          <FormField
-                            control={rateForm.control}
-                            name="deductionSs"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Seguridad Social (SS) (%)</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    step="0.0001"
-                                    placeholder={(currentCompany as any)?.taxConfig?.social_security ? `Por Defecto: ${((currentCompany as any).taxConfig.social_security * 100).toFixed(2)}` : "0"}
-                                    {...field}
-                                    value={field.value ?? ""}
-                                    onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-                                  />
-                                </FormControl>
-                                <FormDescription>
-                                  Déjalo en blanco para usar el valor por defecto de la empresa ({(currentCompany as any)?.taxConfig?.social_security ? ((currentCompany as any).taxConfig.social_security * 100).toFixed(2) : 0}%)
-                                </FormDescription>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={rateForm.control}
-                            name="deductionIrpf"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>IRPF (%)</FormLabel>
-                                <FormControl>
-                                  <Input 
-                                    type="number" 
-                                    step="0.01" 
-                                    {...field} 
-                                    value={field.value ?? ""} 
-                                    onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} 
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={rateForm.control}
-                            name="deductionExtra"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Extra (%)</FormLabel>
-                                <FormControl>
-                                  <Input 
-                                    type="number" 
-                                    step="0.01" 
-                                    {...field} 
-                                    value={field.value ?? ""} 
-                                    onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} 
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <Button disabled={rateMutation.isPending} type="submit">
-                      {rateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Guardar Tarifas
-                    </Button>
-                  </form>
-                </Form>
+                        {canEditRates && (
+                          <Button disabled={rateMutation.isPending} type="submit">
+                            {rateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Guardar Tarifas
+                          </Button>
+                        )}
+                      </form>
+                    </Form>
                   </>
                 )}
               </CardContent>

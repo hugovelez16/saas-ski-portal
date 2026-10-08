@@ -43,6 +43,8 @@ export interface Company {
     // UI specific
     role?: string;
     isActiveMember?: boolean;
+    isManaged?: boolean;
+    isActive?: boolean;
 }
 
 export type CompanyResponse = Company;
@@ -289,4 +291,81 @@ export interface DynamicBillingRow {
     totalGross: number;
     logsCount: number;
 }
+
+// ─── Manager Dashboard Summary ───────────────────────────────────────────
+
+export interface DashboardPeriodMetrics {
+    totalHours: number;
+    totalNet: number;
+    totalGross: number;
+    uniqueDays: number;
+    totalLogs: number;
+    activeMembersCount: number;
+}
+
+export interface DashboardTodayMember {
+    userId: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    role: string;
+    hours: number;
+    logsCount: number;
+}
+
+export interface DashboardTodayMetrics {
+    todayHours: number;
+    todayLogsCount: number;
+    todayActiveMembersCount: number;
+    todayActiveMembers: DashboardTodayMember[];
+}
+
+export interface DashboardTypeBreakdown {
+    type: string;
+    label: string;
+    unit: string;
+    hours: number;
+    net: number;
+    gross: number;
+    count: number;
+}
+
+export interface DashboardDailyBreakdown {
+    date: string;
+    dayOfWeek: number;
+    dayName: string;
+    hours: number;
+    net: number;
+    gross: number;
+    count: number;
+}
+
+export interface DashboardWorkerSummary {
+    userId: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    role: string;
+    sortOrder: number;
+    isActive: boolean;
+    totalHours: number;
+    totalNet: number;
+    totalGross: number;
+    uniqueDays: number;
+    logsCount: number;
+    typesBreakdown: Record<string, number>;
+}
+
+export interface DashboardSummaryResponse {
+    companyId: string;
+    companyName: string;
+    startDate: string;
+    endDate: string;
+    periodMetrics: DashboardPeriodMetrics;
+    todayMetrics: DashboardTodayMetrics;
+    typeBreakdown: DashboardTypeBreakdown[];
+    dailyBreakdown: DashboardDailyBreakdown[];
+    workersSummary: DashboardWorkerSummary[];
+}
+
 

@@ -90,8 +90,8 @@ function ManagerDailyReportInner() {
             const isManager = ['manager', 'admin', 'owner'].includes(role);
             const settings = c.settings || {};
             // Support both new 'modules' and legacy 'features'
-            const canViewReport = (settings.modules?.worker_daily_report ?? settings.features?.worker_daily_report ?? true) === true;
-            return isManager || canViewReport;
+            const isModuleActive = Boolean(settings.modules?.worker_daily_report ?? settings.features?.worker_daily_report ?? false);
+            return isManager && isModuleActive;
         });
     }, [myCompanies]);
 
@@ -124,6 +124,22 @@ function ManagerDailyReportInner() {
         }));
     }, [companyDetails, selectedCompanyId]);
 
+    const selectedCompany = useMemo(() => {
+        return managedCompanies.find((c: any) => c.id === selectedCompanyId) ||
+               companyDetails?.find((c: any) => c.id === selectedCompanyId);
+    }, [managedCompanies, companyDetails, selectedCompanyId]);
+
+    const defaultHourlyType = useMemo(() => {
+        const defs = selectedCompany?.worklogDefinitions;
+        if (defs && typeof defs === 'object') {
+            const hourlyEntry = Object.entries(defs).find(([_, def]: [string, any]) => def?.unit === 'hours');
+            if (hourlyEntry) return hourlyEntry[0];
+            const firstEntry = Object.keys(defs)[0];
+            if (firstEntry) return firstEntry;
+        }
+        return 'particular';
+    }, [selectedCompany]);
+
 
     // 3. Fetch Logs (We might need to fetch all and filter by companyId and date)
     // Ideally existing API supports companyId filter.
@@ -152,7 +168,13 @@ function ManagerDailyReportInner() {
             const logDate = log.date ? parseISO(log.date) : (log.startDate ? parseISO(log.startDate) : null);
             if (!logDate) return false;
 
-            if (log.type === 'tutorial' && log.startDate && log.endDate) {
+            const def = selectedCompany?.worklogDefinitions?.[log.type];
+            const isCrossDay = Boolean(
+                (log.startDate && log.endDate && log.startDate !== log.endDate) ||
+                def?.unit === 'days'
+            );
+
+            if (isCrossDay && log.startDate && log.endDate) {
                 const s = startOfDay(parseISO(log.startDate));
                 const e = startOfDay(parseISO(log.endDate));
                 const currentDay = startOfDay(date);
@@ -285,7 +307,7 @@ function ManagerDailyReportInner() {
                                                         date: format(date, 'yyyy-MM-dd'),
                                                         startTime: `${h.toString().padStart(2, '0')}:00`,
                                                         endTime: `${(h + 1).toString().padStart(2, '0')}:00`,
-                                                        type: 'particular'
+                                                        type: defaultHourlyType
                                                     }
                                                 })}
                                                 title={`Add log for ${h}:00`}

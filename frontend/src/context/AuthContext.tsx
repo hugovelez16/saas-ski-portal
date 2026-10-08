@@ -2,15 +2,16 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api, { setAuthToken } from "@/lib/api";
-import { UserProfile, Token } from "@/lib/types";
+import { UserProfile } from "@/lib/types";
 import { useRouter } from 'next/navigation';
+import posthog from 'posthog-js';
 
 interface AuthContextType {
     user: UserProfile | null;
     loading: boolean;
     login: (email: string, password: string) => Promise<{ requires2FA: boolean }>;
-    verify2FA: (code: string, trustDevice?: boolean) => Promise<void>;
-    resend2FA: () => Promise<void>;
+    devLogin: () => Promise<{ requires2FA: boolean }>;
+    verify2FA: (code: string) => Promise<void>;
     logout: () => void;
     stopImpersonation: () => Promise<void>;
     switchScope: (companyId: string, role: string) => Promise<void>;
@@ -21,8 +22,8 @@ const AuthContext = createContext<AuthContextType>({
     user: null,
     loading: true,
     login: async () => { return { requires2FA: false } },
+    devLogin: async () => { return { requires2FA: false } },
     verify2FA: async () => { },
-    resend2FA: async () => { },
     logout: () => { },
     stopImpersonation: async () => { },
     switchScope: async () => { },
@@ -31,17 +32,42 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+const analyticsEnabled = () => Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY) && posthog.__loaded;
+
+function identifyUser(u: UserProfile) {
+  if (!analyticsEnabled() || !u?.id) return;
+  posthog.identify(String(u.id), {
+    role: u.role,
+    company_id: u.activeCompanyId ?? null,
+  });
+}
+
+function resetAnalytics() {
+  if (!analyticsEnabled()) return;
+  posthog.reset();
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const router = useRouter();
 
-    const fetchUser = async () => {
+    const fetchUser = async (retryDev: boolean = true): Promise<UserProfile | null> => {
         try {
             const response = await api.get<UserProfile>('/users/me');
             setUser(response.data);
+            identifyUser(response.data);
             return response.data;
         } catch (error: any) {
+            if (error.response?.status === 401 && retryDev && process.env.NEXT_PUBLIC_DEV_LOGIN_BYPASS === 'true') {
+                try {
+                    await api.post('/auth/dev-login');
+                    return await fetchUser(false);
+                } catch {
+                    // Si falla el auto-login en dev, continuar con flujo habitual
+                }
+            }
+
             // Suppress 401 errors from console to avoid Next.js error overlay
             if (error.response?.status !== 401) {
                 console.error("Failed to fetch user:", error);
@@ -70,6 +96,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         checkAuth();
     }, []);
+
+    const devLogin = async () => {
+        try {
+            const response = await api.post('/auth/dev-login');
+            const tokenData = response.data;
+            setAuthToken(tokenData.accessToken);
+            const userData = await fetchUser();
+
+            if (userData?.role === 'admin' || userData?.isPlatformAdmin) {
+                router.push('/admin/companies');
+            } else if (userData?.isManager) {
+                router.push('/manager/daily-reports');
+            } else {
+                router.push('/dashboard');
+            }
+            return { requires2FA: false };
+        } catch (error) {
+            console.error("Error en bypass de inicio de sesión en desarrollo:", error);
+            throw error;
+        }
+    };
 
     const login = async (email: string, password: string) => {
         const formData = new URLSearchParams();
@@ -105,7 +152,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         const userData = await fetchUser();
 
-        if (userData?.role === 'admin') {
+        if (userData?.role === 'admin' || userData?.isPlatformAdmin) {
             router.push('/admin/companies');
         } else if (userData?.isManager) {
             router.push('/manager/daily-reports');
@@ -115,8 +162,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return { requires2FA: false };
     };
 
-    const verify2FA = async (code: string, trustDevice: boolean = false) => {
-        const response = await api.post('/verify-2fa', { code, trustDevice });
+    const verify2FA = async (code: string) => {
+        const response = await api.post('/verify-2fa', { code });
         // Backend returns snake_case
         const tokenData = response.data;
         // setAuthToken handles the 'cookie' signal
@@ -133,10 +180,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     };
 
-    const resend2FA = async () => {
-        await api.post('/resend-2fa');
-    };
-
     const logout = async () => {
         try {
             await api.post('/logout');
@@ -145,6 +188,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } finally {
             setAuthToken(null);
             setUser(null);
+            resetAnalytics();
             localStorage.removeItem('token');
             sessionStorage.removeItem('token');
             router.push('/login');
@@ -181,7 +225,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, verify2FA, resend2FA, logout, stopImpersonation, switchScope, checkAuth }}>
+        <AuthContext.Provider value={{ user, loading, login, devLogin, verify2FA, logout, stopImpersonation, switchScope, checkAuth }}>
             {children}
         </AuthContext.Provider>
     );

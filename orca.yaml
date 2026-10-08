@@ -1,0 +1,7 @@
+worktree:
+  sharedDirectories:
+    - frontend/node_modules
+
+scripts:
+  setup: ./bin/orca-setup
+  archive: ./bin/orca-archive

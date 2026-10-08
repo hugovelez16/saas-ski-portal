@@ -1,0 +1,16 @@
+target-version = "py312"
+line-length = 120
+exclude = ["backend/migrations"]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+]
+ignore = [
+    "E501",  # line too long
+    "E712",  # Avoid equality comparisons to True (SQLAlchemy queries)
+    "B008",  # function-call-in-default-argument (FastAPI Depends/Query)
+]

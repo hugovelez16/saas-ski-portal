@@ -22,6 +22,7 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createCompany } from "@/lib/api/companies";
@@ -30,9 +31,11 @@ import { Plus } from "lucide-react";
 
 const formSchema = z.object({
     name: z.string().min(2, {
-        message: "Company name must be at least 2 characters.",
+        message: "El nombre de la empresa debe tener al menos 2 caracteres.",
     }),
     fiscalId: z.string().optional(),
+    isManaged: z.boolean().default(false),
+    isActive: z.boolean().default(true),
 });
 
 export function CompanyDialog() {
@@ -45,6 +48,8 @@ export function CompanyDialog() {
         defaultValues: {
             name: "",
             fiscalId: "",
+            isManaged: false,
+            isActive: true,
         },
     });
 
@@ -82,16 +87,16 @@ export function CompanyDialog() {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button>
+                <Button className="bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 font-medium shadow-sm">
                     <Plus className="mr-2 h-4 w-4" />
-                    Add Company
+                    Nueva Empresa
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle>Add Company</DialogTitle>
+                    <DialogTitle>Nueva Empresa</DialogTitle>
                     <DialogDescription>
-                        Create a new company entity.
+                        Crea y da de alta una nueva empresa en la plataforma.
                     </DialogDescription>
                 </DialogHeader>
                 <Form {...form}>
@@ -101,9 +106,9 @@ export function CompanyDialog() {
                             name="name"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Name</FormLabel>
+                                    <FormLabel>Nombre de la empresa</FormLabel>
                                     <FormControl>
-                                        <Input placeholder="Acme Corp" {...field} />
+                                        <Input placeholder="Ej: Escuela Esquí Sierra" {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -114,17 +119,57 @@ export function CompanyDialog() {
                             name="fiscalId"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Fiscal ID (Optional)</FormLabel>
+                                    <FormLabel>NIF / CIF (Opcional)</FormLabel>
                                     <FormControl>
-                                        <Input placeholder="TAX-123" {...field} />
+                                        <Input placeholder="B-12345678" {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
+                        <FormField
+                            control={form.control}
+                            name="isManaged"
+                            render={({ field }) => (
+                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                    <div className="space-y-0.5 pr-2">
+                                        <FormLabel className="text-sm font-medium">Modo Gestionada</FormLabel>
+                                        <p className="text-xs text-muted-foreground">
+                                            La direccion central fija tarifas y gestiona turnos. Los trabajadores no podran modificar turnos ni salarios.
+                                        </p>
+                                    </div>
+                                    <FormControl>
+                                        <Switch
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="isActive"
+                            render={({ field }) => (
+                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                    <div className="space-y-0.5 pr-2">
+                                        <FormLabel className="text-sm font-medium">Empresa Activa</FormLabel>
+                                        <p className="text-xs text-muted-foreground">
+                                            Permite el acceso y registro operativo de todos los miembros.
+                                        </p>
+                                    </div>
+                                    <FormControl>
+                                        <Switch
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
                         <DialogFooter>
                             <Button type="submit" disabled={mutation.isPending}>
-                                {mutation.isPending ? "Creating..." : "Create Company"}
+                                {mutation.isPending ? "Creando..." : "Crear Empresa"}
                             </Button>
                         </DialogFooter>
                     </form>
