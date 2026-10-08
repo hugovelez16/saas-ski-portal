@@ -14,24 +14,28 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
 import { Loader2, Terminal } from "lucide-react"
 import { useRouter } from "next/navigation"
 
+// Mensaje de error segun el estado devuelto por /verify-2fa
+function twoFactorErrorMessage(err: unknown): string {
+  const status = (err as { response?: { status?: number } })?.response?.status
+  if (status === 429) return "Demasiados intentos. Espera unos minutos antes de volver a probar"
+  if (status === 403) return "La verificación ha caducado. Vuelve a iniciar sesión"
+  if (status === 503) return "El servicio de verificación no está disponible. Inténtalo más tarde"
+  return "Código incorrecto o expirado"
+}
+
 export default function LoginPage() {
-  const { login, devLogin, verify2FA, resend2FA } = useAuth()
+  const { login, devLogin, verify2FA } = useAuth()
   const router = useRouter()
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [twoFactorCode, setTwoFactorCode] = useState("")
   const [showTwoFactor, setShowTwoFactor] = useState(false)
-  const [trustDevice, setTrustDevice] = useState(false)
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [timer, setTimer] = useState(30)
-  const [canResend, setCanResend] = useState(false)
   const [isDevMode, setIsDevMode] = useState(false)
   const [devEmail, setDevEmail] = useState("admin@vesotel.com")
 
@@ -67,19 +71,6 @@ export default function LoginPage() {
     };
   }, []);
 
-  // Effect for timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (showTwoFactor && timer > 0) {
-      interval = setInterval(() => {
-        setTimer((prev) => prev - 1);
-      }, 1000);
-    } else if (timer === 0) {
-      setCanResend(true);
-    }
-    return () => clearInterval(interval);
-  }, [showTwoFactor, timer]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -87,7 +78,7 @@ export default function LoginPage() {
 
     try {
       if (showTwoFactor) {
-        await verify2FA(twoFactorCode, trustDevice);
+        await verify2FA(twoFactorCode);
       } else if (isDevMode && (!email || !password || email === devEmail)) {
         await devLogin();
       } else {
@@ -97,7 +88,11 @@ export default function LoginPage() {
         }
       }
     } catch (err) {
-      setError("Credenciales inválidas, código incorrecto o error de conexión");
+      setError(
+        showTwoFactor
+          ? twoFactorErrorMessage(err)
+          : "Credenciales inválidas, código incorrecto o error de conexión"
+      );
     } finally {
       setIsLoading(false)
     }
@@ -173,7 +168,7 @@ export default function LoginPage() {
             ) : (
               <div className="space-y-2">
                 <div className="text-sm text-center mb-4 text-muted-foreground">
-                  Hemos enviado un código de verificación a tu correo.
+                  Introduce el código de 6 dígitos de tu aplicación de autenticación.
                 </div>
                 <label htmlFor="2fa" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                   Código de Verificación
@@ -204,9 +199,10 @@ export default function LoginPage() {
                         } else if (val && index === 5 && newCodeStr.length === 6) {
                           setIsLoading(true);
                           // Small delay to allow state update? passed directly
-                          verify2FA(newCodeStr, trustDevice)
-                            .catch(() => {
-                              setError("Código incorrecto o expirado");
+                          verify2FA(newCodeStr)
+                            .catch((err) => {
+                              setError(twoFactorErrorMessage(err));
+                              setTwoFactorCode("");
                               setIsLoading(false);
                             });
                         }
@@ -227,41 +223,6 @@ export default function LoginPage() {
                   ))}
                 </div>
 
-                <div className="flex items-center space-x-2 mt-4 justify-center">
-                  <Checkbox
-                    id="trust-device"
-                    checked={trustDevice}
-                    onCheckedChange={(checked) => setTrustDevice(checked as boolean)}
-                  />
-                  <Label htmlFor="trust-device" className="text-sm cursor-pointer">
-                    Confiar en este dispositivo por 30 días
-                  </Label>
-                </div>
-
-                <div className="text-center mt-4">
-                  {canResend ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={async () => {
-                        setCanResend(false);
-                        setTimer(30);
-                        try {
-                          await resend2FA();
-                        } catch (e) {
-                          setError("Error resending code");
-                        }
-                      }}
-                    >
-                      Resend Code
-                    </Button>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Resend code in {timer}s
-                    </p>
-                  )}
-                </div>
               </div>
             )}
             {error && (

@@ -19,7 +19,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
-## [0.7.2] - 2026-10-08
+## [0.8.1] - 2026-10-08
 
 ### Tipo de Cambio SemVer
 
@@ -28,6 +28,44 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 ### Corregido
 
 - **`docker-compose.prod.yml`**: nuevo servicio one-shot `migrate` que ejecuta `python3 -m alembic upgrade head` con la imagen del backend. El `backend` depende de `migrate` con `service_completed_successfully`, de modo que no arranca si la migracion falla. Tras el paso a Komodo ningun paso aplicaba las migraciones y las bases nuevas quedaban sin esquema.
+
+---
+
+## [0.8.0] - 2026-10-08
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Habilitacion del 2FA con aplicacion autenticadora (TOTP) desde el perfil, endurecimiento de la verificacion y reset de 2FA por el administrador de la plataforma.
+
+### Funcionalidades y Mejoras
+
+- **Perfil (`frontend/src/components/auth/two-factor-card.tsx`)**:
+  - Tarjeta "Two-Factor Authentication" con el estado del 2FA. Activacion con codigo QR, clave manual y codigo de 6 digitos; desactivacion confirmada con un codigo valido.
+  - Dependencia nueva `qrcode.react` para generar el QR en el navegador.
+- **Panel de administracion (`frontend/src/components/admin/user-edit-dialog.tsx`)**:
+  - Boton "Reset 2FA" en la ficha del usuario, visible solo si tiene el 2FA activo, con confirmacion previa.
+- **Reset de 2FA (`POST /users/{user_id}/reset-2fa`)**:
+  - Solo para el administrador de la plataforma. Desactiva el 2FA, elimina el secreto, cierra las sesiones activas del usuario y pone a cero su contador de intentos fallidos.
+  - Registra la accion `2fa_reset` en `AuditLog` con el administrador y el usuario afectado.
+
+### Seguridad
+
+- **Verificacion de 2FA (`backend/auth.py` y `backend/routers/auth.py`)**:
+  - `/verify-2fa` exige el token provisional (`2fa_pending`) y lo invalida tras verificar.
+  - Limite de 5 fallos cada 10 minutos por usuario (429) en `/verify-2fa`, `/2fa/activate` y `/2fa/disable`. Fallo cerrado: si Redis no responde, 503.
+  - Proteccion anti-replay: un mismo codigo solo se acepta una vez. Tolerancia de un paso (30 s) de desfase de reloj.
+  - `/2fa/setup` devuelve 409 si el 2FA ya esta activo y `/2fa/disable` exige un codigo valido.
+  - El emisor del QR se lee de `TOTP_ISSUER_NAME`.
+
+### Cambios Internos
+
+- Eliminados `resend2FA`, el boton "Resend Code" y la opcion "confiar en este dispositivo", que apuntaban a un endpoint inexistente. El login muestra mensajes especificos para los errores 429, 403 y 503.
+- Corregido el comentario de `User.otp_secret`: el secreto ya se cifraba con Fernet.
+- **Pruebas**: tests de backend para verificacion protegida, endpoints de 2FA y reset por administrador, y tests de vitest para la tarjeta del perfil, `verify2FA` y el cliente de API.
+
+### Nota de despliegue
+
+- Fijar `ENCRYPTION_KEY` en produccion: sin ella se genera una clave efimera y los secretos de 2FA quedan ilegibles tras cada reinicio.
 
 ---
 

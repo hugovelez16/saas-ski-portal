@@ -59,7 +59,7 @@ class User(Base):
 
     # TOTP 2FA Evolution
     is_2fa_enabled = Column(Boolean, default=False)
-    otp_secret = Column(String, nullable=True)  # Should be encrypted in production
+    otp_secret = Column(String, nullable=True)  # Cifrado con Fernet (ENCRYPTION_KEY) via auth.encrypt_secret
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

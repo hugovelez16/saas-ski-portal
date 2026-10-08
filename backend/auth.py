@@ -409,13 +409,64 @@ def generate_totp_secret() -> str:
     return pyotp.random_base32()
 
 
-def get_totp_uri(secret: str, email: str, issuer_name: str = "Vesotel System") -> str:
-    return pyotp.totp.TOTP(secret).provisioning_uri(name=email, issuer_name=issuer_name)
+def get_totp_uri(secret: str, email: str, issuer_name: str | None = None) -> str:
+    issuer = issuer_name or os.getenv("TOTP_ISSUER_NAME", "Vesotel System")
+    return pyotp.totp.TOTP(secret).provisioning_uri(name=email, issuer_name=issuer)
 
 
 def verify_totp_code(secret: str, code: str) -> bool:
     totp = pyotp.totp.TOTP(secret)
-    return totp.verify(code)
+    # valid_window=1 tolera un desfase de reloj de un paso (30 s)
+    return totp.verify(code, valid_window=1)
+
+
+TOTP_MAX_FAILURES = 5
+TOTP_FAILURE_WINDOW_SECONDS = 600
+TOTP_REPLAY_TTL_SECONDS = 90
+
+
+def _totp_redis():
+    """
+    Devuelve el cliente Redis para los controles de 2FA.
+    Fallo cerrado: si Redis no esta disponible no se permite verificar codigos.
+    """
+    client = redis_manager.client
+    if client is None:
+        raise HTTPException(status_code=503, detail="Servicio de verificacion no disponible")
+    return client
+
+
+def verify_totp_with_protection(user: models.User, code: str) -> bool:
+    """
+    Verifica un codigo TOTP con limite de intentos y proteccion anti-replay.
+
+    Lanza 429 si se superan TOTP_MAX_FAILURES fallos en la ventana y 503 si Redis falla.
+    Devuelve True solo si el codigo es valido y no se habia usado antes.
+    """
+    failures_key = f"2fa_fail_{user.id}"
+    try:
+        client = _totp_redis()
+        failures = client.get(failures_key)
+        if failures is not None and int(failures) >= TOTP_MAX_FAILURES:
+            raise HTTPException(status_code=429, detail="Demasiados intentos. Intentalo de nuevo en unos minutos")
+
+        secret = decrypt_secret(user.otp_secret)
+        if not verify_totp_code(secret, code):
+            count = client.incr(failures_key)
+            if count == 1:
+                client.expire(failures_key, TOTP_FAILURE_WINDOW_SECONDS)
+            return False
+
+        # Anti-replay: un mismo codigo solo puede usarse una vez
+        if not client.set(f"2fa_used_{user.id}_{code}", "1", nx=True, ex=TOTP_REPLAY_TTL_SECONDS):
+            return False
+
+        client.delete(failures_key)
+        return True
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Servicio de verificacion no disponible") from exc
 
 
 # --- Session Management ---
