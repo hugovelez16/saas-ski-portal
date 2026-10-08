@@ -49,6 +49,26 @@ services:
       timeout: 3s
       retries: 5
 
+  migrate:
+    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/backend:${IMAGE_TAG:-latest}
+    container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-migrate
+    restart: "no"
+    logging: *default-logging
+    command: ["python3", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+    networks:
+      - prod_db
+
   backend:
     image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/backend:${IMAGE_TAG:-latest}
     container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-backend
@@ -64,6 +84,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     env_file:
       - .env
     environment:
