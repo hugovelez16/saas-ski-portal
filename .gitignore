@@ -15,7 +15,7 @@ pip-delete-this-directory.txt
 htmlcov/
 
 # Node (Frontend)
-node_modules/
+node_modules
 .next/
 out/
 build/
