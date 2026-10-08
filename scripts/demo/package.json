@@ -1,0 +1,13 @@
+{
+  "name": "saas-ski-portal-demo-video",
+  "private": true,
+  "type": "module",
+  "description": "Grabacion del video de presentacion con Playwright",
+  "scripts": {
+    "grabar": "node grabar-demo.mjs",
+    "editar": "node editar-zoom.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.49.1"
+  }
+}

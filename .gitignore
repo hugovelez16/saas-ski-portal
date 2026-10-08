@@ -73,3 +73,6 @@ backend/keys/
 *.tsbuildinfo
 .graphify/
 brag-output/
+
+# Videos de demo grabados con Playwright
+scripts/demo/videos/
