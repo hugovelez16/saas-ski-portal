@@ -80,7 +80,7 @@ sequenceDiagram
     GH->>Runner: Trigger Deploy Job
     Runner->>GHCR: docker compose pull (Descarga nuevas imágenes)
     Runner->>Docker: Levanta BD (PostgreSQL) y espera disponibilidad
-    Runner->>Docker: Ejecuta migraciones (Alembic)
+    Runner->>Docker: Servicio migrate ejecuta Alembic (el backend espera a que termine)
     Runner->>Docker: Reinicia contenedores con nuevas imágenes
     Runner->>Runner: Limpieza de imágenes huérfanas
 ```
@@ -90,7 +90,7 @@ sequenceDiagram
 2. Las imágenes compiladas se suben al GitHub Container Registry (GHCR).
 3. Se dispara el job de despliegue en el Self-hosted Runner (Servidor de Producción).
 4. El servidor descarga (`pull`) las imágenes ya compiladas desde GHCR (más rápido y seguro).
-5. Levanta la base de datos y espera a que esté lista antes de ejecutar las migraciones de Alembic en un contenedor temporal.
+5. Levanta la base de datos y espera a que esté lista antes de ejecutar las migraciones de Alembic con el servicio `migrate` de `docker-compose.prod.yml`, que corre una vez y debe terminar con exito antes de que arranque el backend.
 6. Finalmente, reinicia todos los servicios con las imágenes actualizadas y realiza limpieza (`prune`).
 
 ---
