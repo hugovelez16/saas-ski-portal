@@ -98,7 +98,10 @@ Decisiones adicionales que salen de los comentarios:
 
 **Default de `tax_config`.** De acuerdo, quitarlo (modelo `{}` y schema `{}`). Consecuencia: una empresa sin `social_security` calcularia 0 sin avisar (H19), asi que el alta debe exigir los valores o el calculo debe fallar de forma visible.
 
+> Pero que pasa si SS es 0?? deberia dar igual, es un tax que no se aplica, los tax se restan al bruto, si el tax es 0, se resta 0 no?
+
 **JSONB con claves fijas: es correcto?** Depende de la clave:
+
 - Claves **dinamicas** (tipos de turno definidos por la empresa en `worklog_definitions`, tarifas por tipo en `rates_config`): JSONB es la herramienta adecuada.
 - Claves **fijas y conocidas** (`tax_config`: `social_security`, `irpf_base`, `extra`; la mayor parte de `settings`): JSONB funciona, pero hace falta un **contrato**. Se define como modelo Pydantic con tipos, rangos (por ejemplo 0 a 1) y `extra="forbid"`, y se usa para validar al escribir y para aplicar defaults al leer.
 - Una clave desconocida en `tax_config` hoy se guarda y **no se usa** (solo se leen las tres conocidas), como sospechas.
@@ -107,7 +110,11 @@ Decisiones adicionales que salen de los comentarios:
 
 **Que hay en `settings` y para que sirve.** Comportamiento por empresa que lee el frontend: tipo de precio y recargo (`business_logic.*`), si el worker puede escribir importes a mano y el modo de entrada (`worker_experience.*`), etiquetas renombradas (`ui_customization.labels`), `allow_tutorial`, `allow_coordination`, `allowed_rates`, y la lista de modulos. Estoy de acuerdo en que un manager no deberia editarlos (D4).
 
+> Vale, tutorial y coordination son restos de una version antigua de la aplicacion, asique deberiamos eliminarlos, cuando ajustemos bien el catalogo de settings
+
 **`settings` de la membresia.** `CompanyMember.settings` son ajustes por usuario dentro de una empresa; el backend los mezcla encima de `Company.settings` al devolver las empresas (`crud.py:662-668`). Hoy casi no se usan.
+
+> Si no se utilizan los settings de usuario, podriamos analizar como de bien nos vendria utilizarlos o no y en que nos beneficiarian
 
 **"Solo se actualiza via ORM" (`updated_at`).** Quise decir que `updated_at` lo pone SQLAlchemy; un `UPDATE` por SQL directo no lo toca. No hay problema practico hoy. Mover la regla a un trigger de PostgreSQL es barato (una migracion) y tiene sentido cuando llegue la auditoria. No es prioritario.
 
@@ -115,19 +122,29 @@ Decisiones adicionales que salen de los comentarios:
 
 **Seed en produccion.** `seed_initial_data()` se ejecuta en **cada arranque**, en dev y en prod (`main.py:102-108`), pero solo actua si estan definidas las variables `INITIAL_ADMIN_*` y el email no existe. Coincido en que deberia lanzarse solo al crear la BD, con `./bin/seed`. Propuesta: quitarlo del arranque, o limitarlo a "no existe ningun usuario".
 
+> Efectivamente, creo que solo deberia pasar al arranque de la bd y solo si no hay usuarios (o por lo menos un PA)
+
 **Para que los `print`.** Son restos de depuracion. No aportan nada en produccion y vuelcan datos personales. Hay que sustituirlos por `logging` con nivel y sin datos sensibles.
 
 **Guardar la baja en los logs.** Mejor en la tabla `audit_logs` (quien, cuando, que, motivo) que solo en logs de aplicacion, porque se consulta desde la propia app. Con eso no hacen falta columnas `archived_at`/`archived_by`.
 
 **Que cambios auditar (D17).** Propuesta inicial: alta, suspension y reactivacion de empresa; cambio de `is_managed`; alta, baja y reactivacion de membresia; cambio de rol; cambio de tarifa (valor anterior y nuevo); cambios de `tax_config` y `settings`. Dime cuales sobran.
 
+> Los veo bien
+
 ### 2.4 Estructura que "falta"
 
 **`owner_id`, contacto, `slug`, `plan`.** `owner_id` seria el titular de la cuenta (responsable legal y de facturacion de la empresa cliente). Contacto: email y telefono para facturacion y soporte. `slug`: identificador legible y unico para URLs o subdominios. `plan`: nivel de suscripcion (free, pro...). Como ya hay suscripciones por modulo, `plan` no hace falta, y `timezone`/`currency` los descartas. Propongo retirarlos todos de la lista de carencias.
 
+> Dices "titular de la cuenta". Pero que cuenta?? para las suscripciones de modulos?? digo yo que la cosa seria vincularlo con cada usuario de la plataforma o con una empresa no?
+
 **Estado de cierre y aprobacion de turnos.** Cierre: bloquear un periodo (por ejemplo un mes) cuando ya se ha facturado o pagado, para que nadie cambie turnos que alteran un total ya emitido. Aprobacion: un manager valida un turno antes de que cuente. Lo dejas para un modulo futuro; la aprobacion tambien seria la alternativa a D1 si algun dia el worker pudiera registrar en gestionada.
 
+> Efectivamente, lo dejamos para mas adelante, es buena opcion, pero para un modulo
+
 **Validar fechas pasadas o futuras.** No hace falta limitar el pasado ni el futuro (el manager planifica turnos futuros en el calendario). Lo util es validar `inicio <= fin`, un rango razonable que evite errores de tecleo (ano 2062) y, como decision de negocio, si dos turnos del mismo trabajador pueden solaparse.
+
+> El validar las fechas creo que ya se hace en el front, pero efectivamente debe hacerse en el back primordialmente, y ya luego que el front lo compruebe para dar error antes de mandar nada (pero es lo hace por que el back es el que lo dicta). La logica de negocio debe de estar en el domino y no en el front
 
 ### 2.5 Arquitectura: `crud.py` y `src/`
 
@@ -136,6 +153,8 @@ Decisiones adicionales que salen de los comentarios:
 **Entonces que se usa, y no se deberian usar entidades de dominio.** El camino vivo es: router, `crud.py`, modelos SQLAlchemy (que hacen de entidad). Las entidades de dominio de `backend/src/` no se usan en produccion, solo en tests.
 
 **`src/` es la arquitectura limpia.** Si: `domain`, `application` (casos de uso) e `infrastructure` (repositorios y mapeadores) son los tres anillos de una arquitectura hexagonal. Esta empezada pero no conectada a la API, y las reglas importantes (por ejemplo `is_managed`) viven fuera de ella.
+
+> Pues se deberia dar un repaso, y intentar completarla como api v2 por ejemplo, asi podemos seguir utilizando la api de crud.py y mientras, poco a poco, vamos probando la nueva. Lo que si que quiero valorar es, ¿Pyhton es el mejor lenguaje para el back? Que ventajas y desventajas tiene?
 
 Opciones para D20:
 | Opcion | Coste | Cuando compensa |
@@ -160,6 +179,8 @@ Hay tres cosas distintas que conviene no mezclar:
 
 **Se puede eliminar un worker de una empresa.** Hoy no existe: solo se desactiva la membresia. Propuesta (mismo criterio que la empresa): borrar la membresia solo si no tiene turnos ni nada asociado, sin cascadas; si los tiene, queda inactiva. Lo acordado sobre desactivar (solo PA) aplica a la membresia.
 
+> Me parece perfecta la propuesta
+
 **Que pasa al desactivar una membresia.** Se reasigna `default_company_id` a otra membresia activa o a nulo, los turnos se conservan, y su token sigue valido hasta caducar (a la empresa deja de entrar por las comprobaciones por peticion).
 
 **Puede un usuario no tener ninguna empresa.** Si: registro sin empresa "Personal", o todas sus membresias desactivadas. Inicia sesion y el frontend muestra "no estas vinculado a ninguna empresa". Ya lo cubre el diseno actual.
@@ -169,6 +190,8 @@ Hay tres cosas distintas que conviene no mezclar:
 **Como se emite el token con el default (la fila que no entendiste).** Orden: (1) empresa pedida, si no (2) `default_company_id`; se busca una membresia activa de esa empresa; (3) si no la hay, se usa la primera membresia activa que tenga; (4) si no tiene ninguna, el token queda con `cid` de esa empresa pero `role` nulo, es decir, sin permisos. Es un caso raro; la correccion es no ponerle `cid` cuando no hay membresia.
 
 **"Target".** Es el usuario sobre el que se actua (el del `{user_id}` de la ruta), frente al que hace la peticion. Lo sustituyo por "usuario objetivo".
+
+> No hace falta que lo sustituyas, con target me entero
 
 **`GET /users/{id}/companies`.** Si: un manager ve todas las empresas a las que pertenece cualquier worker de la suya, incluidas inactivas y ajenas. Propongo devolver solo las empresas en comun con el manager, o dejarlo solo para PA.
 
@@ -192,21 +215,37 @@ Hay tres cosas distintas que conviene no mezclar:
 
 **`detailed` y `worker_daily_report`.** El modulo del parte diario necesita ver a los miembros de la empresa, y se resolvio dejando entrar a un worker con ese modulo en `detailed`. Es un acoplamiento raro: lo limpio es un endpoint propio del parte diario que devuelva solo lo que necesita.
 
+> Pues podemos crearlo si, para que el front no tenga que hacer mucho, sino que solo tenga que consultar ese endpoint
+
 **Que ven los workers de su empresa (D5).** Hoy `GET /companies/{id}` devuelve a cualquier miembro `fiscal_id`, `tax_config`, `settings` y `is_managed`. Algo de `settings` es necesario para que el frontend del worker funcione (modo de entrada, etiquetas, modulos). Propuesta: dos respuestas, una publica (`id`, `name`, `isManaged`, `isActive` y los ajustes de interfaz del worker) y otra completa para manager y PA.
+
+> En vd no creo que sea necesario el is active, si no esta active un worker no va a poder verlo directamente
 
 **"Role solo si no cambia".** El frontend a veces reenvia el rol actual junto con otros campos, y el backend lo tolera si coincide. No es una funcion: es un efecto de usar un unico endpoint para todo. Con "roles solo PA", el campo `role` se acepta solo de PA y se rechaza o ignora en el resto. Mejor aun, separar en `PUT .../role` y `PUT .../rates`.
 
+> Claro, es que no le veo el sentido a que se envie todo el rato el rol no?? con enviar el id del usuario por ejemplo, se extrae la entity de usuario con ese id, y se consulta el rol de esa entity
+
 **"El bloqueo excluye a los managers".** Es al reves de lo que se leia: hoy el bloqueo de tarifas en gestionada se aplica a los workers y los managers quedan libres. Quitar esa exclusion significa que el manager tambien queda bloqueado en lo suyo. Segun D2 tiene sentido que un manager no se edite sus propias tarifas.
+
+> Un manager vamos a poner que si pueda editarse sus propias tarifas, pq sino, dependemos de que haya dos managers
 
 **`GET /work-logs/billing-summary` y el modulo `billing`.** El modulo `billing` existe y gobierna el menu "Facturacion" del frontend, pero el endpoint **no comprueba el modulo** (`require_module` no se usa en ningun router). Es decir, hoy el modulo solo oculta la opcion; no protege los datos. Hallazgo H33. Con D6, el endpoint comprobaria `is_active` salvo para PA.
 
+> Lo que veria bien es que se separaran dos apartados de billing, uno mas basico con una suma de lo trabajado y lo generado, y otra con algo mucho mas detallado (porcentajes, tendencias y alguna analitica) y eso es lo que se añade en el modulo
+
 **`/modules/me`.** Tienes razon: son los modulos del usuario (personales mas los de su empresa activa). Con D6, el apartado de empresa deberia ignorarse si la empresa esta suspendida; la parte personal no tiene que ver con la empresa.
 
+> Claro, pero si en modules me se devueleve un modulo pq tu empresa lo paga (o pagaba) no tiene sentido que pueda utilizar ese modulo si la empresa ya no esta activa
+
 **"Feature-gating".** Es activar o bloquear una funcion segun el plan o modulos contratados. `require_module(code)` es una dependencia para proteger un endpoint de esa forma (devuelve 403 si la empresa o el usuario no tiene el modulo; PA pasa). Esta definida y no se usa. Deberia usarse en los endpoints de los modulos de pago (billing, informes, parte diario).
+
+> Efectivamente habria que utilziarlo
 
 ### 2.8 Turnos
 
 **"Sin validar que el destino sea miembro".** Un manager crea un turno enviando `user_id` y `company_id`. El backend comprueba que el manager gestiona esa empresa, pero **no que `user_id` pertenezca a ella**. El frontend solo ofrece miembros, asi que desde la UI no se ve, pero la API acepta cualquier UUID. Hay que validarlo en el backend.
+
+> Efectivamente hay que validarlo, el problema que tenemos es que hay muchas cosas que no se verifican en el back, solo se condifa en el front, asique creo que lo mejor es centrarnos en el back y que luego el front no tengan logica de negocio no?? 
 
 **`PUT /work-logs/{id}` y el `company_id`/`user_id` del cuerpo.** Hoy se toman del cuerpo; con la decision de no permitir el cambio, se ignoran o se rechazan.
 
@@ -224,6 +263,8 @@ Situaciones que se pueden dar:
 
 Por eso conviene auditar el cambio y que solo PA pueda hacerlo (ya es asi). Un cierre de periodo (D15) lo resolveria del todo.
 
+> No se a que te refieres con un cierre de perido la vd
+
 ### 2.10 Frontend
 
 **Toasts en errores HTTP.** No existe un tratamiento central: cada mutacion define su propio `onError` con un mensaje fijo y no se lee el `detail` del backend (`api.ts` no tiene interceptor de respuesta). Propuesta: un interceptor unico que mapee 401, 403, 404, 409, 422 y 5xx a una notificacion con el `detail` cuando exista. Ademas, si el backend es estricto y la UI oculta lo que no se puede hacer, un 403 por accion prohibida debe ser raro.
@@ -233,6 +274,8 @@ Por eso conviene auditar el cambio y que solo PA pueda hacerlo (ya es asi). Un c
 ### 2.11 Otras preguntas
 
 **Rate limit.** Tienes razon en que hay que revisarlo: no hay ningun limite en la API. En `gateway/` no hay `limit_req` y no se usa `slowapi` en el backend. El login queda expuesto a fuerza bruta. Hallazgo H30. Propuesta: `limit_req_zone` en Nginx, estricto para `/api/auth/` y mas laxo para el resto.
+
+> Perfecto
 
 **Un manager de A con token en B.** Es el comportamiento que quieres y esta bien documentado.
 
@@ -250,6 +293,11 @@ Por eso conviene auditar el cambio y que solo PA pueda hacerlo (ya es asi). Un c
 | H31 | Media | Editar un turno lo recalcula con la tarifa actual del miembro, no con la del momento | L (`crud.py:566-616`) |
 | H32 | Baja | El frontend da prioridad a `?companyId=` sobre la empresa del token: puede mostrar una empresa y operar sobre otra | L (`layout.tsx:81`) |
 | H33 | Media | El modulo `billing` solo oculta el menu; `billing-summary` no comprueba el modulo. `require_module` no se usa en ningun router | L |
+
+> H28 - eso hay que cambiarlo no?
+> H29 - Elimina eso, ademas, la barra final?? eso es correcto?
+> H32 - Eso de poner la empresa en la url era por dar la opcion de iniciar sesion en dos pestañas y poder tener seleccionado dos empresas activas distintas no?? eso es bueno tenerlo asi?? algun inconveniente?? imagino que aunque se haga caso a la url, hay que comprobar quien solicita esa informacion no?
+> H33 - Habria que utilizar lo de require_modulo en los endpoint
 
 ### Cambios en hallazgos existentes
 
