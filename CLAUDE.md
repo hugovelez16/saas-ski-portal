@@ -57,6 +57,7 @@ Orca crea un git worktree aislado por tarea. Configuracion en `orca.yaml` (raiz)
 - **Crear**: pulsar `+` junto al repo, nombrar la tarea y partir de `develop`. Poner a la rama el nombre `<tipo>/<descripcion-en-espanol>` (regla 2). Elegir Claude Code en el desplegable de agente.
 - **Setup automatico**: `scripts.setup` ejecuta `./bin/orca-setup`, que genera el `.env` del worktree copiando el del checkout principal (`ORCA_ROOT_PATH`) y fijando `COMPOSE_PROJECT_NAME`, `GATEWAY_PORT`, `POSTGRES_PORT`, `REDIS_PORT` y `ALLOWED_ORIGINS` propios (puertos deterministas por ruta, saltando los ocupados). Despues: `./bin/dev && ./bin/migrate && ./bin/seed`. `frontend/node_modules` se comparte entre worktrees (`worktree.sharedDirectories`).
 - **Archivar**: `scripts.archive` ejecuta `./bin/orca-archive`, que baja el stack Docker del worktree y borra sus volumenes.
+- **Ubicacion**: los worktrees viven fuera del repo, en `<padre>/saas-ski-portal.worktrees/<nombre>`, tanto si los crea Orca como si se crean a mano con la skill `branch-workspace`.
 - **Un worktree, una tarea, un PR.** Evitar que dos worktrees toquen los mismos ficheros.
 - **Version**: el incremento SemVer (regla 8) genera conflicto si varios PRs paralelos editan `package.json` y `CHANGELOG.md`. Hacerlo al final, sobre `develop` actualizado, justo antes del PR.
 - **Revision y entrega**: revisar el diff en Orca con comentarios en linea que vuelven al agente. Commit, push y PR solo cuando el usuario lo ordene (regla 3), incluso si Orca ofrece botones para ello.
