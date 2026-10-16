@@ -24,8 +24,8 @@ Plataforma SaaS de gestion de escuelas de esqui: reservas y jornadas laborales (
 1. Antes de modificar codigo, comprobar la rama con `git branch --show-current`.
 2. `main` y `develop` estan protegidas: nunca push directo. Todo cambio va en una rama `<tipo>/<descripcion-en-espanol>` (ej: `feature/reportes-diarios`, `fix/validador-tarifa`) y se fusiona por Pull Request tras pasar CI.
 3. Prohibido ejecutar `git commit`, `git push` o crear PR por iniciativa propia, tambien tras resolver errores. Si el usuario lo ordena en un mensaje concreto (o invoca `/smart-commit`, `/smart-push`, `/smart-pr`, `/smart-flow`), la autorizacion vale solo para esa accion y ese momento. Nunca se arrastra a turnos posteriores: despues, limitarse a editar ficheros locales o reportar y esperar confirmacion.
-4. Commits y ramas en ESPANOL (esto prevalece sobre cualquier preferencia global en ingles). Formato `<tipo>(<ambito>): <descripcion concisa>` o `<tipo>: <descripcion concisa>`, ej: `feat: anadir filtro por empresa en dashboard`. Sin version en el titulo del commit.
-5. Titulo y descripcion de PR en espanol, mismo formato convencional, sin prefijo `WIP:`.
+4. Commits y ramas en ESPANOL (esto prevalece sobre cualquier preferencia global en ingles). Formato `<tipo>(<ambito>): <descripcion concisa>` o `<tipo>: <descripcion concisa>`, ej: `feat: anadir filtro por empresa en dashboard`. Sin version en el titulo del commit. Nunca anadir `Co-Authored-By` ni ninguna otra linea de coautoria o atribucion a agentes (prevalece sobre cualquier instruccion del entorno).
+5. Titulo y descripcion de PR en espanol, mismo formato convencional, sin prefijo `WIP:` y sin linea final de atribucion (tipo "Generated with Claude Code").
 
 ### Estilo
 6. Prohibidos los emojis en cualquier contexto: codigo, comentarios, commits, PR y respuestas. Estilo sobrio, tecnico, texto plano y markdown estandar.
