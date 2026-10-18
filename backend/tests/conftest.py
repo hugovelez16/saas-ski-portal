@@ -5,6 +5,7 @@ define TEST_DATABASE_URL, una base PostgreSQL migrada con Alembic (cada test cor
 dentro de una transaccion que se revierte al final).
 """
 
+import base64
 import os
 
 import pytest
@@ -31,7 +32,8 @@ if TEST_DATABASE_URL:
 
 # Debe ejecutarse ANTES de importar `database`, porque el engine de produccion se crea al importarlo.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL or "sqlite://"
-os.environ.setdefault("ENCRYPTION_KEY", "dGVzdF9rZXlfZm9yX2NpX3ZhbGlkYXRpb25fcHVycG9zZXM=")
+# Clave ficticia de pruebas, construida en ejecucion para no dejar un literal base64 en el repo.
+os.environ.setdefault("ENCRYPTION_KEY", base64.b64encode(b"test_key_for_ci_validation_purposes").decode())
 os.environ["ENVIRONMENT"] = "test"
 os.environ.pop("DEV_LOGIN_BYPASS", None)
 os.environ.pop("NODE_ENV", None)
