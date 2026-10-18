@@ -6,9 +6,12 @@ dentro de una transaccion que se revierte al final).
 """
 
 import os
+import uuid
 
 import pytest
 from cryptography.fernet import Fernet
+from sqlalchemy import types as sqltypes
+from sqlalchemy.dialects.sqlite.pysqlite import SQLiteDialect_pysqlite
 from sqlalchemy.engine import make_url
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
@@ -72,6 +75,29 @@ database.SessionLocal = TestingSession
 @compiles(JSONB, "sqlite")
 def _compile_jsonb_sqlite(type_, compiler, **kw):
     return "JSON"
+
+
+class _SqliteUUID(sqltypes.Uuid):
+    """En SQLite acepta tambien cadenas: el `sub` de los JWT y `str(user.id)` llegan como str.
+
+    PostgreSQL (CI) ya acepta cadenas en columnas UUID; este adaptador solo iguala ese comportamiento.
+    """
+
+    cache_ok = True
+
+    def bind_processor(self, dialect):
+        base = super().bind_processor(dialect)
+
+        def process(value):
+            if isinstance(value, str):
+                value = uuid.UUID(value)
+            return base(value) if base else value
+
+        return process
+
+
+# Se aplica solo al dialecto SQLite del proceso de tests (no afecta a PostgreSQL ni a produccion).
+SQLiteDialect_pysqlite.colspecs[sqltypes.Uuid] = _SqliteUUID
 
 
 def pytest_collection_modifyitems(config, items):

@@ -33,11 +33,20 @@ class TestDevAuthBypass(unittest.TestCase):
         self.db.close()
 
     def test_is_dev_mode(self):
+        # Solo ENVIRONMENT=development Y DEV_LOGIN_BYPASS verdadero activan el modo desarrollo.
         self.assertTrue(dev_seed.is_dev_mode())
+
+        os.environ["DEV_LOGIN_BYPASS"] = "false"
+        self.assertFalse(dev_seed.is_dev_mode())
 
         os.environ["ENVIRONMENT"] = "production"
         os.environ["NODE_ENV"] = "production"
         os.environ["DEV_LOGIN_BYPASS"] = "false"
+        self.assertFalse(dev_seed.is_dev_mode())
+
+        # NODE_ENV ya no cuenta por si solo.
+        os.environ["NODE_ENV"] = "development"
+        os.environ["DEV_LOGIN_BYPASS"] = "true"
         self.assertFalse(dev_seed.is_dev_mode())
 
     def test_ensure_dev_admin_user_creates_and_returns_admin(self):
