@@ -854,9 +854,12 @@ def test_manager_of_a_and_b_with_token_b_lists_only_b_work_logs_without_company_
 
 def test_worker_of_a_and_b_with_daily_report_and_token_b_sees_only_b_in_detailed(client, db):
     user, company_a, company_b = _member_of_a_and_b(db, "worker")
-    module = models.AppModule(code_name="worker_daily_report", name="Parte diario", is_active=True)
-    db.add(module)
-    db.flush()
+    # Con PostgreSQL migrado el modulo ya existe (lo siembra una migracion); con SQLite se crea.
+    module = db.query(models.AppModule).filter(models.AppModule.code_name == "worker_daily_report").first()
+    if module is None:
+        module = models.AppModule(code_name="worker_daily_report", name="Parte diario", is_active=True)
+        db.add(module)
+        db.flush()
     for company in (company_a, company_b):
         db.add(
             models.ModuleSubscription(
