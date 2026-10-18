@@ -51,6 +51,7 @@ La sesion principal orquesta; los subagentes no pueden invocar a otros subagente
 - No implementes codigo extenso tu mismo si puedes delegarlo con un plan claro. Si un agente haiku se atasca, subelo a sonnet en su frontmatter.
 - Tareas no triviales: plan corto, implementacion, tests, revision. Si un test falla, diagnostica la causa antes de reintentar. Verifica antes de afirmar: ejecuta el comando real y cita el resultado; si no pudiste verificar, dilo.
 - Skills de git (`smart-commit`, `smart-push`, `smart-pr`, `smart-flow`, `daily-sync`): solo las invoca el usuario (`disable-model-invocation`).
+- Agentes externos en Orca (codex, cursor, grok, antigravity): solo para tareas acotadas y mecanicas (buscar en el codigo, editar una lista cerrada de ficheros, renombrados) con cuota limitada. Nunca para auth, migraciones, seguridad o decisiones de diseno. Un agente por worktree, sin solapar ficheros. No leen CLAUDE.md por defecto: el prompt debe ordenarles leerlo y repetir las prohibiciones (sin git commit/push/PR, sin leer .env, solo Edit/Write). La sesion principal verifica el resultado con git diff y tests antes de darlo por bueno. Antigravity solo con supervision del usuario (Orca no mide su uso).
 
 ### Orca: un worktree por tarea
 Orca crea un git worktree aislado por tarea. Configuracion en `orca.yaml` (raiz).
