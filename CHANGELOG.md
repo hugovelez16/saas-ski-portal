@@ -19,6 +19,26 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.9.1] - 2026-10-18
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Seguridad inmediata de autenticacion (PR-01 del plan de empresa).
+
+### Seguridad
+
+- **`backend/routers/companies.py`**: `update_member_status`, `read_company`, `read_company_rates` y `update_company_member` usan `get_verified_user`; los tokens `2fa_pending` se rechazan en los endpoints de empresa.
+- **`backend/auth.py`, `backend/routers/auth.py`**: los usuarios desactivados (`is_active` falso) no acceden con token vigente (401), no inician sesion (403) y su refresh revoca la sesion (401).
+- **`backend/routers/users.py`**: eliminado el registro publico `POST /users/`. `POST /users` sigue exigiendo administrador de plataforma.
+- **`backend/dev_seed.py`, `backend/main.py`**: el bypass de desarrollo exige `ENVIRONMENT=development` y `DEV_LOGIN_BYPASS` verdadero (`NODE_ENV` ya no cuenta). El arranque aborta si `DEV_LOGIN_BYPASS` esta activo fuera de `development`.
+- **`backend/main.py`, `backend/seed.py`**: el sembrado inicial sale del arranque; `seed_initial_data` se omite si ya existe un administrador de plataforma. La membresia sembrada en desarrollo usa el rol `manager`.
+
+### Cambios Internos
+
+- **`backend/tests/routers/test_auth_security.py`**: nuevos tests de PR-01; `test_auth_dev_bypass.py` actualizado al nuevo contrato; `conftest.py` acepta cadenas en columnas UUID bajo SQLite.
+
+---
+
 ## [0.9.0] - 2026-10-18
 
 ### Tipo de Cambio SemVer

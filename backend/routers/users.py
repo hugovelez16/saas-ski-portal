@@ -12,17 +12,6 @@ from routers.utils import check_manager_access
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.post("/", response_model=schemas.UserCreate)
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    """
-    Register a new user.
-    """
-    db_user = auth.get_user_by_email(db, email=user.email)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    return crud.create_user(db=db, user=user)
-
-
 @router.get("/me", response_model=schemas.UserResponse)
 def read_users_me(
     db: Session = Depends(get_db),
