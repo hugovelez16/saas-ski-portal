@@ -146,8 +146,10 @@ def fake_redis():
     previous = redis_config.redis_manager._client
     fake = FakeRedisClient()
     redis_config.redis_manager._client = fake
+    redis_config.redis_manager._down_until = 0.0
     yield fake
     redis_config.redis_manager._client = previous
+    redis_config.redis_manager._down_until = 0.0
 
 
 @pytest.fixture
