@@ -27,7 +27,8 @@ if TEST_DATABASE_URL:
             f"TEST_DATABASE_URL apunta a la base '{_test_db_name}', cuyo nombre no contiene 'test'. Abortando.",
             returncode=3,
         )
-    if TEST_DATABASE_URL == ORIGINAL_DATABASE_URL:
+    # En CI (CI=true) ambas variables apuntan a la misma BD desechable del servicio, asi que no se comprueba.
+    if os.getenv("CI") != "true" and TEST_DATABASE_URL == ORIGINAL_DATABASE_URL:
         pytest.exit("TEST_DATABASE_URL coincide con DATABASE_URL del entorno. Abortando.", returncode=3)
 
 # Debe ejecutarse ANTES de importar `database`, porque el engine de produccion se crea al importarlo.
