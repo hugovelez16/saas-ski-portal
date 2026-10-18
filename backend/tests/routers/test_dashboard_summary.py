@@ -1,159 +1,168 @@
-import unittest
+"""
+Resumen del dashboard de empresa (GET /companies/{cid}/dashboard-summary) por HTTP.
+
+Los casos marcados con `# PR-03:` cambian respecto al codigo anterior.
+"""
+
 import uuid
 from datetime import date
+from types import SimpleNamespace
 
-import crud
 import models
-from database import SessionLocal
-from fastapi import HTTPException
-from routers.companies import get_company_dashboard_summary
+import pytest
+
+from tests.factories import as_user
+
+MSG_NO_ACCESS = "No tienes acceso a esta empresa"
+
+MANAGER_CLAIMS = {"role": "manager"}
 
 
-class TestDashboardSummary(unittest.TestCase):
-    def setUp(self):
-        self.db = SessionLocal()
+def _seed(db):
+    """Datos de partida del dashboard: una empresa, cuatro usuarios, tres miembros y dos turnos de hoy."""
+    company = models.Company(
+        name=f"Test Dashboard Company {uuid.uuid4().hex[:6]}",
+        worklog_definitions={
+            "particular": {"unit": "hours", "label": "Particular"},
+            "tutorial": {"unit": "days", "label": "Tutorial"},
+        },
+    )
+    db.add(company)
+    db.flush()
 
-        # 1. Create test company
-        self.company = models.Company(
-            name=f"Test Dashboard Company {uuid.uuid4().hex[:6]}",
-            worklog_definitions={
-                "particular": {"unit": "hours", "label": "Particular"},
-                "tutorial": {"unit": "days", "label": "Tutorial"}
-            }
-        )
-        self.db.add(self.company)
-        self.db.flush()
+    manager_user = models.User(
+        email=f"mgr_{uuid.uuid4().hex[:6]}@test.com",
+        hashed_password="hashed_pass_test",
+        first_name="Carlos",
+        last_name="Manager",
+        role=models.UserRole.user,
+    )
+    worker_user1 = models.User(
+        email=f"w1_{uuid.uuid4().hex[:6]}@test.com",
+        hashed_password="hashed_pass_test",
+        first_name="Ana",
+        last_name="Monitora",
+        role=models.UserRole.user,
+    )
+    worker_user2 = models.User(
+        email=f"w2_{uuid.uuid4().hex[:6]}@test.com",
+        hashed_password="hashed_pass_test",
+        first_name="David",
+        last_name="Profesor",
+        role=models.UserRole.user,
+    )
+    unauthorized_user = models.User(
+        email=f"unauth_{uuid.uuid4().hex[:6]}@test.com",
+        hashed_password="hashed_pass_test",
+        first_name="Pedro",
+        last_name="Ajeno",
+        role=models.UserRole.user,
+    )
+    db.add_all([manager_user, worker_user1, worker_user2, unauthorized_user])
+    db.flush()
 
-        # 2. Create users
-        self.manager_user = models.User(
-            email=f"mgr_{uuid.uuid4().hex[:6]}@test.com",
-            hashed_password="hashed_pass_test",
-            first_name="Carlos",
-            last_name="Manager",
-            role=models.UserRole.user
-        )
-        self.worker_user1 = models.User(
-            email=f"w1_{uuid.uuid4().hex[:6]}@test.com",
-            hashed_password="hashed_pass_test",
-            first_name="Ana",
-            last_name="Monitora",
-            role=models.UserRole.user
-        )
-        self.worker_user2 = models.User(
-            email=f"w2_{uuid.uuid4().hex[:6]}@test.com",
-            hashed_password="hashed_pass_test",
-            first_name="David",
-            last_name="Profesor",
-            role=models.UserRole.user
-        )
-        self.unauthorized_user = models.User(
-            email=f"unauth_{uuid.uuid4().hex[:6]}@test.com",
-            hashed_password="hashed_pass_test",
-            first_name="Pedro",
-            last_name="Ajeno",
-            role=models.UserRole.user
-        )
-        self.db.add_all([self.manager_user, self.worker_user1, self.worker_user2, self.unauthorized_user])
-        self.db.flush()
+    # Memberships con sort_order estricto
+    mem_manager = models.CompanyMember(
+        user_id=manager_user.id,
+        company_id=company.id,
+        role=models.CompanyRole.manager,
+        is_active=True,
+        sort_order=1,
+    )
+    mem_worker1 = models.CompanyMember(
+        user_id=worker_user1.id,
+        company_id=company.id,
+        role=models.CompanyRole.worker,
+        is_active=True,
+        sort_order=10,
+    )
+    mem_worker2 = models.CompanyMember(
+        user_id=worker_user2.id,
+        company_id=company.id,
+        role=models.CompanyRole.worker,
+        is_active=True,
+        sort_order=20,
+    )
+    db.add_all([mem_manager, mem_worker1, mem_worker2])
+    db.flush()
 
-        # 3. Create memberships with strict sort_order
-        self.mem_manager = models.CompanyMember(
-            user_id=self.manager_user.id,
-            company_id=self.company.id,
-            role=models.CompanyRole.manager,
-            is_active=True,
-            sort_order=1
-        )
-        self.mem_worker1 = models.CompanyMember(
-            user_id=self.worker_user1.id,
-            company_id=self.company.id,
-            role=models.CompanyRole.worker,
-            is_active=True,
-            sort_order=10
-        )
-        self.mem_worker2 = models.CompanyMember(
-            user_id=self.worker_user2.id,
-            company_id=self.company.id,
-            role=models.CompanyRole.worker,
-            is_active=True,
-            sort_order=20
-        )
-        self.db.add_all([self.mem_manager, self.mem_worker1, self.mem_worker2])
-        self.db.flush()
+    today = date.today()
+    log_today_w1 = models.WorkLog(
+        user_id=worker_user1.id,
+        company_id=company.id,
+        type="particular",
+        start_date=today,
+        end_date=today,
+        duration=3.0,
+        net_amount=75.0,
+        gross_amount=90.0,
+    )
+    log_today_w2 = models.WorkLog(
+        user_id=worker_user2.id,
+        company_id=company.id,
+        type="particular",
+        start_date=today,
+        end_date=today,
+        duration=2.0,
+        net_amount=50.0,
+        gross_amount=60.0,
+    )
+    db.add_all([log_today_w1, log_today_w2])
+    db.commit()
 
-        # 4. Create Work Logs
-        today = date.today()
-        self.log_today_w1 = models.WorkLog(
-            user_id=self.worker_user1.id,
-            company_id=self.company.id,
-            type="particular",
-            start_date=today,
-            end_date=today,
-            duration=3.0,
-            net_amount=75.0,
-            gross_amount=90.0
-        )
-        self.log_today_w2 = models.WorkLog(
-            user_id=self.worker_user2.id,
-            company_id=self.company.id,
-            type="particular",
-            start_date=today,
-            end_date=today,
-            duration=2.0,
-            net_amount=50.0,
-            gross_amount=60.0
-        )
-        self.db.add_all([self.log_today_w1, self.log_today_w2])
-        self.db.commit()
-
-    def tearDown(self):
-        self.db.query(models.WorkLog).filter(models.WorkLog.company_id == self.company.id).delete()
-        self.db.query(models.CompanyMember).filter(models.CompanyMember.company_id == self.company.id).delete()
-        self.db.query(models.User).filter(models.User.id.in_([
-            self.manager_user.id, self.worker_user1.id, self.worker_user2.id, self.unauthorized_user.id
-        ])).delete()
-        self.db.query(models.Company).filter(models.Company.id == self.company.id).delete()
-        self.db.commit()
-        self.db.close()
-
-    def test_get_dashboard_summary_metrics(self):
-        today = date.today()
-        summary = crud.get_dashboard_summary(
-            db=self.db,
-            company_id=self.company.id,
-            start_date=today,
-            end_date=today
-        )
-
-        # Check today metrics
-        self.assertEqual(summary["today_metrics"]["today_hours"], 5.0)
-        self.assertEqual(summary["today_metrics"]["today_logs_count"], 2)
-        self.assertEqual(summary["today_metrics"]["today_active_members_count"], 2)
-
-        # Check period metrics
-        self.assertEqual(summary["period_metrics"]["total_hours"], 5.0)
-        self.assertEqual(summary["period_metrics"]["total_net"], 125.0)
-        self.assertEqual(summary["period_metrics"]["total_gross"], 150.0)
-
-        # Check workers summary follows sort order (manager=1, worker1=10, worker2=20)
-        workers = summary["workers_summary"]
-        self.assertEqual(len(workers), 3)
-        self.assertEqual(workers[0]["user_id"], self.manager_user.id)
-        self.assertEqual(workers[1]["user_id"], self.worker_user1.id)
-        self.assertEqual(workers[2]["user_id"], self.worker_user2.id)
-
-    def test_unauthorized_access_denied(self):
-        today = date.today()
-        with self.assertRaises(HTTPException) as ctx:
-            get_company_dashboard_summary(
-                company_id=str(self.company.id),
-                start_date=today,
-                end_date=today,
-                db=self.db,
-                current_user=self.unauthorized_user
-            )
-        self.assertEqual(ctx.exception.status_code, 403)
+    return SimpleNamespace(
+        company=company,
+        manager_user=manager_user,
+        worker_user1=worker_user1,
+        worker_user2=worker_user2,
+        unauthorized_user=unauthorized_user,
+    )
 
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.fixture
+def dashboard(db):
+    return _seed(db)
+
+
+def test_get_dashboard_summary_metrics(client, db, dashboard):
+    as_user(client, dashboard.manager_user, dashboard.company, claims=MANAGER_CLAIMS)
+    today = date.today()
+
+    resp = client.get(
+        f"/companies/{dashboard.company.id}/dashboard-summary",
+        params={"start_date": today.isoformat(), "end_date": today.isoformat()},
+    )
+
+    assert resp.status_code == 200, resp.text
+    summary = resp.json()
+
+    # Check today metrics
+    assert summary["todayMetrics"]["todayHours"] == 5.0
+    assert summary["todayMetrics"]["todayLogsCount"] == 2
+    assert summary["todayMetrics"]["todayActiveMembersCount"] == 2
+
+    # Check period metrics
+    assert summary["periodMetrics"]["totalHours"] == 5.0
+    assert summary["periodMetrics"]["totalNet"] == 125.0
+    assert summary["periodMetrics"]["totalGross"] == 150.0
+
+    # Check workers summary follows sort order (manager=1, worker1=10, worker2=20)
+    workers = summary["workersSummary"]
+    assert len(workers) == 3
+    assert workers[0]["userId"] == str(dashboard.manager_user.id)
+    assert workers[1]["userId"] == str(dashboard.worker_user1.id)
+    assert workers[2]["userId"] == str(dashboard.worker_user2.id)
+
+
+def test_unauthorized_access_denied(client, db, dashboard):
+    as_user(client, dashboard.unauthorized_user, dashboard.company, claims={"role": "worker"})
+    today = date.today()
+
+    resp = client.get(
+        f"/companies/{dashboard.company.id}/dashboard-summary",
+        params={"start_date": today.isoformat(), "end_date": today.isoformat()},
+    )
+
+    # PR-03: sin membresia la empresa responde 403 con MSG_NO_ACCESS (mensaje de access_policy).
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == MSG_NO_ACCESS

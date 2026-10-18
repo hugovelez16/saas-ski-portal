@@ -2,7 +2,7 @@
 Pruebas del 2FA TOTP: verificacion protegida (limite de intentos y anti-replay),
 cifrado del secreto y endpoints /verify-2fa, /2fa/setup, /2fa/activate y /2fa/disable.
 
-Redis se sustituye por un doble en memoria; no se necesita base de datos.
+Redis se sustituye por un doble en memoria. Los tests de reset de 2FA llaman por HTTP y usan la BD de test.
 """
 
 import uuid
@@ -11,12 +11,15 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import auth
+import models
 import pyotp
 import pytest
 import schemas
 from fastapi import HTTPException, Response
 from routers import auth as auth_router
-from routers import users as users_router
+
+from tests.factories import as_user
+from tests.factories import make_user as make_db_user
 
 
 class FakeRedis:
@@ -310,64 +313,65 @@ async def test_disable_when_not_enabled_returns_400(fake_redis):
 # --- Reset de 2FA por el administrador de la plataforma ---
 
 
-def make_admin(is_platform_admin=True):
-    return SimpleNamespace(id=uuid.uuid4(), email="admin@vesotel.com", is_platform_admin=is_platform_admin)
+def _db_user_with_2fa(db, *, enabled: bool = True):
+    """Usuario persistido con 2FA activa (o sin ella) para ejercitar el reset por HTTP."""
+    user = make_db_user(db)
+    user.is_2fa_enabled = enabled
+    user.otp_secret = auth.encrypt_secret(pyotp.random_base32()) if enabled else None
+    db.commit()
+    db.refresh(user)
+    return user
 
 
-def test_admin_reset_clears_2fa_revokes_sessions_and_audits(fake_redis, monkeypatch):
-    user, _ = make_user(enabled=True)
-    admin = make_admin()
-    db = MagicMock()
-    monkeypatch.setattr(users_router.crud, "get_user", lambda session, uid: user)
+def test_admin_reset_clears_2fa_revokes_sessions_and_audits(client, db, fake_redis):
+    admin = make_db_user(db, role="admin")
+    user = _db_user_with_2fa(db, enabled=True)
+    session = models.UserSession(user_id=user.id, refresh_token=uuid.uuid4().hex, is_active=True)
+    db.add(session)
+    db.commit()
     fake_redis.store[f"2fa_fail_{user.id}"] = 5
 
-    result = users_router.reset_user_2fa(str(user.id), db=db, current_user=admin)
+    resp = as_user(client, admin).post(f"/users/{user.id}/reset-2fa")
 
-    assert result == {"message": "2FA reset"}
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"message": "2FA reset"}
+    db.refresh(user)
     assert user.is_2fa_enabled is False
     assert user.otp_secret is None
-    db.query.return_value.filter.return_value.update.assert_called_once_with(
-        {"is_active": False}, synchronize_session=False
-    )
-    audit = db.add.call_args.args[0]
-    assert audit.action == "2fa_reset"
+    db.refresh(session)
+    assert session.is_active is False
+    audit = db.query(models.AuditLog).filter(models.AuditLog.action == "2fa_reset").one()
     assert audit.impersonated_user_id == user.id
     assert audit.admin_user_id == admin.id
     assert audit.extra_data == {"target_email": user.email}
-    db.commit.assert_called_once()
     assert f"2fa_fail_{user.id}" not in fake_redis.store
 
 
-def test_reset_is_forbidden_for_non_platform_admin(fake_redis, monkeypatch):
-    user, _ = make_user(enabled=True)
-    monkeypatch.setattr(users_router.crud, "get_user", lambda session, uid: user)
+def test_reset_is_forbidden_for_non_platform_admin(client, db, fake_redis):
+    actor = make_db_user(db)  # role user: no es platform admin
+    user = _db_user_with_2fa(db, enabled=True)
 
-    with pytest.raises(HTTPException) as exc:
-        users_router.reset_user_2fa(str(user.id), db=MagicMock(), current_user=make_admin(is_platform_admin=False))
+    resp = as_user(client, actor).post(f"/users/{user.id}/reset-2fa")
 
-    assert exc.value.status_code == 403
+    assert resp.status_code == 403, resp.text
+    db.refresh(user)
     assert user.is_2fa_enabled is True
     assert user.otp_secret is not None
 
 
-def test_reset_unknown_user_returns_404(fake_redis, monkeypatch):
-    monkeypatch.setattr(users_router.crud, "get_user", lambda session, uid: None)
+def test_reset_unknown_user_returns_404(client, db, fake_redis):
+    admin = make_db_user(db, role="admin")
 
-    with pytest.raises(HTTPException) as exc:
-        users_router.reset_user_2fa(str(uuid.uuid4()), db=MagicMock(), current_user=make_admin())
+    resp = as_user(client, admin).post(f"/users/{uuid.uuid4()}/reset-2fa")
 
-    assert exc.value.status_code == 404
+    assert resp.status_code == 404, resp.text
 
 
-def test_reset_user_without_2fa_returns_400_and_writes_nothing(fake_redis, monkeypatch):
-    user, _ = make_user(enabled=False)
-    user.otp_secret = None
-    db = MagicMock()
-    monkeypatch.setattr(users_router.crud, "get_user", lambda session, uid: user)
+def test_reset_user_without_2fa_returns_400_and_writes_nothing(client, db, fake_redis):
+    admin = make_db_user(db, role="admin")
+    user = _db_user_with_2fa(db, enabled=False)
 
-    with pytest.raises(HTTPException) as exc:
-        users_router.reset_user_2fa(str(user.id), db=db, current_user=make_admin())
+    resp = as_user(client, admin).post(f"/users/{user.id}/reset-2fa")
 
-    assert exc.value.status_code == 400
-    db.add.assert_not_called()
-    db.commit.assert_not_called()
+    assert resp.status_code == 400, resp.text
+    assert db.query(models.AuditLog).filter(models.AuditLog.impersonated_user_id == user.id).count() == 0

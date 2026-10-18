@@ -1,13 +1,20 @@
+import logging
+from uuid import UUID
+
+import access_policy
 import auth
 import crud
 import email_utils
 import models
 import schemas
+from access_policy import PolicyError
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from routers.utils import check_manager_access
+from routers import deps
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -46,6 +53,8 @@ def read_users_me(
     user_data.is_platform_admin = getattr(current_user, "is_platform_admin", False)
     user_data.active_company_id = getattr(current_user, "active_company_id", None)
     user_data.active_role = getattr(current_user, "active_role", None)
+    user_data.view_as = getattr(current_user, "view_as", None)
+    user_data.is_read_only_view = bool(user_data.view_as)
 
     return user_data
 
@@ -55,7 +64,7 @@ def read_user_companies(db: Session = Depends(get_db), current_user: models.User
     """
     Get companies the current user is a member of.
     """
-    if getattr(current_user, "is_platform_admin", False):
+    if deps.acting_platform_admin(current_user):
         companies = db.query(models.Company).all()
         results = []
         for company in companies:
@@ -77,11 +86,10 @@ def read_user_companies(db: Session = Depends(get_db), current_user: models.User
 
 
 @router.get("/{user_id}", response_model=schemas.UserResponse)
-def read_user(user_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
-    is_platform_admin = getattr(current_user, "is_platform_admin", False)
-    if not is_platform_admin and not check_manager_access(db, current_user, user_id):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    user = crud.get_user(db, user_id)
+def read_user(user_id: UUID, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
+    if not deps.manages_user(db, current_user, user_id):
+        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+    user = crud.get_user(db, str(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -92,20 +100,16 @@ def read_users(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user),
+    current_user: models.User = Depends(deps.require_platform_admin),
 ):
-    if not getattr(current_user, "is_platform_admin", False):
-        raise HTTPException(status_code=403, detail="Not authorized")
     users = crud.get_users(db, skip=skip, limit=limit)
     return users
 
 
 @router.post("", response_model=schemas.UserResponse)
 async def create_user_admin(
-    user: schemas.UserCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+    user: schemas.UserCreate, db: Session = Depends(get_db), current_user: models.User = Depends(deps.require_platform_admin)
 ):
-    if not getattr(current_user, "is_platform_admin", False):
-        raise HTTPException(status_code=403, detail="Not authorized")
     db_user = crud.get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -138,14 +142,12 @@ async def create_user_admin(
 
 @router.put("/{user_id}/status")
 def toggle_user_status(
-    user_id: str,
+    user_id: UUID,
     is_active: bool,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user),
+    current_user: models.User = Depends(deps.require_platform_admin),
 ):
-    if not getattr(current_user, "is_platform_admin", False):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    user = crud.update_user_status(db, user_id=user_id, is_active=is_active)
+    user = crud.update_user_status(db, user_id=str(user_id), is_active=is_active)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": "Status updated", "is_active": user.is_active}
@@ -182,18 +184,15 @@ def change_password(
 
 @router.post("/{user_id}/reset-password-email")
 async def reset_password_via_email(
-    user_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+    user_id: UUID, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
 ):
     """
     Admin only: Reset user password to a random one and email it.
     """
-    if not getattr(current_user, "is_platform_admin", False):
-        # Manager check
-        is_manager = check_manager_access(db, current_user, user_id)
-        if not is_manager:
-            raise HTTPException(status_code=403, detail="Not authorized")
+    if not deps.manages_user(db, current_user, user_id):
+        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
 
-    user = crud.get_user(db, user_id)
+    user = crud.get_user(db, str(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -205,8 +204,8 @@ async def reset_password_via_email(
     try:
         reset_token = auth.create_reset_token(user.email)
         await email_utils.send_password_reset_email(user.email, reset_token)
-    except Exception as e:
-        print(f"Error sending email: {e}")
+    except Exception:
+        logger.warning("Error sending password reset email to user %s", user.id)
         raise HTTPException(status_code=500, detail="Failed to send email.")
 
     return {"message": "Password reset and email sent"}
@@ -214,16 +213,13 @@ async def reset_password_via_email(
 
 @router.post("/{user_id}/reset-2fa")
 def reset_user_2fa(
-    user_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+    user_id: UUID, db: Session = Depends(get_db), current_user: models.User = Depends(deps.require_platform_admin)
 ):
     """
     Platform admin only: disable 2FA for a user who lost access to their authenticator app.
     Revokes the user's active sessions and leaves an audit entry. The user can enrol 2FA again afterwards.
     """
-    if not getattr(current_user, "is_platform_admin", False):
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    user = crud.get_user(db, user_id)
+    user = crud.get_user(db, str(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -256,14 +252,12 @@ def reset_user_2fa(
 
 @router.put("/{user_id}", response_model=schemas.UserResponse)
 def update_user(
-    user_id: str,
+    user_id: UUID,
     user: schemas.UserUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user),
+    current_user: models.User = Depends(deps.require_platform_admin),
 ):
-    if not getattr(current_user, "is_platform_admin", False):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    db_user = crud.update_user(db, user_id, user)
+    db_user = crud.update_user(db, str(user_id), user)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     return db_user
@@ -271,9 +265,8 @@ def update_user(
 
 @router.get("/{user_id}/companies", response_model=list[schemas.CompanyResponse])
 def read_user_companies_admin(
-    user_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+    user_id: UUID, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
 ):
-    is_platform_admin = getattr(current_user, "is_platform_admin", False)
-    if not is_platform_admin and not check_manager_access(db, current_user, user_id):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    return crud.get_user_companies(db, user_id, include_inactive=True)
+    if not deps.manages_user(db, current_user, user_id):
+        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+    return crud.get_user_companies(db, str(user_id), include_inactive=True)

@@ -8,13 +8,17 @@ de empresa o usuario a dichos módulos.
 from datetime import datetime
 from uuid import UUID
 
+import access_policy
 import auth
 import crud
 import models
 import schemas
+from access_policy import PolicyError
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
+
+from routers import deps
 
 router = APIRouter(prefix="/modules", tags=["modules"])
 
@@ -23,7 +27,7 @@ router = APIRouter(prefix="/modules", tags=["modules"])
 
 
 def _require_admin(current_user: models.User):
-    if not getattr(current_user, "is_platform_admin", False):
+    if not deps.acting_platform_admin(current_user):
         raise HTTPException(
             status_code=403, detail="Solo el administrador de la plataforma puede realizar esta acción."
         )
@@ -39,7 +43,7 @@ def list_modules(
     current_user: models.User = Depends(auth.get_verified_user),
 ):
     """Lista todos los módulos disponibles. Admin puede ver también los inactivos."""
-    if include_inactive and not getattr(current_user, "is_platform_admin", False):
+    if include_inactive and not deps.acting_platform_admin(current_user):
         include_inactive = False  # Non-admin cannot see inactive
     return crud.get_modules(db, include_inactive=include_inactive)
 
@@ -92,15 +96,13 @@ def list_subscriptions(
     Platform Admin puede ver todas.
     Manager puede ver las de su empresa activa.
     """
-    is_admin = getattr(current_user, "is_platform_admin", False)
-    active_cid = str(getattr(current_user, "active_company_id", None) or "")
-    active_role = getattr(current_user, "active_role", None)
-
-    if not is_admin:
+    if not deps.acting_platform_admin(current_user):
         # Non-admin can only see subscriptions for their own active company
-        if active_role != "manager" or not active_cid:
-            raise HTTPException(status_code=403, detail="No autorizado.")
-        company_id = active_cid
+        active_cid = getattr(current_user, "active_company_id", None)
+        if not active_cid:
+            raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+        ctx = deps.authorize(db, current_user, active_cid, min_role=access_policy.ROLE_MANAGER)
+        company_id = ctx.company_id
         user_id = None  # Managers cannot filter by user_id
 
     subs = (
@@ -189,25 +191,24 @@ def get_my_modules(
     (bien por suscripción personal o por suscripción de su empresa activa/proveída).
     Útil para que el frontend sepa qué funciones mostrar.
     """
-    is_admin = getattr(current_user, "is_platform_admin", False)
+    is_admin = deps.acting_platform_admin(current_user)
 
+    effective_company_id = None
     if company_id and not is_admin:
-        # Verify active member
-        membership = (
-            db.query(models.CompanyMember)
-            .filter(
-                models.CompanyMember.user_id == current_user.id,
-                models.CompanyMember.company_id == company_id,
-                models.CompanyMember.is_active == True,
-            )
-            .first()
-        )
-        if not membership:
-            raise HTTPException(status_code=403, detail="No autorizado.")
-
-    effective_company_id = company_id if company_id else getattr(current_user, "active_company_id", None)
-    if effective_company_id:
-        effective_company_id = str(effective_company_id)
+        # Empresa explicita: exige acceso (membresia activa). Si esta suspendida, solo cuentan las suscripciones personales
+        facts = deps.load_company_facts(db, current_user, company_id)
+        if not (facts.exists and facts.membership_active and not facts.is_active):
+            effective_company_id = deps.authorize(
+                db, current_user, company_id, min_role=access_policy.ROLE_WORKER
+            ).company_id
+    else:
+        raw_company_id = company_id or getattr(current_user, "active_company_id", None)
+        if raw_company_id:
+            # Empresa del token: si esta suspendida o ya no hay membresia, solo cuentan las suscripciones personales
+            facts = deps.load_company_facts(db, current_user, raw_company_id)
+            has_access = facts.membership_active or bool(getattr(current_user, "is_platform_admin", False))
+            if facts.exists and facts.is_active and has_access:
+                effective_company_id = facts.company_id
 
     from sqlalchemy import or_
 

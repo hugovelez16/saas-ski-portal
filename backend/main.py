@@ -9,9 +9,11 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 
+from access_policy import PolicyError
 from database import SessionLocal
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 # Import modular routers
 from routers import auth, companies, modules, users, work_logs
@@ -123,6 +125,11 @@ app = FastAPI(
     root_path="/api",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(PolicyError)
+async def policy_error_handler(request: Request, exc: PolicyError):
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 @app.get("/health", tags=["system"])

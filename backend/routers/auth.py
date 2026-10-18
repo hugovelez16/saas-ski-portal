@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from datetime import datetime, timedelta
@@ -12,6 +13,8 @@ from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -604,8 +607,8 @@ async def forgot_password(data: schemas.PasswordResetRequest, db: Session = Depe
     # Send email
     try:
         await email_utils.send_password_reset_email(user.email, token)
-    except Exception as e:
-        print(f"Error sending password reset email: {e}")
+    except Exception:
+        logger.warning("Error sending password reset email to user %s", user.id)
         raise HTTPException(status_code=500, detail="Failed to send password reset email.")
 
     return {"message": "If the email exists, a reset link has been sent."}
