@@ -103,6 +103,8 @@ class UserResponse(UserBase):
     is_platform_admin: bool = False
     active_company_id: UUID | None = None
     active_role: str | None = None
+    view_as: str | None = None
+    is_read_only_view: bool = False
     default_company_id: UUID | None = None
     created_at: datetime
 

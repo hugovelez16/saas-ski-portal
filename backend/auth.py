@@ -9,6 +9,7 @@ import os
 import secrets
 from datetime import datetime, timedelta
 
+import access_policy
 import crud
 import models
 import pyotp
@@ -291,6 +292,38 @@ def generate_user_tokens(
     return access_token, refresh_token
 
 
+def _attach_context(db: Session, user: models.User, token_data: schemas.TokenData, view_as_claim, request: Request | None):
+    """Fija en el usuario (transitorio) el contexto de la peticion.
+
+    El rol de plataforma sale de BD (el claim `is_admin` se ignora) y el rol activo de la
+    membresia, no del claim `role`. `view_as` solo se respeta para un PA con `cid`.
+    """
+    # Import diferido: routers.deps importa este modulo.
+    from routers import deps
+
+    user.is_platform_admin = user.role == models.UserRole.admin
+    user.active_company_id = token_data.company_id
+    user.token_scope = token_data.scope
+    user.admin_user_id = token_data.admin_user_id
+
+    user.view_as = None
+    if user.is_platform_admin and token_data.company_id and view_as_claim in access_policy.VIEW_AS_ROLES:
+        user.view_as = view_as_claim
+    if request is not None:
+        try:
+            access_policy.assert_view_as_read_only(user.view_as, request.method, request.scope["path"])
+        except access_policy.PolicyError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+    if user.is_platform_admin:
+        user.active_role = user.view_as
+    elif token_data.company_id:
+        facts = deps.load_company_facts(db, user, token_data.company_id)
+        user.active_role = facts.membership_role if facts.membership_active else None
+    else:
+        user.active_role = None
+
+
 async def get_current_user(token: str = Depends(get_token_from_request), db: Session = Depends(get_db)):
     if not token:
         raise HTTPException(
@@ -318,11 +351,10 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
         token_data = schemas.TokenData(
             user_id=user_id,
             company_id=payload.get("cid"),
-            company_role=payload.get("role"),
-            is_platform_admin=payload.get("is_admin", False),
             scope=payload.get("scope", "full"),
             admin_user_id=payload.get("admin_user_id"),
         )
+        view_as_claim = payload.get("view_as")
     except JWTError:
         raise credentials_exception
 
@@ -332,17 +364,14 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
     if user.is_active is False:
         raise HTTPException(status_code=401, detail="Cuenta desactivada", headers={"WWW-Authenticate": "Bearer"})
 
-    # Attach active context to user object (transient)
-    user.active_company_id = token_data.company_id
-    user.active_role = token_data.company_role
-    user.is_platform_admin = token_data.is_platform_admin
-    user.token_scope = token_data.scope
-    user.admin_user_id = token_data.admin_user_id
+    _attach_context(db, user, token_data, view_as_claim, None)
 
     return user
 
 
-async def get_verified_user(token: str = Depends(get_token_from_request), db: Session = Depends(get_db)):
+async def get_verified_user(
+    request: Request, token: str = Depends(get_token_from_request), db: Session = Depends(get_db)
+):
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -382,11 +411,10 @@ async def get_verified_user(token: str = Depends(get_token_from_request), db: Se
         token_data = schemas.TokenData(
             user_id=user_id,
             company_id=payload.get("cid"),
-            company_role=payload.get("role"),
-            is_platform_admin=payload.get("is_admin", False),
             scope=payload.get("scope", "full"),
             admin_user_id=payload.get("admin_user_id"),
         )
+        view_as_claim = payload.get("view_as")
     except JWTError:
         raise credentials_exception
 
@@ -396,12 +424,7 @@ async def get_verified_user(token: str = Depends(get_token_from_request), db: Se
     if user.is_active is False:
         raise HTTPException(status_code=401, detail="Cuenta desactivada", headers={"WWW-Authenticate": "Bearer"})
 
-    # Attach active context to user object (transient)
-    user.active_company_id = token_data.company_id
-    user.active_role = token_data.company_role
-    user.is_platform_admin = token_data.is_platform_admin
-    user.token_scope = token_data.scope
-    user.admin_user_id = token_data.admin_user_id
+    _attach_context(db, user, token_data, view_as_claim, request)
 
     return user
 

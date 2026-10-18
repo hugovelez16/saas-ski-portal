@@ -11,6 +11,7 @@ from datetime import date
 from datetime import datetime as _dt
 from typing import Any
 
+import access_cache
 import models
 import schemas
 from pydantic import TypeAdapter
@@ -507,8 +508,15 @@ def get_work_logs(
     company_id: str = None,
     start_date: date = None,
     end_date: date = None,
+    only_active_companies: bool = False,
 ):
     query = db.query(models.WorkLog)
+    if only_active_companies:
+        # Turnos sin empresa o de empresas activas (una empresa suspendida no expone sus turnos)
+        active_company_ids = db.query(models.Company.id).filter(models.Company.is_active == True)
+        query = query.filter(
+            or_(models.WorkLog.company_id.is_(None), models.WorkLog.company_id.in_(active_company_ids))
+        )
     if user_id:
         query = query.filter(models.WorkLog.user_id == user_id)
     if company_id:
@@ -633,6 +641,7 @@ def join_company(db: Session, user_id: str, company_id: str):
         db.commit()
         db.refresh(new_member)
         _invalidate_company_rates(company_id)
+        access_cache.invalidate_membership(user_id, company_id)
         return new_member
 
     # Healing: If existing member has NULL rates_config, fix it
@@ -744,6 +753,7 @@ def update_company_member_status(db: Session, company_id: str, user_id: str, is_
         db.commit()
         db.refresh(member)
         _invalidate_company_rates(company_id)
+        access_cache.invalidate_membership(user_id, company_id)
     return member
 
 
@@ -775,7 +785,7 @@ def update_company_member(db: Session, company_id: Any, user_id: Any, member_upd
                 try:
                     setattr(member, key, models.CompanyRole(value))
                 except ValueError:
-                    print(f"WARNING: Invalid company role value: {value}")
+                    logger.warning("Invalid company role value for member update")
             else:
                 setattr(member, key, value)
             if key in ["settings", "rates_config"]:
@@ -799,6 +809,7 @@ def update_company_member(db: Session, company_id: Any, user_id: Any, member_upd
         db.commit()
         db.refresh(member)
         _invalidate_company_rates(company_id)
+        access_cache.invalidate_membership(user_id, company_id)
     return member
 
 
@@ -838,16 +849,17 @@ def update_company(db: Session, company_id: Any, company: schemas.CompanyUpdate)
     if db_company:
         # Use model_dump(by_alias=False) to ensure we get snake_case property names for setattr
         update_data = company.model_dump(exclude_unset=True, by_alias=False)
-        print(f"DEBUG: Updating company {company_id} with data: {update_data}")
         for key, value in update_data.items():
             if hasattr(db_company, key):
                 setattr(db_company, key, value)
                 if key in ["settings", "tax_config", "worklog_definitions"]:
                     flag_modified(db_company, key)
             else:
-                print(f"WARNING: Unknown field {key} for Company update")
+                logger.warning("Unknown field %s for Company update", key)
         db.commit()
         db.refresh(db_company)
+        if "is_active" in update_data or "is_managed" in update_data:
+            access_cache.invalidate_company(cid)
     return db_company
 
 
@@ -872,7 +884,7 @@ def update_user(db: Session, user_id: Any, user: schemas.UserUpdate):
                 try:
                     setattr(db_user, key, models.UserRole(value))
                 except ValueError:
-                    print(f"WARNING: Invalid role value: {value}")
+                    logger.warning("Invalid role value for user update")
             else:
                 setattr(db_user, key, value)
         db.commit()
@@ -917,16 +929,6 @@ def update_module(db: Session, module_id: str, data: schemas.AppModuleUpdate):
     db.commit()
     db.refresh(db_module)
     return db_module
-
-
-def get_subscriptions(db: Session, company_id: str = None, user_id: str = None):
-    """Lista suscripciones filtrables por empresa o usuario."""
-    query = db.query(models.ModuleSubscription)
-    if company_id:
-        query = query.filter(models.ModuleSubscription.company_id == company_id)
-    if user_id:
-        query = query.filter(models.ModuleSubscription.user_id == user_id)
-    return query.order_by(models.ModuleSubscription.created_at.desc()).all()
 
 
 def create_subscription(db: Session, data: schemas.ModuleSubscriptionCreate):
@@ -1006,8 +1008,11 @@ def user_has_module(db: Session, user_id: str, company_id: str | None, code_name
     if user_sub:
         return True
 
-    # 2. Suscripción de empresa
+    # 2. Suscripción de empresa (se ignora si la empresa esta suspendida)
     if company_id:
+        company = db.query(models.Company).filter(models.Company.id == company_id).first()
+        if company is None or not company.is_active:
+            return False
         company_sub = (
             db.query(models.ModuleSubscription)
             .filter(
