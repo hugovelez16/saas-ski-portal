@@ -2,17 +2,20 @@ import unittest
 import uuid
 
 import models
+import pytest
 import schemas
-from database import SessionLocal
 from fastapi import HTTPException
 from routers.companies import read_company, update_company_member
 from routers.work_logs import create_work_log, delete_work_log, update_work_log
 
 
 class TestCompanyGovernance(unittest.TestCase):
-    def setUp(self):
-        self.db = SessionLocal()
+    @pytest.fixture(autouse=True)
+    def _inject_db(self, db):
+        """Usa la sesion transaccional del fixture `db`: todo se revierte al terminar cada test."""
+        self.db = db
 
+    def setUp(self):
         # 1. Platform admin
         self.platform_admin = models.User(
             id=uuid.uuid4(),
@@ -134,9 +137,6 @@ class TestCompanyGovernance(unittest.TestCase):
 
         self.worker_user.active_company_id = str(self.managed_company.id)
         self.worker_user.active_role = "worker"
-
-    def tearDown(self):
-        self.db.close()
 
     def test_manager_cannot_change_member_role(self):
         """Un manager de empresa no debe poder ascender o cambiar el rol de un miembro."""

@@ -8,12 +8,16 @@ from unittest import mock
 import auth
 import dev_seed
 import models
-from database import SessionLocal
+import pytest
 
 
 class TestDevAuthBypass(unittest.TestCase):
+    @pytest.fixture(autouse=True)
+    def _inject_db(self, db):
+        """Usa la sesion transaccional del fixture `db`: todo se revierte al terminar cada test."""
+        self.db = db
+
     def setUp(self):
-        self.db = SessionLocal()
         # patch.dict restaura el entorno original al detenerse, tras cada test.
         env_patcher = mock.patch.dict(
             os.environ,
@@ -28,9 +32,6 @@ class TestDevAuthBypass(unittest.TestCase):
         )
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
-
-    def tearDown(self):
-        self.db.close()
 
     def test_is_dev_mode(self):
         # Solo ENVIRONMENT=development Y DEV_LOGIN_BYPASS verdadero activan el modo desarrollo.
