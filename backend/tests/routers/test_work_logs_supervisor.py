@@ -3,8 +3,12 @@ import uuid
 from datetime import date
 
 import models
+import pytest
 from database import SessionLocal
 from routers.work_logs import read_work_logs
+
+# Motivo de los marcadores postgres: produccion pasa str a columnas UUID(as_uuid=True) y PostgreSQL lo
+# tolera, mientras que SQLite exige uuid.UUID y falla con "'str' object has no attribute 'hex'".
 
 
 class TestWorkLogsSupervisorLogic(unittest.TestCase):
@@ -95,6 +99,7 @@ class TestWorkLogsSupervisorLogic(unittest.TestCase):
         self.assertIn(str(self.log1.id), log_ids)
         self.assertIn(str(self.log2.id), log_ids)
 
+    @pytest.mark.postgres  # Falla en SQLite: str en columna UUID (ver comentario del modulo).
     def test_supervisor_with_implicit_company_id(self):
         """
         If company_id is NOT passed, a manager should ONLY see their own logs.
@@ -105,6 +110,7 @@ class TestWorkLogsSupervisorLogic(unittest.TestCase):
         # In the desired behavior, log2 (worker's log) must NOT be returned!
         self.assertNotIn(str(self.log2.id), log_ids)
 
+    @pytest.mark.postgres  # Falla en SQLite: str en columna UUID (ver comentario del modulo).
     def test_worker_with_daily_report_module_explicit_company_id(self):
         """
         Check if a worker can read company logs if worker_daily_report module is subscribed,

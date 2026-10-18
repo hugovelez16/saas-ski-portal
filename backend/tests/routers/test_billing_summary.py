@@ -3,11 +3,13 @@ import uuid
 from datetime import date
 
 import models
+import pytest
 from database import SessionLocal
 from fastapi import HTTPException
 from routers.work_logs import get_billing_summary
 
 
+@pytest.mark.postgres
 class TestBillingSummaryEndpoint(unittest.TestCase):
     def setUp(self):
         self.db = SessionLocal()

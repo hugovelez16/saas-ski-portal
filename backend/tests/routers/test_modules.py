@@ -2,9 +2,13 @@ import unittest
 import uuid
 
 import models
+import pytest
 from database import SessionLocal
 from fastapi import HTTPException
 from routers.modules import get_my_modules
+
+# Motivo de los marcadores postgres: produccion pasa str a columnas UUID(as_uuid=True) y PostgreSQL lo
+# tolera, mientras que SQLite exige uuid.UUID y falla con "'str' object has no attribute 'hex'".
 
 
 class TestModulesMeLogic(unittest.TestCase):
@@ -96,6 +100,7 @@ class TestModulesMeLogic(unittest.TestCase):
         self.db.rollback()
         self.db.close()
 
+    @pytest.mark.postgres  # Falla en SQLite: str en columna UUID (ver comentario del modulo).
     def test_regular_user_no_company_context(self):
         """
         Regular user without active_company_id or company_id query parameter
@@ -107,6 +112,7 @@ class TestModulesMeLogic(unittest.TestCase):
         self.assertIn(self.module_active_2.code_name, module_codes)
         self.assertNotIn(self.module_active_1.code_name, module_codes)
 
+    @pytest.mark.postgres  # Falla en SQLite: str en columna UUID (ver comentario del modulo).
     def test_regular_user_active_company_id_context(self):
         """
         Regular user with active_company_id should get personal + active company modules.
@@ -117,6 +123,7 @@ class TestModulesMeLogic(unittest.TestCase):
         self.assertIn(self.module_active_1.code_name, module_codes)
         self.assertIn(self.module_active_2.code_name, module_codes)
 
+    @pytest.mark.postgres  # Falla en SQLite: str en columna UUID (ver comentario del modulo).
     def test_regular_user_explicit_company_id_context(self):
         """
         Regular user with explicit company_id parameter should get personal + explicit company modules.
@@ -127,6 +134,7 @@ class TestModulesMeLogic(unittest.TestCase):
         self.assertIn(self.module_active_1.code_name, module_codes)
         self.assertIn(self.module_active_2.code_name, module_codes)
 
+    @pytest.mark.postgres  # Falla en SQLite: str en columna UUID (ver comentario del modulo).
     def test_regular_user_explicit_company_id_not_member(self):
         """
         Regular user requesting a company they are not a member of should receive 403.
@@ -136,6 +144,7 @@ class TestModulesMeLogic(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertEqual(ctx.exception.detail, "No autorizado.")
 
+    @pytest.mark.postgres  # Falla en SQLite: str en columna UUID (ver comentario del modulo).
     def test_regular_user_explicit_company_id_inactive_member(self):
         """
         Regular user requesting a company where their membership is inactive should receive 403.
@@ -159,6 +168,7 @@ class TestModulesMeLogic(unittest.TestCase):
         self.assertIn(self.module_active_1.code_name, module_codes)
         self.assertIn(self.module_active_2.code_name, module_codes)
 
+    @pytest.mark.postgres  # Falla en SQLite: str en columna UUID (ver comentario del modulo).
     def test_platform_admin_with_active_company_id_context(self):
         """
         Platform admin with active_company_id set should get only modules subscribed by that company.
@@ -169,6 +179,7 @@ class TestModulesMeLogic(unittest.TestCase):
         self.assertIn(self.module_active_1.code_name, module_codes)
         self.assertNotIn(self.module_active_2.code_name, module_codes)
 
+    @pytest.mark.postgres  # Falla en SQLite: str en columna UUID (ver comentario del modulo).
     def test_platform_admin_with_explicit_company_id_context(self):
         """
         Platform admin with explicit company_id parameter should get only modules subscribed by that company.
