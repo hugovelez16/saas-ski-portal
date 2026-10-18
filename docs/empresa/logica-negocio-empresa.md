@@ -105,7 +105,7 @@ Notas:
 - La empresa activa sale del claim `cid`. El cambio se hace con `POST /auth/switch-scope`.
 - `switch-scope` valida la membresia activa y la empresa activa. El rol del nuevo token sale de la membresia, **nunca del cliente**. Solo existen `manager` y `worker` como valores emitidos.
 - Un manager de A con token en B no gestiona A hasta cambiar de empresa. [Cerrado]
-- Si el usuario no tiene membresia activa en la empresa pedida ni en su `default_company_id`, se usa la primera membresia activa de una empresa activa. Si no tiene ninguna, el token **no lleva `cid`**. [Cerrado]
+- La ultima empresa activa la guarda el navegador (`localStorage`, clave unica `lastCompanyId`) y el frontend la envia como `company_id` en el login y en la verificacion 2FA; no existe `default_company_id` ni se guarda nada en servidor. Si el usuario no tiene membresia activa en la empresa enviada (o no se envia), se usa la primera membresia activa de una empresa activa por `sort_order`. Si no tiene ninguna, el token **no lleva `cid`**. El PA mantiene el contexto neutro. [Cerrado]
 - El PA sin empresa elegida tiene token con `cid` nulo y opera por privilegio.
 - El PA **si** puede entrar en una empresa suspendida (`switch-scope` le emite su `cid`); worker y manager no (P-4). [Cerrado]
 - La empresa activa sale solo del token. Se elimina `?companyId=` de la URL del frontend: una empresa activa por sesion, sin empresa en la URL. Cambiar de empresa en una pestana la cambia en todas. [Cerrado, O2]
@@ -169,7 +169,7 @@ Un manager no edita nada de la empresa. [Cerrado]
 | Suspension             | `is_active = false`. Solo PA. Se registra quien, cuando y motivo en `audit_logs`. No hay `archived_at` ni `archived_by`                                                                                           | Cerrado |
 | Reactivacion           | `is_active = true`. Solo PA. Se registra igual. La UI pide confirmacion                                                                                                                                           | Cerrado |
 | Baja                   | Es la suspension. No se borra nada                                                                                                                                                                                | Cerrado |
-| Borrado                | Solo PA y solo si la empresa **no tiene nada asociado** (miembros, turnos, suscripciones, usuarios con `default_company_id`). Sin cascadas. Si hay algo asociado, responde 409 indicando que lo impide. Se audita | Cerrado |
+| Borrado                | Solo PA y solo si la empresa **no tiene nada asociado** (miembros, turnos, suscripciones). Sin cascadas. Si hay algo asociado, responde 409 indicando que lo impide. Se audita | Cerrado |
 | Empresa sin manager    | No es un problema: el PA anade un manager o cambia el rol de un worker. No hace falta guardia de ultimo manager; la consulta de datos E7 es solo informativa                                                                                                     | Cerrado |
 | Cambio de `is_managed` | Solo PA, auditado, sin recalcular importes existentes (ver 4.5)                                                                                                                                                   | Cerrado |
 
@@ -186,7 +186,7 @@ Los JSONB con estructura fija llevan un modelo Pydantic en el backend con tipos,
 - El calculo resta del bruto **todas** las entradas; la etiqueta de la linea del desglose es el nombre. Hoy el codigo lee tres claves fijas (`crud.py:149-210`) y hay que cambiarlo.
 - **0 es valido**: resta 0 y no es un error. Un valor de tipo incorrecto se rechaza al escribir (hoy se convierte en 0 sin avisar).
 - Sin default de modelo (0.0648), de schema (0.0) ni de UI (0.0). El alta de empresa exige que `tax_config` venga informado.
-- El override del miembro (`tax_overrides`) usa la **misma clave** que la empresa. Precedencia: si el miembro tiene valor para esa clave, manda; si no, el de la empresa. Desaparece la discrepancia `irpf_base` frente a `irpf` (O9) y tambien `deduction_irpf`/`deduction_ss` de `schemas.py:140`.
+- El override del miembro (`tax_overrides`) usa la **misma clave** que la empresa. Precedencia: si el miembro tiene valor para esa clave, manda; si no, el de la empresa. Desaparece la discrepancia `irpf_base` frente a `irpf` (O9) y tambien `deduction_irpf`/`deduction_ss` de `schemas.py:140`. En la migracion, los overrides `ss` e `irpf` se renombran a `social_security` e `irpf_base`, y un override `extra` con valor 0 que la empresa no define en su `tax_config` se elimina (en produccion hay 14, todos a 0, sin efecto en importes); un `extra` distinto de 0 o no numerico aborta la migracion y se resuelve a mano.
 - Coste asumido: no hay informes por concepto fijo.
 
 **`settings`:**
@@ -204,10 +204,10 @@ Los JSONB con estructura fija llevan un modelo Pydantic en el backend con tipos,
 
 **`worklog_definitions` y `rates_config`:** claves dinamicas (tipos de turno y tarifas por tipo); JSONB es correcto. Cada valor lleva modelo de validacion. [Cerrado]
 
-- Contrato de cada tipo de turno: `unit` (`hours` o `days`), `label` (texto visible, 1 a 60 caracteres) y `fields` (lo usan el seed y el frontend).
-- `unit` define como se mide el turno y por tanto como se calcula el importe: horas o dias.
+- Contrato de cada tipo de turno: `unit` (`hours`, `days` o `fixed`), `label` (texto visible, 1 a 60 caracteres) y `fields` (lo usan el seed y el frontend).
+- `unit` define como se mide el turno y por tanto como se calcula el importe: horas, dias o importe fijo por unidad (`fixed`).
 - `is_range` se elimina. Es un respaldo heredado: si falta `unit`, `is_range=true` equivale a `days` (`crud.py:105-107`, `create_work_log_use_case.py:63-65`). Se migra a `unit` explicito y se rechaza un tipo sin `unit`.
-- "Turno fijo" no existe como unidad hoy. Si se quiere, es una unidad nueva y una decision aparte.
+- `fixed` es el tipo de turno que se cobra por unidad sea cual sea la duracion. Ya existe en el constructor de tipos, la facturacion, los listados y la analitica, y hay tipos `fixed` en produccion, asi que es una unidad valida del contrato. Un tipo con `unit: "hours"` e `is_range: true` es contradictorio: decision manual si aparece (no existe en produccion).
 
 **`CompanyMember.settings`:** ajustes por usuario dentro de la empresa, mezclados sobre los de la empresa al devolverla. Hoy casi no se usan. Falta analizar si aportan algo. Abierto O10.
 
@@ -265,9 +265,9 @@ Un modulo que la empresa paga (o pagaba) no se puede usar si la empresa no esta 
 | Regla                                                                                                                                                                               | Estado             |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
 | El rol no viaja en los payloads de tarifas ni de ajustes: es un endpoint propio (solo PA). Se identifica al usuario por su id y el backend consulta su rol                          | Cerrado            |
-| Desactivar una membresia: se reasigna `default_company_id` a otra membresia activa o a nulo; los turnos se conservan; el acceso a la empresa se corta de inmediato (comprobacion 5) | Cerrado            |
+| Desactivar una membresia: no hay `default_company_id` que reasignar (el siguiente login cae en el fallback por `sort_order`); los turnos se conservan; el acceso a la empresa se corta de inmediato (comprobacion 5) | Cerrado            |
 | Eliminar un miembro de una empresa: solo si no tiene turnos ni nada asociado, sin cascadas. Si los tiene, queda inactivo                                                            | Cerrado            |
-| `default_company_id` se valida contra membresia activa al escribirlo                                                                                                                | Cerrado            |
+| `default_company_id` se elimina; la ultima empresa activa se guarda en el navegador y el backend la valida contra la membresia al emitir el token                                   | Cerrado            |
 | Un usuario sin empresa es valido (ver 3.4)                                                                                                                                          | Cerrado            |
 | Una membresia desactivada no se usa para calcular nada; crear turnos exige membresia activa                                                                                         | Cerrado            |
 | Invitaciones por email a usuarios sin cuenta: aplazado hasta que las empresas gestionen sus usuarios. Hoy: PA crea el usuario y luego lo anade                                      | Cerrado (aplazado) |
@@ -302,7 +302,7 @@ Todo bloqueado si la empresa esta suspendida, salvo PA.
 | Crear un turno exige que el usuario del turno tenga **membresia activa** en la empresa. Aplica a turno propio, de otro y en lote                                                                                                               | Cerrado                              |
 | Editar no puede cambiar `company_id` ni `user_id` del turno                                                                                                                                                                                    | Cerrado                              |
 | `apply_to_group` actua solo sobre turnos de la misma empresa. El `group_id` lo genera el servidor, no el cliente. Se crea un `group_id` cuando se marcan varios usuarios al crear el turno                                           | Confirmar                            |
-| Todo turno tiene `company_id` (NOT NULL). Los turnos sin empresa existentes se asignan con un script de reparacion previo: la empresa de su unica membresia; si hay varias, el `default_company_id` del usuario si es miembro activo; si no, lista manual. La migracion aborta si quedan turnos sin empresa (plan, PR-09 y secciones 9 y 10) | Cerrado (direccion)                  |
+| Todo turno tiene `company_id` (NOT NULL). Los turnos sin empresa existentes se asignan con un script de reparacion previo: la empresa de su unica membresia; si hay varias, lista manual. La migracion aborta si quedan turnos sin empresa (plan, PR-09 y secciones 9 y 10) | Cerrado (direccion)                  |
 | **Recalculo al editar:** si no cambian tipo, horas ni fechas, se conserva el importe. Si cambian, se recalcula con las tarifas del `calculation_snapshot` del propio turno. Recalcular con la tarifa vigente solo ocurre como accion explicita | Cerrado                              |
 | **Limites de listado** (P-12, Q-3): `limit` con tope de 2000, solo para listados paginados de filas. Toda suma o metrica la calcula el backend sobre el rango completo en endpoints de agregados (`GET /work-logs/summary`, dashboard-summary), nunca sumando filas en el frontend. Los listados devuelven el total en la cabecera `X-Total-Count` | Cerrado |
 | Sin tarifa y sin importe manual: 400 con mensaje claro, que el frontend muestra                                                                                                                                                                | Cerrado                              |
