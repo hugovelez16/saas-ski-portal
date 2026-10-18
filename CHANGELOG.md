@@ -19,6 +19,36 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.9.2] - 2026-10-18
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Politica central de permisos, cache de acceso y modo "ver como" de solo lectura (PR-03 del plan de empresa).
+
+### Seguridad
+
+- **`backend/access_policy.py`** (nuevo, modulo puro sin FastAPI ni SQLAlchemy): unico sitio que decide quien puede que sobre una empresa. Anti-enumeracion: empresa inexistente, ajena o sin membresia responden igual (403 `No tienes acceso a esta empresa`); el 404 queda solo para el administrador de plataforma.
+- **`backend/routers/deps.py`** (nuevo): `authorize`, `require_company`, `require_platform_admin`, `manages_user`, `require_active_member` y `require_module`. Un usuario que no es administrador de plataforma y tiene empresa activa en el token no accede a otra empresa hasta cambiar de scope.
+- **`backend/auth.py`**: el rol de plataforma sale de la BD (el claim `is_admin` se ignora) y el rol de empresa de la membresia activa (el claim `role` se ignora). El manager pierde "entrar como worker". El claim `view_as` solo se respeta para un administrador de plataforma con empresa activa; en ese modo todo metodo no seguro se rechaza con `Modo 'ver como' de solo lectura`.
+- **`backend/access_cache.py`** (nuevo), **`backend/crud.py`**: cache de acceso (usuario y empresa) con TTL de 60 s e invalidacion al cambiar rol o estado de membresia y estado o modo de la empresa; con Redis caido se lee de BD.
+- **`backend/routers/companies.py`, `work_logs.py`, `modules.py`, `users.py`**: los handlers usan `deps` en lugar de las comprobaciones `is_platform_admin` dispersas; los parametros `company_id`, `user_id` y `work_log_id` pasan a `UUID`.
+
+### Corregido
+
+- Una empresa suspendida bloquea para no-administradores los turnos, el billing, el dashboard y `GET /modules/me` (ignora sus suscripciones de empresa).
+- Los 403 dejan de incluir `is_manager`, `is_self` e ids.
+- **`backend/crud.py`**: `user_has_module` ignora la suscripcion de una empresa suspendida.
+- **`backend/routers/work_logs.py`**: `GET /work-logs` valida `skip >= 0` y `limit >= 1`.
+
+### Cambios Internos
+
+- **`backend/redis_config.py`**: backoff de 30 s tras un fallo de Redis para no esperar el timeout en cada llamada.
+- **`backend/schemas.py`**: `UserResponse` anade `view_as` e `is_read_only_view`.
+- Eliminados `backend/routers/utils.py` y `crud.get_subscriptions` (sin uso); los `print` de depuracion pasan a `logging`.
+- **`backend/tests/`**: nuevos `policy/` y `routers/test_company_access.py`; los tests de `governance`, `work_logs_supervisor`, `modules`, `dashboard_summary` y `billing_summary` invocan por HTTP.
+
+---
+
 ## [0.9.1] - 2026-10-18
 
 ### Tipo de Cambio SemVer
