@@ -185,6 +185,12 @@ def test_seed_skips_when_platform_admin_exists(db, monkeypatch):
 
 def test_seed_creates_when_no_platform_admin(db, monkeypatch):
     _seed_env(monkeypatch)
+    # Tests legacy con SessionLocal dejan administradores confirmados en PostgreSQL;
+    # se degradan dentro de la transaccion del test (se revierte al final).
+    db.query(models.User).filter(models.User.role == models.UserRole.admin).update(
+        {"role": models.UserRole.user}
+    )
+    db.flush()
 
     result = seed.seed_initial_data(db)
 
