@@ -1,0 +1,44 @@
+# 04 - Router de miembros de empresa (backend/routers/companies.py, lineas 141-300)
+
+Alcance: solo lineas 141-300 de `backend/routers/companies.py`. Las funciones invocadas fuera de ese rango (`is_manager_of_company`, `crud.*`, `auth.get_verified_user`, `auth.get_current_user`, `schemas.*`) no se han leido: lo que dependa de ellas figura como NO DEFINIDO.
+
+Convenciones:
+- "Manager" = usuario que supera `is_manager_of_company` (definicion fuera de rango; si distingue company admin de manager: NO DEFINIDO).
+- "Platform admin" = `is_platform_admin` o `role == models.UserRole.admin` (lineas 151, 175, 200, 250, 276).
+
+| Endpoint | Pregunta | Respuesta | Evidencia | Nota |
+|---|---|---|---|---|
+| GET /{company_id}/members | Roles permitidos y token scope | Platform admin solo evita `is_active`; la autorizacion real es `is_manager_of_company`, tambien para platform admin si esa funcion no lo exime. Scopes: NO DEFINIDO (usa `get_verified_user`) | companies.py:146, 151, 156, 159-160 | Definicion de `is_manager_of_company` fuera de rango |
+| GET /{company_id}/members | Pertenencia a ESA empresa | Si, `is_manager_of_company(db, current_user, company_id)` | companies.py:159-160 | Funcion fuera de rango |
+| GET /{company_id}/members | Se comprueba company.is_active | Si, salvo platform admin: 403 "Empresa inactiva o suspendida" | companies.py:156-157 | |
+| GET /{company_id}/members | Empresa inexistente | 404 antes de la comprobacion de pertenencia: cualquier autenticado distingue empresa existente de inexistente. El filtro `status` es un `str` libre sin validacion en el handler | companies.py:144, 152-154, 162 | Enumeracion de ids; valores validos de `status` NO DEFINIDO |
+| POST /{company_id}/members/add | Roles permitidos | Manager. Platform admin solo evita `is_active`. Worker y ajeno: 403 "Not authorized" si `is_manager_of_company` es falso | companies.py:200, 205-206, 208-209 | Company admin vs manager NO DEFINIDO |
+| POST /{company_id}/members/add | Token scope | NO DEFINIDO: usa `auth.get_verified_user`, sin lectura de scopes | companies.py:195 | |
+| POST /{company_id}/members/add | Pertenencia a ESA empresa | Si, `is_manager_of_company(db, current_user, company_id)`. El usuario a anadir no se valida contra la empresa en este handler | companies.py:208 | |
+| POST /{company_id}/members/add | Se comprueba company.is_active | Si, salvo platform admin; la empresa se carga con `db.query` directo | companies.py:201-206 | |
+| POST /{company_id}/members/add | Usuario ya es miembro | No hay error ni 409: `crud.join_company` devuelve el registro existente y se responde 200. Si estaba inactivo se REACTIVA sin mirar el motivo de baja. Logica de join_company NO DEFINIDA | companies.py:216, 220-222, 236 | Reactiva a quien un manager dio de baja |
+| POST /{company_id}/members/add | Usuario no existe: se crea o se invita | No se crea ni invita: 404 "User email not found". Estado activo del usuario a anadir: NO DEFINIDO (no se comprueba `is_active` del usuario) | companies.py:211-213 | Cualquier manager puede comprobar si un email tiene cuenta |
+| POST /{company_id}/members/add | Degradar o desactivar ultimo admin / uno mismo | No aplica (alta) | companies.py:216-236 | |
+| POST /{company_id}/members/add | Efecto sobre work_logs o login | La reactivacion restaura el acceso a la empresa. Efecto sobre work_logs previos: NO DEFINIDO | companies.py:220-222, 232-234 | |
+| POST /{company_id}/members/add | Validacion del rol asignado, manager crea admins | El endpoint no recibe rol (body `schemas.TokenData`, con email). Solo asigna `worker` si el rol es NULL; un rol existente se conserva. Un manager no puede crear un admin nuevo por este endpoint | companies.py:193, 211, 224-226 | Nombre `TokenData` para un body de alta: revisar schema (fuera de rango); rol por defecto de `join_company` NO DEFINIDO |
+| POST /{company_id}/members/add | Escalada de privilegios | Posible por reactivacion: si la membresia previa tenia rol admin, se reactiva con ese rol sin confirmacion de platform admin | companies.py:220-226 | Confirmar si `join_company` conserva el rol al reactivar: NO DEFINIDO |
+| POST /{company_id}/members/add | Efecto colateral: rates_config | Si es NULL se fija a {} y se hace commit: modifica la membresia aunque la accion sea de alta | companies.py:228-234 | |
+| PUT /{company_id}/members/order | Roles permitidos y token scope | Manager; platform admin solo evita `is_active`. Scopes: NO DEFINIDO (usa `get_verified_user`) | companies.py:170, 175, 180-181, 183-184 | Igual que GET members |
+| PUT /{company_id}/members/order | Pertenencia y company.is_active | Si para el actor (`is_manager_of_company`); `is_active` se comprueba salvo platform admin | companies.py:180-181, 183-184 | |
+| PUT /{company_id}/members/order | Usuario ya es miembro / ids inexistentes o duplicados | NO DEFINIDO: el handler pasa `order_data.user_ids` sin validar que sean miembros ni deduplicar | companies.py:168, 186 | Validacion en crud y schema `UpdateCompanyMembersOrder` (fuera de rango) |
+| PUT /{company_id}/members/order | Orden (sort_order) de ids ajenos a la empresa | NO DEFINIDO: el handler no filtra por empresa. Si `crud.update_company_members_order` no filtra por company_id, un manager reordena miembros de otra empresa | companies.py:186 | Revisar crud |
+| PUT /{company_id}/members/order | Degradar, desactivar, rol, work_logs o login | No aplica: solo cambia el orden; no toca rol, estado ni usuario en el handler | companies.py:186-187 | |
+| PUT /{company_id}/members/{user_id}/status | Roles permitidos y token scope | Manager; platform admin solo evita `is_active`. Este handler usa `auth.get_current_user`, mientras los demas del rango usan `get_verified_user`: diferencia NO DEFINIDA | companies.py:245, 250, 255-256, 258-259 | Scopes NO DEFINIDO |
+| PUT /{company_id}/members/{user_id}/status | Pertenencia a ESA empresa | Del actor: si (`is_manager_of_company`). Del miembro objetivo: solo indirecto (crud devuelve None y se responde 404). Que crud filtre por company_id: NO DEFINIDO | companies.py:258-263 | |
+| PUT /{company_id}/members/{user_id}/status | Se comprueba company.is_active | Si, salvo platform admin | companies.py:255-256 | |
+| PUT /{company_id}/members/{user_id}/status | Usuario ya es miembro / no existe: se crea o invita | No hay alta ni invitacion: 404 "Member request not found" si crud no devuelve membresia. No se comprueba si el estado ya era el pedido. Mensaje generico: no distingue usuario inexistente de no miembro | companies.py:261-263 | |
+| PUT /{company_id}/members/{user_id}/status | Valor de `status` | `str` libre, sin validacion visible en el handler | companies.py:242, 261 | Valores y transiciones validos: NO DEFINIDO (crud.update_company_member_status) |
+| PUT /{company_id}/members/{user_id}/status | Degradar o desactivar al ultimo admin | NO se comprueba en el handler | companies.py:239-265 | Si crud no lo impide, la empresa puede quedar sin admin. Revisar crud |
+| PUT /{company_id}/members/{user_id}/status | Desactivar a uno mismo | NO se comprueba: no hay comparacion `user_id` con `current_user.id` | companies.py:239-265 | Si crud no lo impide, un manager puede desactivarse |
+| PUT /{company_id}/members/{user_id}/status | Efecto sobre work_logs | NO DEFINIDO: depende de crud.update_company_member_status | companies.py:261 | |
+| PUT /{company_id}/members/{user_id}/status | Efecto sobre login | NO DEFINIDO: el handler no toca el usuario. Si `get_current_user` o el login no miran la membresia, la baja no corta el acceso a la empresa | companies.py:245, 261 | Revisar auth.get_current_user |
+| PUT /{company_id}/members/{user_id}/status | Validacion del rol / escalada | El endpoint no recibe rol. Si `status` admite valores de rol o crud los interpreta, habria escalada; el handler no valida | companies.py:242, 261 | NO DEFINIDO |
+| GET /{company_id} | Roles permitidos y token scope | Platform admin: cualquier empresa, incluso inactiva. Resto: cualquier miembro ACTIVO, sin distinguir rol de empresa (worker incluido). Scopes: NO DEFINIDO (usa `get_current_user`) | companies.py:270, 276, 278-279, 282-283, 286-297 | Un worker ve la ficha de la empresa |
+| GET /{company_id} | Pertenencia y company.is_active | Pertenencia: membresia con user_id, company_id e is_active True. Empresa inactiva: 403 antes de comprobar pertenencia, con mensaje distinto | companies.py:278-279, 285-297 | Un ajeno recibe mensaje distinto segun la empresa este activa: fuga leve |
+| GET /{company_id} | Ajeno a la empresa / enumeracion | 403 "Not authorized"; empresa inexistente: 404 antes de cualquier comprobacion de pertenencia | companies.py:272-274, 296-297 | Enumeracion de ids de empresa |
+| GET /{company_id} | Ultimo admin, uno mismo, work_logs, login, rol, orden | No aplica (solo lectura) | companies.py:286-299 | |
