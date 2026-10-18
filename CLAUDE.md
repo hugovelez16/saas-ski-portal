@@ -12,7 +12,7 @@ Plataforma SaaS de gestion de escuelas de esqui: reservas y jornadas laborales (
 - Entorno dev: `./bin/dev`, `./bin/stop`, `./bin/logs`. Tras una base nueva: `./bin/migrate` y `./bin/seed`.
 - Docker: usar siempre `docker compose -f docker-compose.dev.yml ...`. El dev depende de volumenes locales y de un target `deps` que no existen en el compose de produccion.
 - Todo montaje de volumen lleva sufijo `:z` (SELinux y Podman rootless).
-- Backend: `ruff check backend/` y `cd backend && pytest tests/`.
+- Backend: `ruff check backend/` y `cd backend && pytest tests/`. Los tests nunca usan `DATABASE_URL`; usan SQLite en memoria o `TEST_DATABASE_URL`.
 - Frontend (desde `frontend/`): `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`.
 - Desarrollo local: gateway en `http://localhost:${GATEWAY_PORT:-8080}`.
 - Sembrado inicial: el backend crea administrador y empresa si `.env` define `INITIAL_ADMIN_EMAIL` e `INITIAL_ADMIN_PASSWORD`; tambien con `./bin/seed` tras `./bin/migrate`.
