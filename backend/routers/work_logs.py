@@ -18,10 +18,12 @@ def record_impersonation_audit(db: Session, current_user: models.User, action: s
     if getattr(current_user, "token_scope", None) == "impersonated":
         admin_user_id = getattr(current_user, "admin_user_id", None)
         if admin_user_id:
+            admin_uuid = UUID(admin_user_id) if isinstance(admin_user_id, str) else admin_user_id
             audit_entry = models.AuditLog(
                 action=action,
                 impersonated_user_id=current_user.id,
-                admin_user_id=UUID(admin_user_id) if isinstance(admin_user_id, str) else admin_user_id,
+                admin_user_id=admin_uuid,
+                actor_user_id=admin_uuid,
                 extra_data=extra_data or {},
             )
             db.add(audit_entry)

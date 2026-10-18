@@ -242,6 +242,7 @@ def reset_user_2fa(
             action="2fa_reset",
             impersonated_user_id=user.id,
             admin_user_id=current_user.id,
+            actor_user_id=current_user.id,
             extra_data={"target_email": user.email},
         )
     )

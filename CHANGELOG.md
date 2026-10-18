@@ -19,7 +19,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
-## [0.8.2] - 2026-10-18
+## [0.9.1] - 2026-10-18
 
 ### Tipo de Cambio SemVer
 
@@ -36,6 +36,27 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 ### Cambios Internos
 
 - **`backend/tests/routers/test_auth_security.py`**: nuevos tests de PR-01; `test_auth_dev_bypass.py` actualizado al nuevo contrato; `conftest.py` acepta cadenas en columnas UUID bajo SQLite.
+
+---
+
+## [0.9.0] - 2026-10-18
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Base del registro de auditoria de empresa y membresias (modelo, migracion y helper). Los eventos concretos se emiten en bloques posteriores.
+
+### Funcionalidades y Mejoras
+
+- **`backend/models.py`**: `AuditLog` admite actor, empresa, usuario objetivo, valor anterior, valor nuevo y motivo (`actor_user_id`, `company_id` sin clave foranea, `target_user_id`, `old_value`, `new_value`, `reason`); `impersonated_user_id` y `admin_user_id` pasan a nulos.
+- **`backend/migrations/versions/b7e1a0d10001_extend_audit_logs.py`**: migracion reversible que anade las columnas, rellena `actor_user_id` con `admin_user_id` y crea los indices `ix_audit_logs_company_created` e `ix_audit_logs_action`. Compatible con el codigo anterior (solo anade y relaja `NOT NULL`).
+- **`backend/audit.py`**: nuevo `AuditAction` y `record_audit`, que anade la entrada a la sesion sin confirmar la transaccion.
+- **`backend/routers/users.py`, `backend/routers/work_logs.py`**: las entradas `2fa_reset` y de impersonacion rellenan tambien `actor_user_id`.
+
+### Cambios Internos
+
+- **`backend/tests/test_audit.py`**: pruebas del helper y de los dos escritores existentes.
+
+---
 
 ## [0.8.1] - 2026-10-08
 
