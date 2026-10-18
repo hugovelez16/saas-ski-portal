@@ -69,6 +69,11 @@ async def lifespan(app: FastAPI):
         print("CRITICAL ERROR: ENCRYPTION_KEY environment variable is not set!")
         raise RuntimeError("ENCRYPTION_KEY environment variable is not set. Aborting startup.")
 
+    # Aborta el arranque si DEV_LOGIN_BYPASS esta activo fuera de ENVIRONMENT=development
+    import dev_seed
+
+    dev_seed.assert_dev_bypass_safe()
+
     # Database readiness check (Wait for DB)
     # Total timeout: 60 seconds (30 retries * 2 seconds)
     retries = 30
@@ -81,7 +86,6 @@ async def lifespan(app: FastAPI):
             print("Database connection established successfully.")
 
             # Inicializar usuario y empresa de desarrollo si aplica
-            import dev_seed
             if dev_seed.is_dev_mode():
                 try:
                     dev_seed.ensure_dev_admin_user(db)
@@ -98,14 +102,6 @@ async def lifespan(app: FastAPI):
                 break
             print(f"Database not ready yet. Retrying in 2 seconds... ({retries} attempts remaining)")
             await asyncio.sleep(2)
-
-    # Sembrado inicial de datos si procede
-    try:
-        from seed import seed_initial_data
-
-        seed_initial_data()
-    except Exception as seed_err:
-        print(f"[Seed] No se pudo ejecutar el sembrado inicial en arranque: {seed_err}")
 
     # Iniciar la tarea periódica de limpieza de sesiones en segundo plano
     cleanup_task = asyncio.create_task(cleanup_expired_sessions_loop())
