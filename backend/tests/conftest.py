@@ -5,10 +5,10 @@ define TEST_DATABASE_URL, una base PostgreSQL migrada con Alembic (cada test cor
 dentro de una transaccion que se revierte al final).
 """
 
-import base64
 import os
 
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy.engine import make_url
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
@@ -33,8 +33,8 @@ if TEST_DATABASE_URL:
 
 # Debe ejecutarse ANTES de importar `database`, porque el engine de produccion se crea al importarlo.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL or "sqlite://"
-# Clave ficticia de pruebas, construida en ejecucion para no dejar un literal base64 en el repo.
-os.environ.setdefault("ENCRYPTION_KEY", base64.b64encode(b"test_key_for_ci_validation_purposes").decode())
+# Clave efimera generada en cada ejecucion: no se versiona ningun valor con forma de clave.
+os.environ.setdefault("ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ["ENVIRONMENT"] = "test"
 os.environ.pop("DEV_LOGIN_BYPASS", None)
 os.environ.pop("NODE_ENV", None)
