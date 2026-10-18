@@ -1,30 +1,15 @@
-import os
 import unittest
 import uuid
 
-# Ensure SQLite in-memory database for testing
-os.environ["DATABASE_URL"] = "sqlite:///:memory:"
-
-import models  # noqa: E402
-import schemas  # noqa: E402
-from database import Base, SessionLocal, engine  # noqa: E402
-from fastapi import HTTPException  # noqa: E402
-from routers.companies import read_company, update_company_member  # noqa: E402
-from routers.work_logs import create_work_log, delete_work_log, update_work_log  # noqa: E402
-from sqlalchemy.dialects.postgresql import JSONB  # noqa: E402
-from sqlalchemy.ext.compiler import compiles  # noqa: E402
-
-
-@compiles(JSONB, "sqlite")
-def compile_jsonb_sqlite(type_, compiler, **kw):
-    return "JSON"
+import models
+import schemas
+from database import SessionLocal
+from fastapi import HTTPException
+from routers.companies import read_company, update_company_member
+from routers.work_logs import create_work_log, delete_work_log, update_work_log
 
 
 class TestCompanyGovernance(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        Base.metadata.create_all(bind=engine)
-
     def setUp(self):
         self.db = SessionLocal()
 

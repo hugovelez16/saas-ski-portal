@@ -3,6 +3,7 @@ Pruebas unitarias para el bypass de autenticacion y sembrado de desarrollo local
 """
 import os
 import unittest
+from unittest import mock
 
 import auth
 import dev_seed
@@ -13,11 +14,20 @@ from database import SessionLocal
 class TestDevAuthBypass(unittest.TestCase):
     def setUp(self):
         self.db = SessionLocal()
-        os.environ["ENVIRONMENT"] = "development"
-        os.environ["DEV_LOGIN_BYPASS"] = "true"
-        os.environ["DEV_ADMIN_EMAIL"] = "admin@vesotel.com"
-        os.environ["DEV_ADMIN_PASSWORD"] = "admin"
-        os.environ["DEV_ADMIN_COMPANY"] = "Vesotel Ski School"
+        # patch.dict restaura el entorno original al detenerse, tras cada test.
+        env_patcher = mock.patch.dict(
+            os.environ,
+            {
+                "ENVIRONMENT": "development",
+                "DEV_LOGIN_BYPASS": "true",
+                "DEV_ADMIN_EMAIL": "admin@vesotel.com",
+                "DEV_ADMIN_PASSWORD": "admin",
+                "DEV_ADMIN_COMPANY": "Vesotel Ski School",
+            },
+            clear=False,
+        )
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
 
     def tearDown(self):
         self.db.close()
@@ -29,10 +39,6 @@ class TestDevAuthBypass(unittest.TestCase):
         os.environ["NODE_ENV"] = "production"
         os.environ["DEV_LOGIN_BYPASS"] = "false"
         self.assertFalse(dev_seed.is_dev_mode())
-
-        # Restaurar
-        os.environ["ENVIRONMENT"] = "development"
-        os.environ["DEV_LOGIN_BYPASS"] = "true"
 
     def test_ensure_dev_admin_user_creates_and_returns_admin(self):
         user = dev_seed.ensure_dev_admin_user(self.db)
