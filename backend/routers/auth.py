@@ -106,6 +106,13 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Cuenta desactivada: se comprueba tras validar la contrasena (en desarrollo ensure_dev_admin_user la reactiva)
+    if user.is_active is False:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cuenta desactivada. Contacta con el administrador",
+        )
+
     # Check if 2FA is required
     if user.is_2fa_enabled:
         # Issue provisional token (short lived, specific scope)
@@ -249,6 +256,9 @@ async def refresh_access_token(request: Request, response: Response, db: Session
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if user.is_active is False:
+        auth.revoke_session(db, refresh_token)
+        raise HTTPException(status_code=401, detail="Cuenta desactivada")
 
     new_access_token, _ = auth.generate_user_tokens(db, user)
 

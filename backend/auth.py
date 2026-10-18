@@ -329,6 +329,8 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
     user = crud.get_user(db, user_id=token_data.user_id)
     if user is None:
         raise credentials_exception
+    if user.is_active is False:
+        raise HTTPException(status_code=401, detail="Cuenta desactivada", headers={"WWW-Authenticate": "Bearer"})
 
     # Attach active context to user object (transient)
     user.active_company_id = token_data.company_id
@@ -391,6 +393,8 @@ async def get_verified_user(token: str = Depends(get_token_from_request), db: Se
     user = crud.get_user(db, user_id=token_data.user_id)
     if user is None:
         raise credentials_exception
+    if user.is_active is False:
+        raise HTTPException(status_code=401, detail="Cuenta desactivada", headers={"WWW-Authenticate": "Bearer"})
 
     # Attach active context to user object (transient)
     user.active_company_id = token_data.company_id

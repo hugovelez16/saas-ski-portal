@@ -242,7 +242,7 @@ def update_member_status(
     user_id: str,
     status: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(auth.get_verified_user),
 ):
     """
     Approve/Reject company membership.
@@ -267,7 +267,7 @@ def update_member_status(
 
 @router.get("/{company_id}", response_model=schemas.CompanyResponse)
 def read_company(
-    company_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)
+    company_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
 ):
     company = crud.get_company(db, company_id)
     if not company:
@@ -301,7 +301,7 @@ def read_company(
 
 @router.get("/{company_id}/rates-v2", response_model=list[schemas.CompanyMemberResponse])
 def read_company_rates(
-    company_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)
+    company_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
 ):
     is_platform_admin = getattr(current_user, "is_platform_admin", False) or current_user.role == models.UserRole.admin
     company = crud.get_company(db, company_id)
@@ -324,7 +324,7 @@ def update_company_member(
     user_id: str,
     member_data: schemas.CompanyMemberUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(auth.get_verified_user),
 ):
     company = crud.get_company(db, company_id)
     if not company:
