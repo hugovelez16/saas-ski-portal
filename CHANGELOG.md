@@ -19,6 +19,21 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.9.3] - 2026-10-19
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Token minimo, emision de contexto y "ver como" del administrador de plataforma (PR-04 del plan de empresa).
+
+### Seguridad
+
+- **`backend/auth.py`**: el access token solo lleva `sub`, `scope` y, si hay empresa activa, `cid` (mas `exp`, `iat`, `type` y `jti`); desaparecen `role`, `is_admin` y `cid` nulo. Nuevo `resolve_active_company`: la empresa del token es siempre una membresia activa de una empresa activa (sugerencia del cliente, si no la primera por `sort_order` y `joined_at`); ya no se lee `users.default_company_id`. `view_as` solo se emite para el administrador de plataforma con empresa.
+- **`backend/routers/auth.py`**: `POST /auth/switch-scope` deja de aceptar el rol del cliente y acepta `viewAs` (solo administrador de plataforma). Inexistente, ajena o sin membresia responden igual (403); empresa suspendida bloquea a worker y manager pero no al administrador. El login (`company_id` en el formulario) y `POST /verify-2fa` (`companyId`) aplican la misma regla; el token provisional de 2FA no lleva empresa. `switch-scope` se rechaza (403) con un token de impersonacion, que antes se reemitia con 30 min y sin `admin_user_id`.
+
+### Cambiado
+
+- **`frontend`**: `switchScope(companyId, viewAs?)` sin rol; el administrador de plataforma ve "Gestionar", "Ver como manager" y "Ver como worker" (solo lectura); worker y manager un unico boton "Entrar". La ultima empresa se recuerda en `localStorage` (clave `lastCompanyId`) y se envia al login y al paso 2FA.
+
 ## [0.9.2] - 2026-10-18
 
 ### Tipo de Cambio SemVer

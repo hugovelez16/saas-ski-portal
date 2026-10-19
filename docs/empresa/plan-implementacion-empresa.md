@@ -1175,6 +1175,11 @@ Fuente: copia del backup de produccion de 2026-10-18 00:00, restaurada y anonimi
 
 - `auth.verify_reset_token` y `consume_reset_token` llaman a `redis_manager.get_client()`, que no existe; el error se traga en un `try/except` y la proteccion contra reutilizacion solo funciona en memoria del proceso (`_consumed_reset_jtis`). Reportar al usuario aparte.
 - `GET /companies/{id}/members/me` y `GET /users/{id}/sessions` que consume el frontend no existen en el backend (hallazgo 13).
+- Hallazgos de la revision de seguridad de PR-04, pendientes de decision de diseno (no se ejecutan en PR-04):
+  - `POST /refresh-token` solo conoce `sub` (el refresh token no lleva empresa): tras `switch-scope` a la empresa B, el siguiente refresh devuelve la primera membresia por `sort_order` y un PA pierde su `cid`. El plan (PR-04.0, caso 7) lo acepta. Alternativa: guardar la empresa activa en la sesion (`sessions`) o en el refresh token y revalidarla al refrescar.
+  - Refrescar una sesion impersonada emite un token `full` de 30 min para el usuario objetivo y alarga la impersonacion. Alternativa: negar el refresh a sesiones impersonadas (el access `impersonated` caduca a los 10 min y el PA vuelve con `stop-impersonation`).
+  - `POST /admin/impersonate/{id}` permite impersonar a un usuario inactivo o a otro PA. Alternativa: rechazar ambos casos.
+  - `auth.resolve_active_company` devuelve para un PA el `company_id` pedido sin validar su existencia (la valida `switch-scope`). Si otro llamador futuro pasa un `company_id` a un PA, debe validarlo antes.
 - Si se elige la opcion B de Q-1, ver la columna "Si se elige la otra" de la tabla 4.2.
 
 ## 9. Mecanismo de reparacion de datos previo a las migraciones con riesgo

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api, { setAuthToken } from "@/lib/api";
 import { UserProfile } from "@/lib/types";
+import { getLastCompanyId, setLastCompanyId, LAST_COMPANY_KEY } from "@/lib/last-company";
 import { useRouter } from 'next/navigation';
 import posthog from 'posthog-js';
 
@@ -11,10 +12,10 @@ interface AuthContextType {
     loading: boolean;
     login: (email: string, password: string) => Promise<{ requires2FA: boolean }>;
     devLogin: () => Promise<{ requires2FA: boolean }>;
-    verify2FA: (code: string) => Promise<void>;
+    verify2FA: (code: string, companyId?: string) => Promise<void>;
     logout: () => void;
     stopImpersonation: () => Promise<void>;
-    switchScope: (companyId: string, role: string) => Promise<void>;
+    switchScope: (companyId: string | null, viewAs?: 'manager' | 'worker') => Promise<void>;
     checkAuth: () => Promise<void>;
 }
 
@@ -47,6 +48,16 @@ function resetAnalytics() {
   posthog.reset();
 }
 
+function isPlatformAdminUser(u: UserProfile | null | undefined): boolean {
+  return Boolean(u?.isPlatformAdmin || u?.role === 'admin');
+}
+
+// Un PA no tiene empresa recordada: su contexto es neutro.
+function rememberActiveCompany(u: UserProfile | null | undefined) {
+  if (!u || isPlatformAdminUser(u) || !u.activeCompanyId) return;
+  setLastCompanyId(LAST_COMPANY_KEY, u.activeCompanyId);
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
@@ -57,6 +68,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             const response = await api.get<UserProfile>('/users/me');
             setUser(response.data);
             identifyUser(response.data);
+            rememberActiveCompany(response.data);
             return response.data;
         } catch (error: any) {
             if (error.response?.status === 401 && retryDev && process.env.NEXT_PUBLIC_DEV_LOGIN_BYPASS === 'true') {
@@ -124,9 +136,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         formData.append('password', password);
 
         // Add Device Token if exists
-        const deviceToken = localStorage.getItem('device_token');
+        let deviceToken: string | null = null;
+        try {
+            deviceToken = localStorage.getItem('device_token');
+        } catch {
+            deviceToken = null;
+        }
         if (deviceToken) {
             formData.append('device_token', deviceToken);
+        }
+
+        // Sugerencia de empresa; el backend valida la membresia
+        const lastCompanyId = getLastCompanyId(LAST_COMPANY_KEY);
+        if (lastCompanyId) {
+            formData.append('company_id', lastCompanyId);
         }
 
         const response = await api.post('/token', formData, {
@@ -146,7 +169,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setAuthToken(tokenData.accessToken);
         // If device token returned (e.g. rotated), update it
         if (tokenData.deviceToken) {
-            localStorage.setItem('device_token', tokenData.deviceToken);
+            try {
+                localStorage.setItem('device_token', tokenData.deviceToken);
+            } catch {
+                // Storage no disponible: el device token no se persiste
+            }
         }
 
 
@@ -162,8 +189,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return { requires2FA: false };
     };
 
-    const verify2FA = async (code: string) => {
-        const response = await api.post('/verify-2fa', { code });
+    const verify2FA = async (code: string, companyId?: string) => {
+        const body: { code: string; companyId?: string } = { code };
+        if (companyId) {
+            body.companyId = companyId;
+        }
+        const response = await api.post('/verify-2fa', body);
         // Backend returns snake_case
         const tokenData = response.data;
         // setAuthToken handles the 'cookie' signal
@@ -207,14 +238,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     };
 
-    const switchScope = async (companyId: string, role: string) => {
+    const switchScope = async (companyId: string | null, viewAs?: 'manager' | 'worker') => {
         try {
-            await api.post('/auth/switch-scope', { companyId: companyId, companyRole: role });
-            await fetchUser();
+            await api.post('/auth/switch-scope', { companyId, viewAs });
+            // fetchUser guarda activeCompanyId en el navegador (no aplica a PA)
+            const userData = await fetchUser();
             // Force a full page reload to clear all caches and ensure everything (Sidebar, etc) reflects the new context
             if (!companyId) {
                 window.location.href = '/admin/companies';
-            } else if (role === 'manager') {
+            } else if (isPlatformAdminUser(userData) && !viewAs) {
+                window.location.href = `/admin/companies/${companyId}`;
+            } else if (userData?.activeRole === 'manager') {
                 window.location.href = `/manager/dashboard?companyId=${companyId}`;
             } else {
                 window.location.href = `/dashboard?companyId=${companyId}`;

@@ -173,7 +173,7 @@ def test_redis_error_fails_closed(monkeypatch):
 
 @pytest.fixture
 def stub_token_issuing(monkeypatch):
-    monkeypatch.setattr(auth, "generate_user_tokens", lambda db, user: ("access-final", "refresh-final"))
+    monkeypatch.setattr(auth, "generate_user_tokens", lambda db, user, **kw: ("access-final", "refresh-final"))
     monkeypatch.setattr(auth, "create_session", lambda *args, **kwargs: None)
 
 

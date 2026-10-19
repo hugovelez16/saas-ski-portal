@@ -504,4 +504,262 @@ describe("AuthContext", () => {
       }
     });
   });
+
+  describe("company scope (lastCompanyId)", () => {
+    const LAST_KEY = "lastCompanyId";
+
+    const workerUser = (over: Partial<UserProfile> = {}): UserProfile => ({
+      id: "u1",
+      email: "a@b.c",
+      firstName: "A",
+      lastName: "B",
+      role: "user",
+      isActive: true,
+      isManager: false,
+      activeCompanyId: "c1",
+      activeRole: "worker",
+      createdAt: "2026-01-01T00:00:00",
+      ...over,
+    });
+
+    const adminUser = (over: Partial<UserProfile> = {}): UserProfile =>
+      workerUser({ role: "admin", isPlatformAdmin: true, activeRole: null, ...over });
+
+    // Renderiza el provider con un usuario inicial (o sin sesion si es null)
+    const renderAuth = async (initialUser: UserProfile | null) => {
+      const ref: { current: any } = { current: null };
+      if (initialUser) {
+        vi.mocked(api.get).mockResolvedValueOnce({ data: initialUser });
+      } else {
+        vi.mocked(api.get).mockRejectedValueOnce({ response: { status: 401 } });
+      }
+      const Probe = () => {
+        const auth = useAuth();
+        ref.current = auth;
+        return <div data-testid="probe">{auth.loading ? "loading" : "ready"}</div>;
+      };
+      render(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>
+      );
+      await waitFor(() => expect(screen.getByTestId("probe")).toHaveTextContent("ready"));
+      vi.clearAllMocks();
+      return ref;
+    };
+
+    const loginWith = async (
+      ref: { current: any },
+      tokenResponse: Record<string, unknown> = { accessToken: "t1" }
+    ) => {
+      vi.mocked(api.post).mockImplementation((url: string) => {
+        if (url === "/token") return Promise.resolve({ data: tokenResponse });
+        if (url === "/verify-2fa") return Promise.resolve({ data: { accessToken: "t2" } });
+        return Promise.resolve({});
+      });
+      vi.mocked(api.get).mockResolvedValue({ data: workerUser() });
+      let result: { requires2FA: boolean } | undefined;
+      await act(async () => {
+        result = await ref.current.login("a@b.c", "password123");
+      });
+      return result;
+    };
+
+    const bodyOf = (url: string) => {
+      const call = vi.mocked(api.post).mock.calls.find((c) => c[0] === url);
+      return call?.[1] as any;
+    };
+
+    // Navegacion simulada: devuelve el href asignado tras switchScope
+    const switchAndGetHref = async (
+      ref: { current: any },
+      companyId: string | null,
+      returnedUser: UserProfile,
+      viewAs?: "manager" | "worker"
+    ) => {
+      vi.mocked(api.post).mockResolvedValue({});
+      vi.mocked(api.get).mockResolvedValue({ data: returnedUser });
+      const originalLocation = window.location;
+      delete (window as any).location;
+      (window as any).location = { ...originalLocation, href: "" };
+      try {
+        await act(async () => {
+          await ref.current.switchScope(companyId, viewAs);
+        });
+        return (window as any).location.href as string;
+      } finally {
+        (window as any).location = originalLocation;
+      }
+    };
+
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it("login envia company_id guardado en el formulario de /token", async () => {
+      localStorage.setItem(LAST_KEY, "c9");
+      const ref = await renderAuth(null);
+
+      await loginWith(ref);
+
+      const form = vi.mocked(api.post).mock.calls.find((c) => c[0] === "/token")![1] as URLSearchParams;
+      expect(form.get("company_id")).toBe("c9");
+    });
+
+    it("login sin valor guardado no envia company_id", async () => {
+      const ref = await renderAuth(null);
+
+      await loginWith(ref);
+
+      const form = vi.mocked(api.post).mock.calls.find((c) => c[0] === "/token")![1] as URLSearchParams;
+      expect(form.has("company_id")).toBe(false);
+    });
+
+    it("un localStorage que lanza no rompe el login", async () => {
+      const ref = await renderAuth(null);
+      const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("SecurityError");
+      });
+      try {
+        const result = await loginWith(ref);
+        expect(result?.requires2FA).toBe(false);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("tras requires_2fa, el paso 2FA envia companyId guardado", async () => {
+      localStorage.setItem(LAST_KEY, "c9");
+      const ref = await renderAuth(null);
+
+      const result = await loginWith(ref, { requires_2fa: true });
+      expect(result?.requires2FA).toBe(true);
+
+      await act(async () => {
+        await ref.current.verify2FA("123456", localStorage.getItem(LAST_KEY) ?? undefined);
+      });
+
+      expect(bodyOf("/verify-2fa")).toEqual({ code: "123456", companyId: "c9" });
+    });
+
+    it("tras requires_2fa, sin valor guardado el paso 2FA no envia companyId", async () => {
+      const ref = await renderAuth(null);
+
+      const result = await loginWith(ref, { requires_2fa: true });
+      expect(result?.requires2FA).toBe(true);
+
+      await act(async () => {
+        await ref.current.verify2FA("123456", localStorage.getItem(LAST_KEY) ?? undefined);
+      });
+
+      expect(bodyOf("/verify-2fa")).toEqual({ code: "123456" });
+      expect(bodyOf("/verify-2fa")).not.toHaveProperty("companyId");
+    });
+
+    it("fetchUser guarda activeCompanyId de un worker", async () => {
+      await renderAuth(workerUser({ activeCompanyId: "c5" }));
+
+      expect(localStorage.getItem(LAST_KEY)).toBe("c5");
+    });
+
+    it("fetchUser no guarda empresa para un PA", async () => {
+      await renderAuth(adminUser({ activeCompanyId: "c5" }));
+
+      expect(localStorage.getItem(LAST_KEY)).toBeNull();
+    });
+
+    it("switchScope(id) envia companyId sin companyRole", async () => {
+      const ref = await renderAuth(workerUser());
+
+      await switchAndGetHref(ref, "c2", workerUser({ activeCompanyId: "c2" }));
+
+      const body = bodyOf("/auth/switch-scope");
+      expect(body).toMatchObject({ companyId: "c2" });
+      expect(body).not.toHaveProperty("companyRole");
+      expect(body.viewAs).toBeUndefined();
+    });
+
+    it("switchScope(id, 'worker') envia viewAs", async () => {
+      const ref = await renderAuth(adminUser());
+
+      await switchAndGetHref(ref, "c2", adminUser({ activeCompanyId: "c2" }), "worker");
+
+      expect(api.post).toHaveBeenCalledWith("/auth/switch-scope", { companyId: "c2", viewAs: "worker" });
+    });
+
+    it("switchScope guarda la empresa activa en la clave unica", async () => {
+      const ref = await renderAuth(workerUser({ activeCompanyId: null }));
+
+      await switchAndGetHref(ref, "c2", workerUser({ activeCompanyId: "c2" }));
+
+      expect(localStorage.getItem(LAST_KEY)).toBe("c2");
+    });
+
+    it("switchScope de un PA no guarda empresa", async () => {
+      const ref = await renderAuth(adminUser({ activeCompanyId: null }));
+
+      await switchAndGetHref(ref, "c2", adminUser({ activeCompanyId: "c2" }));
+
+      expect(localStorage.getItem(LAST_KEY)).toBeNull();
+    });
+
+    it("un localStorage que lanza en setItem no rompe switchScope", async () => {
+      const ref = await renderAuth(workerUser({ activeCompanyId: null }));
+      const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new Error("QuotaExceededError");
+      });
+      try {
+        const href = await switchAndGetHref(ref, "c2", workerUser({ activeCompanyId: "c2" }));
+        expect(href).toBe("/dashboard?companyId=c2");
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("redirige a /dashboard para un worker", async () => {
+      const ref = await renderAuth(workerUser());
+
+      const href = await switchAndGetHref(ref, "c2", workerUser({ activeCompanyId: "c2", activeRole: "worker" }));
+
+      expect(href).toBe("/dashboard?companyId=c2");
+    });
+
+    it("redirige a /manager/dashboard cuando el usuario devuelto es manager", async () => {
+      const ref = await renderAuth(workerUser());
+
+      const href = await switchAndGetHref(ref, "c2", workerUser({ activeCompanyId: "c2", activeRole: "manager" }));
+
+      expect(href).toBe("/manager/dashboard?companyId=c2");
+    });
+
+    it("un PA sin viewAs va a /admin/companies/{id}", async () => {
+      const ref = await renderAuth(adminUser());
+
+      const href = await switchAndGetHref(ref, "c2", adminUser({ activeCompanyId: "c2", activeRole: null }));
+
+      expect(href).toBe("/admin/companies/c2");
+    });
+
+    it("un PA con viewAs worker va a /dashboard", async () => {
+      const ref = await renderAuth(adminUser());
+
+      const href = await switchAndGetHref(
+        ref,
+        "c2",
+        adminUser({ activeCompanyId: "c2", activeRole: "worker", viewAs: "worker", isReadOnlyView: true }),
+        "worker"
+      );
+
+      expect(href).toBe("/dashboard?companyId=c2");
+    });
+
+    it("switchScope(null) vuelve a /admin/companies", async () => {
+      const ref = await renderAuth(adminUser());
+
+      const href = await switchAndGetHref(ref, null, adminUser({ activeCompanyId: null, activeRole: null }));
+
+      expect(api.post).toHaveBeenCalledWith("/auth/switch-scope", { companyId: null, viewAs: undefined });
+      expect(href).toBe("/admin/companies");
+    });
+  });
 });
