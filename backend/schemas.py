@@ -7,7 +7,7 @@ It ensures that data sent to and received from the API conforms to the expected 
 
 from datetime import date as dt_date
 from datetime import datetime, time
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
@@ -248,6 +248,14 @@ class Token(CamelModel):
 
 class Verify2FA(CamelModel):
     code: str
+    company_id: UUID | None = None
+
+
+class SwitchScopeRequest(CamelModel):
+    """Cuerpo de POST /auth/switch-scope. El rol de la membresia se lee de BD; no se acepta del cliente."""
+
+    company_id: UUID | None = None
+    view_as: Literal["worker", "manager"] | None = None
 
 
 class TOTPSetupResponse(CamelModel):
@@ -266,8 +274,6 @@ class TOTPDisable(CamelModel):
 class TokenData(CamelModel):
     user_id: str | None = None
     company_id: str | None = None
-    company_role: str | None = None
-    is_platform_admin: bool = False
     scope: str = "full"
     email: EmailStr | None = None
     admin_user_id: str | None = None

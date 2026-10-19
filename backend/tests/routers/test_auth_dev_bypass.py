@@ -13,9 +13,10 @@ import pytest
 
 class TestDevAuthBypass(unittest.TestCase):
     @pytest.fixture(autouse=True)
-    def _inject_db(self, db):
+    def _inject_db(self, db, client):
         """Usa la sesion transaccional del fixture `db`: todo se revierte al terminar cada test."""
         self.db = db
+        self.client = client
 
     def setUp(self):
         # patch.dict restaura el entorno original al detenerse, tras cada test.
@@ -63,10 +64,16 @@ class TestDevAuthBypass(unittest.TestCase):
         self.assertIsNotNone(access_token)
         self.assertIsNotNone(refresh_token)
 
-        # Decodificar token y comprobar permisos
+        # El token ya no lleva claim `is_admin`: el rol de plataforma se lee de BD en /users/me.
         payload = auth.jwt.decode(access_token, auth.PUBLIC_KEY, algorithms=[auth.ALGORITHM])
         self.assertEqual(payload.get("sub"), str(user.id))
-        self.assertTrue(payload.get("is_admin"))
+        self.assertNotIn("is_admin", payload)
+
+        self.client.cookies.clear()
+        self.client.cookies.set("access_token", access_token)
+        resp = self.client.get("/users/me")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertIs(resp.json()["isPlatformAdmin"], True)
 
     def test_dev_seed_is_idempotent(self):
         user1 = dev_seed.ensure_dev_admin_user(self.db)

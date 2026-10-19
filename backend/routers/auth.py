@@ -4,13 +4,14 @@ import time
 from datetime import datetime, timedelta
 from uuid import UUID
 
+import access_policy
 import auth
 import crud
 import dev_seed
 import models
 import schemas
 from database import get_db
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -87,12 +88,16 @@ async def login_for_access_token(
     response: Response,
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
+    company_id: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """
     Step 1: Validate email/password.
-    If 2FA is enabled, return provisional token.
+    If 2FA is enabled, return provisional token (sin cid; el cliente reenvia companyId en verify-2fa).
     Otherwise, create session and return full tokens.
+    `company_id` (campo de formulario opcional) es solo una sugerencia: el servidor solo lo acepta si es
+    membresia activa de empresa activa; si no, aplica el fallback por sort_order. Un PA siempre entra en
+    contexto neutro.
     """
     dev_email = os.getenv("DEV_ADMIN_EMAIL", "admin@vesotel.com").strip().lower()
     is_dev = dev_seed.is_dev_mode()
@@ -137,8 +142,13 @@ async def login_for_access_token(
             "requires_2fa": True,
         }
 
-    # No 2FA: Create full session with default scope
-    access_token, refresh_token = auth.generate_user_tokens(db, user)
+    # No 2FA: Create full session with company context (PA: neutro)
+    access_token, refresh_token = auth.generate_user_tokens(
+        db,
+        user,
+        company_id=company_id,
+        force_none=user.role == models.UserRole.admin,
+    )
 
     # Store session in DB
     auth.create_session(
@@ -180,6 +190,7 @@ async def verify_2fa(
 ):
     """
     Verify TOTP code and issue final tokens.
+    `companyId` (opcional) sigue la misma regla que el login: sugerencia validada en servidor.
     """
     # Solo el token provisional emitido tras validar la contrasena puede completar el 2FA
     if getattr(current_user, "token_scope", None) != "2fa_pending":
@@ -203,8 +214,13 @@ async def verify_2fa(
         except auth.JWTError:
             pass
 
-    # Issue Full Tokens with default scope
-    access_token, refresh_token = auth.generate_user_tokens(db, current_user)
+    # Issue Full Tokens with company context (PA: neutro)
+    access_token, refresh_token = auth.generate_user_tokens(
+        db,
+        current_user,
+        company_id=str(data.company_id) if data.company_id else None,
+        force_none=bool(getattr(current_user, "is_platform_admin", False)),
+    )
 
     # Create Session
     auth.create_session(
@@ -303,45 +319,57 @@ async def logout(request: Request, response: Response, db: Session = Depends(get
 
 @router.post("/auth/switch-scope", response_model=schemas.Token)
 async def switch_scope(
-    data: schemas.TokenData,
+    data: schemas.SwitchScopeRequest,
     response: Response,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user),
 ):
     """
-    SaaS: Switch active company and role context.
-    Issues NEW JWT cookies.
+    SaaS: Switch active company (y modo "ver como" del PA). Emite NUEVOS tokens en cookies.
+
+    El rol del usuario en la empresa sale de la membresia (BD); el cliente no puede enviarlo.
+    - PA: sin company_id -> contexto neutro; con company_id -> esa empresa (suspendida permitida);
+      empresa inexistente -> 404; view_as requiere company_id (422).
+    - Resto: view_as -> 403; company_id obligatorio (400); sin membresia activa o empresa inexistente
+      -> 403 sin detalle; empresa suspendida -> 403.
     """
-    # Platform Admins can switch to ANY company and ANY role, OR reset to pure admin
+    token_scope = getattr(current_user, "token_scope", None)
+
+    # Una sesion impersonada no puede reemitirse: perderia el limite de 10 min y el admin_user_id
+    if token_scope == "impersonated":
+        raise HTTPException(status_code=403, detail="No se puede cambiar de empresa durante una impersonacion")
+
     if current_user.role == models.UserRole.admin:
-        if not data.company_id:
-            # Special case: Reset to Admin ONLY context
+        if data.company_id is None:
+            if data.view_as is not None:
+                raise HTTPException(status_code=422, detail="view_as requires company_id")
+            # Contexto neutro de PA (sin empresa)
             access_token, refresh_token = auth.generate_user_tokens(
                 db,
                 current_user,
-                company_id=None,
-                role=None,
                 force_none=True,
-                scope=getattr(current_user, "token_scope", None),
+                scope=token_scope,
             )
         else:
-            requested_role = data.company_role or "manager"
+            if crud.get_company(db, str(data.company_id)) is None:
+                raise HTTPException(status_code=404, detail="Empresa no encontrada")
             access_token, refresh_token = auth.generate_user_tokens(
                 db,
                 current_user,
-                company_id=data.company_id,
-                role=requested_role,
-                scope=getattr(current_user, "token_scope", None),
+                company_id=str(data.company_id),
+                scope=token_scope,
+                view_as=data.view_as,
             )
     else:
-        # Verify membership and role for regular users
-        if not data.company_id:
+        if data.view_as is not None:
+            raise HTTPException(
+                status_code=403,
+                detail="Solo el administrador de la plataforma puede usar 'ver como'",
+            )
+        if data.company_id is None:
             raise HTTPException(status_code=400, detail="company_id is required")
 
         company = crud.get_company(db, str(data.company_id))
-        if not company or not company.is_active:
-            raise HTTPException(status_code=403, detail="Empresa inactiva o suspendida")
-
         membership = (
             db.query(models.CompanyMember)
             .filter(
@@ -351,21 +379,17 @@ async def switch_scope(
             )
             .first()
         )
-
-        if not membership:
-            raise HTTPException(status_code=403, detail="You are not a member of this company")
-
-        requested_role = data.company_role or "worker"
-        if requested_role == "manager":
-            if membership.role not in [models.CompanyRole.admin, models.CompanyRole.manager]:
-                raise HTTPException(status_code=403, detail="Insufficient permissions for manager scope")
+        # Anti-enumeracion: inexistente, ajena o sin membresia activa responden igual (P-5)
+        if company is None or membership is None:
+            raise HTTPException(status_code=403, detail=access_policy.MSG_NO_ACCESS)
+        if not company.is_active:
+            raise HTTPException(status_code=403, detail=access_policy.MSG_SUSPENDED)
 
         access_token, refresh_token = auth.generate_user_tokens(
             db,
             current_user,
-            company_id=data.company_id,
-            role=requested_role,
-            scope=getattr(current_user, "token_scope", None),
+            company_id=str(data.company_id),
+            scope=token_scope,
         )
 
     response.set_cookie(

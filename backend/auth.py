@@ -7,6 +7,7 @@ It uses OAuth2 with Password Flow and JWT tokens.
 
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta
 
 import access_policy
@@ -232,60 +233,81 @@ def consume_reset_token(token: str) -> bool:
         return False
 
 
+def _normalize_uuid(value) -> str | None:
+    """Devuelve el UUID en forma canonica, o None si el valor es vacio o mal formado."""
+    if value is None or value == "":
+        return None
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def resolve_active_company(
+    db: Session,
+    user: models.User,
+    requested_company_id,
+    *,
+    force_none: bool = False,
+) -> str | None:
+    """
+    Decide la empresa activa (`cid`) del token.
+
+    - Platform admin: devuelve la empresa pedida (la existencia la valida switch-scope; una empresa
+      suspendida se permite). Con `force_none`, o sin empresa pedida, contexto neutro (None).
+    - Resto de usuarios: `requested_company_id` es solo una sugerencia del cliente. Se acepta solo si es
+      membresia activa de una empresa activa del usuario. Si no, se usa la primera membresia activa de
+      empresa activa ordenada por `sort_order` y `joined_at`. Sin ninguna, None.
+
+    No lee `users.default_company_id` (campo que se retira en PR-05).
+    """
+    requested = _normalize_uuid(requested_company_id)
+
+    if user.role == models.UserRole.admin:
+        return None if force_none else requested
+
+    rows = (
+        db.query(models.CompanyMember.company_id)
+        .join(models.Company, models.Company.id == models.CompanyMember.company_id)
+        .filter(
+            models.CompanyMember.user_id == user.id,
+            models.CompanyMember.is_active == True,  # noqa: E712
+            models.Company.is_active == True,  # noqa: E712
+        )
+        .order_by(models.CompanyMember.sort_order.asc(), models.CompanyMember.joined_at.asc())
+        .all()
+    )
+    active_ids = [str(row.company_id) for row in rows]
+
+    if requested is not None and requested in active_ids:
+        return requested
+    return active_ids[0] if active_ids else None
+
+
 def generate_user_tokens(
     db: Session,
     user: models.User,
     company_id: str | None = None,
-    role: str | None = None,
-    force_none: bool = False,
     scope: str | None = None,
+    force_none: bool = False,
+    view_as: str | None = None,
 ):
     """
-    SRE: Enhanced token generation with platform and company context.
-    If company_id or role are not provided, it selects defaults based on user profile and memberships.
-    If force_none is True, it allows cid/role to be None (only for platform admins).
+    Emite access y refresh token con el contexto minimo del usuario.
+
+    El access token solo lleva `sub`, `scope` y, si hay empresa activa, `cid` (ver
+    resolve_active_company). El claim `view_as` solo se incluye si el usuario es platform admin,
+    hay `cid` y el valor esta en VIEW_AS_ROLES. El rol de la membresia no va en el token: se lee de BD
+    en cada peticion (ver _attach_context).
     """
     is_platform_admin = user.role == models.UserRole.admin
+    active_cid = resolve_active_company(db, user, company_id, force_none=force_none)
 
-    # SaaS Logic: Platform Admins start in neutral context by default unless a company is explicitly requested
-    if is_platform_admin and (force_none or not company_id):
-        active_cid = company_id
-        active_role = role
-    else:
-        active_cid = company_id or (str(user.default_company_id) if user.default_company_id else None)
-        active_role = role
-
-        # Selection logic if not explicitly provided
-        if not active_cid or not active_role:
-            # Try to find membership for default or any company
-            query = db.query(models.CompanyMember).filter(
-                models.CompanyMember.user_id == user.id, models.CompanyMember.is_active == True
-            )
-
-            if active_cid:
-                membership = query.filter(models.CompanyMember.company_id == active_cid).first()
-                if not membership:
-                    membership = query.first()
-            else:
-                membership = query.first()
-
-            if membership:
-                active_cid = str(membership.company_id)
-                if not active_role:
-                    # admin/manager roles -> manager scope
-                    if membership.role in [models.CompanyRole.admin, models.CompanyRole.manager]:
-                        active_role = "manager"
-                    else:
-                        active_role = "worker"
-
-    # Token Data
-    data = {
-        "sub": str(user.id),
-        "is_admin": is_platform_admin,
-        "cid": active_cid,
-        "role": active_role,
-        "scope": scope or "full",
-    }
+    data = {"sub": str(user.id), "scope": scope or "full"}
+    if active_cid is not None:
+        data["cid"] = active_cid
+        if is_platform_admin and view_as in access_policy.VIEW_AS_ROLES:
+            data["view_as"] = view_as
 
     access_token = create_access_token(data=data)
     refresh_token = create_refresh_token(data={"sub": str(user.id)})

@@ -15,8 +15,6 @@ from tests.factories import as_user
 
 MSG_NO_ACCESS = "No tienes acceso a esta empresa"
 
-MANAGER_CLAIMS = {"role": "manager"}
-
 
 def _seed(db):
     """Datos de partida del dashboard: una empresa, cuatro usuarios, tres miembros y dos turnos de hoy."""
@@ -125,7 +123,7 @@ def dashboard(db):
 
 
 def test_get_dashboard_summary_metrics(client, db, dashboard):
-    as_user(client, dashboard.manager_user, dashboard.company, claims=MANAGER_CLAIMS)
+    as_user(client, dashboard.manager_user, dashboard.company)
     today = date.today()
 
     resp = client.get(
@@ -155,7 +153,7 @@ def test_get_dashboard_summary_metrics(client, db, dashboard):
 
 
 def test_unauthorized_access_denied(client, db, dashboard):
-    as_user(client, dashboard.unauthorized_user, dashboard.company, claims={"role": "worker"})
+    as_user(client, dashboard.unauthorized_user, dashboard.company)
     today = date.today()
 
     resp = client.get(
