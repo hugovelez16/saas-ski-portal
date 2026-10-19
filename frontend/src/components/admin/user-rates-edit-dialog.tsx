@@ -29,7 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { updateCompanyMember } from "@/lib/api/companies";
+import { updateMemberRates } from "@/lib/api/companies";
 import { CompanyMember, Company } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { formatPercentage } from "@/lib/utils";
@@ -111,7 +111,7 @@ export function UserRatesEditDialog({ userId, company, member, userName, open: e
     }, [member, open, form, JSON.stringify(worklogKeys)]);
 
     const mutation = useMutation({
-        mutationFn: (values: any) => updateCompanyMember(company.id, userId, values),
+        mutationFn: (values: any) => updateMemberRates(company.id, userId, values.ratesConfig),
         onSuccess: () => {
             toast({ title: "Tarifas actualizadas correctamente" });
             queryClient.invalidateQueries({ queryKey: ["companyRates", company.id] });

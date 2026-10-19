@@ -1,6 +1,6 @@
 import api from '../api';
 import { CompanyMember } from '@/lib/types';
-import { getMyCompanies } from './companies';
+import { getMyCompanies, updateMemberRates, updateMemberSettings } from './companies';
 
 export const getUserRates = async (companyId?: string): Promise<CompanyMember[]> => {
     try {
@@ -47,15 +47,11 @@ export const getUserSettings = async () => {
 export const updateUserRates = async (companyId: string, userId: string, data: any) => {
     // Asegurar que acepte y envie existingSettings (si existen) junto a ratesConfig para que el backend no borre member.settings
     const { existingSettings, ratesConfig, ...rest } = data;
-    const payload: Record<string, any> = {
-        ratesConfig: ratesConfig !== undefined ? ratesConfig : rest,
-    };
+    let response = await updateMemberRates(companyId, userId, ratesConfig !== undefined ? ratesConfig : rest);
     if (existingSettings !== undefined) {
-        payload.settings = existingSettings;
+        response = await updateMemberSettings(companyId, userId, existingSettings);
     }
-
-    const response = await api.put(`/companies/${companyId}/members/${userId}`, payload);
-    return response.data;
+    return response;
 };
 
 // Deprecated alias

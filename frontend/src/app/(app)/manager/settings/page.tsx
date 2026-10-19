@@ -11,7 +11,7 @@ import { Loader2 } from "lucide-react";
 export default function ManagerSettingsPage() {
     const { user, loading: authLoading } = useAuth();
     const searchParams = useSearchParams();
-    const selectedCompanyId = searchParams.get("companyId") || user?.activeCompanyId || user?.defaultCompanyId;
+    const selectedCompanyId = searchParams.get("companyId") || user?.activeCompanyId;
 
     const { data: company, isLoading: isLoadingCompany } = useQuery({
         queryKey: ["company", selectedCompanyId],

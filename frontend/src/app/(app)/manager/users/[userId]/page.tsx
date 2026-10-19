@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getUsers, getUser, getUserCompanies } from "@/lib/api/users";
 import { getWorkLogs, deleteWorkLog } from "@/lib/api/work-logs";
-import { getMyCompanies, updateCompanyMember } from "@/lib/api/companies";
+import { getMyCompanies, updateMemberRates, updateMemberStatus } from "@/lib/api/companies";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,6 +70,7 @@ type MemberConfigValues = z.infer<typeof memberConfigSchema>;
 
 function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, company: any, onUpdate: () => void }) {
     const { toast } = useToast();
+    const { canManageMembers } = usePermissions();
     const worklogDefinitionsStr = JSON.stringify(company.worklogDefinitions || {});
     const ratesConfigStr = JSON.stringify(company.ratesConfig || {});
 
@@ -130,7 +132,12 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
     }, [company.id, company.role, company.isActiveMember, worklogDefinitionsStr, ratesConfigStr, form]);
 
     const mutation = useMutation({
-        mutationFn: (data: any) => updateCompanyMember(company.id, user.id, data),
+        mutationFn: async (data: { isActive?: boolean; ratesConfig: Record<string, any> }) => {
+            if (canManageMembers && data.isActive !== undefined && data.isActive !== (company.isActiveMember ?? true)) {
+                await updateMemberStatus(company.id, user.id, data.isActive ? "active" : "inactive");
+            }
+            return updateMemberRates(company.id, user.id, data.ratesConfig);
+        },
         onSuccess: () => {
             toast({ title: "Configuración actualizada" });
             onUpdate();
@@ -205,21 +212,23 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                         </Badge>
                                     </div>
                                 </div>
-                                <FormField
-                                    control={form.control}
-                                    name="isActive"
-                                    render={({ field }) => (
-                                        <FormItem className="flex flex-row items-center justify-between rounded-md border bg-slate-50 dark:bg-slate-900 px-3 py-2">
-                                            <div className="space-y-0.5">
-                                                <FormLabel className="text-sm">Usuario Activo</FormLabel>
-                                                <FormDescription className="text-[10px]">Permitir registros</FormDescription>
-                                            </div>
-                                            <FormControl>
-                                                <Switch checked={field.value} onCheckedChange={field.onChange} />
-                                            </FormControl>
-                                        </FormItem>
-                                    )}
-                                />
+                                {canManageMembers && (
+                                    <FormField
+                                        control={form.control}
+                                        name="isActive"
+                                        render={({ field }) => (
+                                            <FormItem className="flex flex-row items-center justify-between rounded-md border bg-slate-50 dark:bg-slate-900 px-3 py-2">
+                                                <div className="space-y-0.5">
+                                                    <FormLabel className="text-sm">Usuario Activo</FormLabel>
+                                                    <FormDescription className="text-[10px]">Permitir registros</FormDescription>
+                                                </div>
+                                                <FormControl>
+                                                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                )}
                             </div>
 
                             <div className="md:col-span-2 space-y-4">

@@ -74,9 +74,9 @@ export default function ReportsPage() {
     // Effect to select default company
     useEffect(() => {
         if (accessibleCompanies.length > 0 && !selectedCompanyId) {
-            // Priority: Active Context > User Default > First Available
-            const targetId = user?.activeCompanyId || user?.defaultCompanyId;
-            
+            // Priority: Active Context (token) > First Available
+            const targetId = user?.activeCompanyId;
+
             if (targetId) {
                 const exists = accessibleCompanies.find(c => c.id === targetId);
                 if (exists) {
@@ -86,7 +86,7 @@ export default function ReportsPage() {
             }
             setSelectedCompanyId(accessibleCompanies[0].id);
         }
-    }, [accessibleCompanies, selectedCompanyId, user?.activeCompanyId, user?.defaultCompanyId]);
+    }, [accessibleCompanies, selectedCompanyId, user?.activeCompanyId]);
 
     // Fetch members/users
     // If Admin and NO company selected -> Get ALL Users

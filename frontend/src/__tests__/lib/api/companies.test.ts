@@ -9,7 +9,10 @@ import {
     getMyCompanies,
     updateMemberStatus,
     addCompanyMember,
-    updateCompanyMember,
+    updateMemberRole,
+    updateMemberRates,
+    updateMemberSettings,
+    removeCompanyMember,
     getCompanyRates,
     getCompanyMembers,
     updateCompanyMembersOrder,
@@ -21,6 +24,7 @@ vi.mock('@/lib/api', () => ({
         get: vi.fn(),
         post: vi.fn(),
         put: vi.fn(),
+        delete: vi.fn(),
     },
 }));
 
@@ -97,13 +101,38 @@ describe('Companies API Client', () => {
         expect(result.userId).toBe('u-2');
     });
 
-    it('updateCompanyMember should PUT /companies/:id/members/:userId', async () => {
-        const payload = { role: 'manager' };
+    it('updateMemberRole should PUT /companies/:id/members/:userId/role with { role }', async () => {
         (mockedApi.put as any).mockResolvedValue({ data: { userId: 'u-1', role: 'manager' } });
 
-        const result = await updateCompanyMember('c-1', 'u-1', payload);
-        expect(mockedApi.put).toHaveBeenCalledWith('/companies/c-1/members/u-1', payload);
+        const result = await updateMemberRole('c-1', 'u-1', 'manager');
+        expect(mockedApi.put).toHaveBeenCalledWith('/companies/c-1/members/u-1/role', { role: 'manager' });
         expect(result.role).toBe('manager');
+    });
+
+    it('updateMemberRates should PUT /companies/:id/members/:userId/rates with { ratesConfig }', async () => {
+        const ratesConfig = { particular: { base_rate: 10 } };
+        (mockedApi.put as any).mockResolvedValue({ data: { userId: 'u-1' } });
+
+        const result = await updateMemberRates('c-1', 'u-1', ratesConfig);
+        expect(mockedApi.put).toHaveBeenCalledWith('/companies/c-1/members/u-1/rates', { ratesConfig });
+        expect(result.userId).toBe('u-1');
+    });
+
+    it('updateMemberSettings should PUT /companies/:id/members/:userId/settings with { settings }', async () => {
+        const settings = { allow_tutorial: false };
+        (mockedApi.put as any).mockResolvedValue({ data: { userId: 'u-1' } });
+
+        const result = await updateMemberSettings('c-1', 'u-1', settings);
+        expect(mockedApi.put).toHaveBeenCalledWith('/companies/c-1/members/u-1/settings', { settings });
+        expect(result.userId).toBe('u-1');
+    });
+
+    it('removeCompanyMember should DELETE /companies/:id/members/:userId', async () => {
+        (mockedApi.delete as any).mockResolvedValue({ data: { success: true } });
+
+        const result = await removeCompanyMember('c-1', 'u-1');
+        expect(mockedApi.delete).toHaveBeenCalledWith('/companies/c-1/members/u-1');
+        expect(result).toEqual({ success: true });
     });
 
     it('getCompanyRates should GET /companies/:id/rates-v2', async () => {

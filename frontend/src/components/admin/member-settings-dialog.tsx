@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Settings2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updateCompanyMember } from "@/lib/api/companies";
+import { updateMemberSettings } from "@/lib/api/companies";
 
 interface MemberSettingsDialogProps {
     companyId: string;
@@ -53,7 +53,7 @@ export function MemberSettingsDialog({ companyId, userId, memberName, initialSet
     const [allowCoordination, setAllowCoordination] = useState(currentSettings.allow_coordination !== false);
 
     const mutation = useMutation({
-        mutationFn: (data: any) => updateCompanyMember(companyId, userId, data),
+        mutationFn: (data: any) => updateMemberSettings(companyId, userId, data.settings),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
             toast({ title: "Member settings updated" });

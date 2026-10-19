@@ -6,6 +6,7 @@ import { getCompaniesDetailed, updateMemberStatus, updateCompanyMembersOrder } f
 import { DataTable } from "@/components/ui/data-table";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Badge } from "@/components/ui/badge";
 import { Users, GripVertical } from "lucide-react";
 import { useMemo, useState, useEffect } from "react";
@@ -68,7 +69,8 @@ export default function ManagerUsersPage() {
 
     const { toast } = useToast();
     const queryClient = useQueryClient();
-    
+    const { canManageMembers } = usePermissions();
+
     const [isEditingOrder, setIsEditingOrder] = useState(false);
     const [userOrder, setUserOrder] = useState<string[]>([]);
 
@@ -233,11 +235,13 @@ export default function ManagerUsersPage() {
                 if (!user._status) return <span className="text-xs text-muted-foreground">-</span>;
                 return (
                     <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
-                        <Switch
-                            checked={user._status === 'active'}
-                            disabled={memberStatusMutation.isPending}
-                            onCheckedChange={(checked) => handleToggle(user, checked)}
-                        />
+                        {canManageMembers && (
+                            <Switch
+                                checked={user._status === 'active'}
+                                disabled={memberStatusMutation.isPending}
+                                onCheckedChange={(checked) => handleToggle(user, checked)}
+                            />
+                        )}
                         <span className={user._status === 'active' ? "text-green-600 text-xs font-semibold" : "text-red-600 text-xs font-semibold"}>
                             {user._status === 'active' ? "Activo" : "Inactivo"}
                         </span>
