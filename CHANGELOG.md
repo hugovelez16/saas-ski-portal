@@ -19,6 +19,34 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.10.0] - 2026-10-19
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Membresias solo plataforma y endpoints de miembro, con la retirada de `users.default_company_id` (PR-05 del plan de empresa). Cambio incompatible en 0.y.z: se elimina una ruta y cambian los permisos de membresia.
+
+### Anadido
+
+- **`backend/routers/companies.py`**: endpoints `PUT /companies/{company_id}/members/{user_id}/role`, `PUT .../rates`, `PUT .../settings` y `DELETE .../members/{user_id}` (con turnos desactiva la membresia en lugar de borrarla). `GET /companies/{company_id}/members` acepta `status=active|inactive`.
+- **`backend/audit.py`**: eventos `member.added`, `member.reactivated`, `member.deactivated`, `member.removed`, `member.role_changed` y `member.rates_changed`.
+- **`frontend`**: hook `usePermissions` y funciones `updateMemberRole`, `updateMemberRates`, `updateMemberSettings` y `removeCompanyMember`.
+
+### Seguridad
+
+- **Membresias solo plataforma**: anadir miembro, cambiar estado, cambiar rol, eliminar miembro y `POST /users/{id}/reset-password-email` solo para el administrador de plataforma (403 para manager y worker, y para el administrador en modo "ver como"). Reactivar una membresia fuerza el rol `worker`. Tarifas y ajustes siguen la politica central (`can_edit_member_rates`, `can_edit_member_settings`).
+- **Administradores de plataforma (M9)**: un administrador no puede desactivarse ni degradarse a si mismo (403); un cambio que deje la plataforma sin administradores activos se rechaza (409), con bloqueo de filas para evitar la carrera entre dos cambios simultaneos.
+- **`PUT /users/me`**: ya no borra nombre y apellidos cuando no se envian o llegan nulos (M4).
+
+### Cambiado
+
+- **Ruta eliminada**: `PUT /companies/{company_id}/members/{user_id}` se sustituye por `role`, `rates` y `settings`.
+- **`backend/crud.py`**: `create_user` ya no une al usuario a la empresa "Personal" (sin empresas "Personal" en produccion, M8).
+- **`frontend`**: la interfaz oculta a quien no es administrador de plataforma el estado de membresia, el selector de rol, el alta de miembros y el reinicio de contrasena; se retira el selector de empresa por defecto del perfil y el aviso de "no hay empresa por defecto".
+
+### Cambios Internos
+
+- **Migracion `b7e1a0d10007`**: elimina `users.default_company_id`; `downgrade` la recrea nullable y sin datos (el rollback con datos es restaurar el backup). Requiere el paso previo de despliegue con backup (seccion 10 del plan). El codigo deja de leer y escribir la columna en backend v1 y v2, seeds y frontend.
+
 ## [0.9.3] - 2026-10-19
 
 ### Tipo de Cambio SemVer
