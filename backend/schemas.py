@@ -456,3 +456,52 @@ class DashboardSummaryResponse(CamelModel):
     type_breakdown: list[DashboardTypeBreakdown] = []
     daily_breakdown: list[DashboardDailyBreakdown] = []
     workers_summary: list[DashboardWorkerSummary] = []
+
+
+# --- Agregados de turnos (PR-07): GET /work-logs/summary ---
+
+
+class WorkLogTotals(CamelModel):
+    logs_count: int
+    total_hours: float
+    total_net: float
+    total_gross: float
+    unique_days: int
+    active_users: int
+
+
+class WorkLogTypeTotals(CamelModel):
+    type: str
+    logs_count: int
+    hours: float
+    net: float
+    gross: float
+
+
+class WorkLogDayTotals(CamelModel):
+    date: dt_date
+    logs_count: int
+    hours: float
+    net: float
+    gross: float
+
+
+class WorkLogUserTotals(CamelModel):
+    user_id: UUID
+    first_name: str | None
+    last_name: str | None
+    email: str | None
+    logs_count: int
+    hours: float
+    net: float
+    gross: float
+    unique_days: int
+
+
+class WorkLogSummaryResponse(CamelModel):
+    start_date: dt_date
+    end_date: dt_date
+    totals: WorkLogTotals
+    by_type: list[WorkLogTypeTotals]
+    by_day: list[WorkLogDayTotals]
+    by_user: list[WorkLogUserTotals]
