@@ -14,6 +14,8 @@ from typing import Any
 import access_cache
 import models
 import schemas
+from access_policy import PolicyError
+from audit import AuditAction, record_audit
 from pydantic import TypeAdapter
 from redis_config import logger, redis_manager
 from sqlalchemy import or_
@@ -61,21 +63,6 @@ def create_user(db: Session, user: schemas.UserCreate):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-
-    # Auto-join "Personal" company
-    personal_company = db.query(models.Company).filter(models.Company.name == "Personal").first()
-    if personal_company:
-        new_member = models.CompanyMember(
-            user_id=db_user.id,
-            company_id=personal_company.id,
-            role=models.CompanyRole.worker,
-            is_active=True,  # Auto-active for Personal
-        )
-        db.add(new_member)
-        db_user.default_company_id = personal_company.id
-        db.commit()
-        db.refresh(db_user)
-        _invalidate_company_rates(personal_company.id)
 
     return db_user
 
@@ -719,98 +706,239 @@ def update_company_members_order(db: Session, company_id: str, user_ids: list[st
     db.commit()
 
 
-def update_company_member_status(db: Session, company_id: str, user_id: str, is_active: Any):
-    if isinstance(is_active, str):
-        is_active_bool = is_active.lower() in ("active", "true", "1", "approved")
+def _to_uuid(value: Any) -> uuid.UUID:
+    return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+
+
+def _member_snapshot(member: models.CompanyMember) -> dict[str, Any]:
+    return {"is_active": bool(member.is_active), "role": getattr(member.role, "value", member.role)}
+
+
+def _invalidate_member_caches(company_id: Any, user_id: Any) -> None:
+    _invalidate_company_rates(company_id)
+    access_cache.invalidate_membership(user_id, company_id)
+
+
+def set_member_status(db: Session, company_id: Any, user_id: Any, is_active: bool, *, actor_id: Any):
+    """Activa o desactiva una membresia. Reactivar fuerza `worker` (M6); desactivar no reasigna nada."""
+    member = get_company_member(db, user_id, company_id)
+    if member is None or bool(member.is_active) == is_active:
+        return member
+
+    before = _member_snapshot(member)
+    member.is_active = is_active
+    if is_active:
+        member.role = models.CompanyRole.worker
+        action = AuditAction.MEMBER_REACTIVATED
     else:
-        is_active_bool = bool(is_active)
-
-    member = (
-        db.query(models.CompanyMember)
-        .filter(models.CompanyMember.company_id == company_id, models.CompanyMember.user_id == user_id)
-        .first()
+        action = AuditAction.MEMBER_DEACTIVATED
+    record_audit(
+        db,
+        action=action,
+        actor_id=_to_uuid(actor_id),
+        company_id=_to_uuid(company_id),
+        target_user_id=_to_uuid(user_id),
+        old_value=before,
+        new_value=_member_snapshot(member),
     )
-
-    if member:
-        member.is_active = is_active_bool
-
-        # If deactivating, check if this company was the user's default company
-        if not is_active_bool:
-            user = db.query(models.User).filter(models.User.id == member.user_id).first()
-            if user and user.default_company_id and str(user.default_company_id) == str(member.company_id):
-                # Find the next active membership
-                next_active = (
-                    db.query(models.CompanyMember)
-                    .filter(
-                        models.CompanyMember.user_id == member.user_id,
-                        models.CompanyMember.company_id != member.company_id,
-                        models.CompanyMember.is_active == True,
-                    )
-                    .first()
-                )
-                user.default_company_id = next_active.company_id if next_active else None
-
-        db.commit()
-        db.refresh(member)
-        _invalidate_company_rates(company_id)
-        access_cache.invalidate_membership(user_id, company_id)
+    db.commit()
+    db.refresh(member)
+    _invalidate_member_caches(company_id, user_id)
     return member
 
 
-def update_company_member(db: Session, company_id: Any, user_id: Any, member_update: schemas.CompanyMemberUpdate):
-    # Ensure UUIDs
-    from uuid import UUID
+def add_member(db: Session, company_id: Any, user_id: Any, *, actor_id: Any):
+    """Alta directa por el PA. Miembro nuevo: `worker` activo. Inactivo: reactiva forzando `worker` (M6). Activo: sin cambios."""
+    member = get_company_member(db, user_id, company_id)
+    if member is not None and member.is_active:
+        return member
 
-    try:
-        cid = UUID(str(company_id)) if not isinstance(company_id, UUID) else company_id
-        uid = UUID(str(user_id)) if not isinstance(user_id, UUID) else user_id
-    except ValueError:
+    cid, uid, actor = _to_uuid(company_id), _to_uuid(user_id), _to_uuid(actor_id)
+    if member is None:
+        member = models.CompanyMember(
+            user_id=uid,
+            company_id=cid,
+            role=models.CompanyRole.worker,
+            is_active=True,
+            rates_config={},
+        )
+        db.add(member)
+        action = AuditAction.MEMBER_ADDED
+        before = None
+    else:
+        before = _member_snapshot(member)
+        member.is_active = True
+        member.role = models.CompanyRole.worker
+        action = AuditAction.MEMBER_REACTIVATED
+
+    record_audit(
+        db,
+        action=action,
+        actor_id=actor,
+        company_id=cid,
+        target_user_id=uid,
+        old_value=before,
+        new_value=_member_snapshot(member),
+    )
+    db.commit()
+    db.refresh(member)
+    _invalidate_member_caches(company_id, user_id)
+    return member
+
+
+def set_member_role(db: Session, company_id: Any, user_id: Any, role: str, *, actor_id: Any):
+    member = get_company_member(db, user_id, company_id)
+    if member is None:
         return None
 
+    old_role = getattr(member.role, "value", member.role)
+    if old_role == role:
+        return member
+
+    member.role = models.CompanyRole(role)
+    record_audit(
+        db,
+        action=AuditAction.MEMBER_ROLE_CHANGED,
+        actor_id=_to_uuid(actor_id),
+        company_id=_to_uuid(company_id),
+        target_user_id=_to_uuid(user_id),
+        old_value={"role": old_role},
+        new_value={"role": role},
+    )
+    db.commit()
+    db.refresh(member)
+    _invalidate_member_caches(company_id, user_id)
+    return member
+
+
+def set_member_rates(db: Session, company_id: Any, user_id: Any, rates_config: dict, *, actor_id: Any):
+    member = get_company_member(db, user_id, company_id)
+    if member is None:
+        return None
+
+    old_rates = member.rates_config
+    member.rates_config = rates_config
+    flag_modified(member, "rates_config")
+    record_audit(
+        db,
+        action=AuditAction.MEMBER_RATES_CHANGED,
+        actor_id=_to_uuid(actor_id),
+        company_id=_to_uuid(company_id),
+        target_user_id=_to_uuid(user_id),
+        old_value=old_rates,
+        new_value=rates_config,
+    )
+    db.commit()
+    db.refresh(member)
+    _invalidate_member_caches(company_id, user_id)
+    return member
+
+
+def set_member_settings(db: Session, company_id: Any, user_id: Any, settings: dict):
+    member = get_company_member(db, user_id, company_id)
+    if member is None:
+        return None
+
+    member.settings = settings
+    flag_modified(member, "settings")
+    db.commit()
+    db.refresh(member)
+    _invalidate_member_caches(company_id, user_id)
+    return member
+
+
+def remove_member(db: Session, company_id: Any, user_id: Any, *, actor_id: Any) -> dict[str, Any] | None:
+    """Borra la membresia si no tiene turnos; si los tiene, la desactiva y conserva los turnos."""
+    member = get_company_member(db, user_id, company_id)
+    if member is None:
+        return None
+
+    cid, uid, actor = _to_uuid(company_id), _to_uuid(user_id), _to_uuid(actor_id)
+    # Bloquea la fila de la membresia antes de comprobar turnos; populate_existing refresca el estado leido.
     member = (
         db.query(models.CompanyMember)
-        .filter(models.CompanyMember.company_id == cid, models.CompanyMember.user_id == uid)
+        .filter(models.CompanyMember.user_id == uid, models.CompanyMember.company_id == cid)
+        .with_for_update()
+        .populate_existing()
         .first()
     )
+    if member is None:
+        return None
 
-    if member:
-        # Use model_dump(exclude_unset=True)
-        update_data = member_update.model_dump(exclude_unset=True, by_alias=False)
+    before = _member_snapshot(member)
+    has_work_logs = (
+        db.query(models.WorkLog.id)
+        .filter(models.WorkLog.user_id == uid, models.WorkLog.company_id == cid)
+        .first()
+        is not None
+    )
 
-        for key, value in update_data.items():
-            if value is None and key in ["role", "is_active"]:
-                continue  # Hardening: do not allow setting role or is_active to NULL
+    if has_work_logs:
+        if member.is_active:
+            member.is_active = False
+            record_audit(
+                db,
+                action=AuditAction.MEMBER_DEACTIVATED,
+                actor_id=actor,
+                company_id=cid,
+                target_user_id=uid,
+                old_value=before,
+                new_value=_member_snapshot(member),
+                reason="has_work_logs",
+            )
+        result = {"deleted": False, "deactivated": True, "reason": "has_work_logs"}
+    else:
+        db.delete(member)
+        record_audit(
+            db,
+            action=AuditAction.MEMBER_REMOVED,
+            actor_id=actor,
+            company_id=cid,
+            target_user_id=uid,
+            old_value=before,
+        )
+        result = {"deleted": True, "deactivated": False, "reason": None}
 
-            if key == "role" and value:
-                try:
-                    setattr(member, key, models.CompanyRole(value))
-                except ValueError:
-                    logger.warning("Invalid company role value for member update")
-            else:
-                setattr(member, key, value)
-            if key in ["settings", "rates_config"]:
-                flag_modified(member, key)
+    db.commit()
+    _invalidate_member_caches(company_id, user_id)
+    return result
 
-        # Protection: if is_active is set to False, reassign user's default_company_id
-        if update_data.get("is_active") == False:
-            user = db.query(models.User).filter(models.User.id == member.user_id).first()
-            if user and user.default_company_id and str(user.default_company_id) == str(member.company_id):
-                next_active = (
-                    db.query(models.CompanyMember)
-                    .filter(
-                        models.CompanyMember.user_id == member.user_id,
-                        models.CompanyMember.company_id != member.company_id,
-                        models.CompanyMember.is_active == True,
-                    )
-                    .first()
-                )
-                user.default_company_id = next_active.company_id if next_active else None
 
-        db.commit()
-        db.refresh(member)
-        _invalidate_company_rates(company_id)
-        access_cache.invalidate_membership(user_id, company_id)
-    return member
+def count_active_platform_admins(db: Session) -> int:
+    """Cuenta los PA activos bloqueando sus filas (FOR UPDATE, orden por id).
+
+    Debe llamarse dentro de la misma transaccion que la escritura posterior: el bloqueo se libera al commit.
+    """
+    rows = (
+        db.query(models.User.id)
+        .filter(models.User.role == models.UserRole.admin, models.User.is_active.is_(True))
+        .order_by(models.User.id)
+        .with_for_update()
+        .all()
+    )
+    return len(rows)
+
+
+def ensure_platform_admin_invariants(db: Session, actor, target, *, new_role: str | None, new_is_active: bool | None):
+    """M9: el PA no puede desactivarse ni degradarse a si mismo, y la plataforma no puede quedarse sin PA activos.
+
+    `new_role` y `new_is_active` a None significan "sin cambio".
+    No hace commit: el llamador debe escribir y confirmar en la misma transaccion para que el bloqueo sea efectivo.
+    """
+    deactivates = new_is_active is False
+    removes_admin_role = new_role is not None and new_role != models.UserRole.admin.value
+
+    if actor.id == target.id:
+        if deactivates:
+            raise PolicyError(403, "No puedes desactivar tu propia cuenta")
+        if removes_admin_role:
+            raise PolicyError(403, "No puedes cambiar tu propio rol de plataforma")
+        return
+
+    target_is_active_admin = target.role == models.UserRole.admin and bool(target.is_active)
+    if target_is_active_admin and (deactivates or removes_admin_role):
+        if count_active_platform_admins(db) - 1 < 1:
+            raise PolicyError(409, "La plataforma no puede quedarse sin administradores")
 
 
 def delete_work_log(db: Session, work_log_id: str):

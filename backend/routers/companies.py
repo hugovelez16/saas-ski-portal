@@ -1,8 +1,8 @@
 import json
 from datetime import date
+from typing import Literal
 from uuid import UUID
 
-import access_cache
 import access_policy
 import auth
 import crud
@@ -17,6 +17,12 @@ from sqlalchemy.orm import Session, joinedload
 from routers import deps
 
 router = APIRouter(prefix="/companies", tags=["companies"])
+
+# Valores de `PUT .../status`: los actuales y los heredados. Solo `active`, `approved`, `true` y `1` activan.
+MemberStatusValue = Literal["active", "inactive", "approved", "rejected", "true", "false", "1", "0"]
+ACTIVE_STATUS_VALUES = frozenset({"active", "approved", "true", "1"})
+MSG_COMPANY_NOT_FOUND = "Empresa no encontrada"
+MSG_MEMBER_NOT_FOUND = "Member not found"
 
 
 @router.get("", response_model=list[schemas.CompanyResponse])
@@ -128,14 +134,15 @@ def read_companies_detailed(db: Session = Depends(get_db), current_user: models.
 @router.get("/{company_id}/members", response_model=list[schemas.CompanyMemberResponse])
 def read_company_members(
     company_id: UUID,
-    status: str = None,
+    status: Literal["active", "inactive"] | None = None,
     db: Session = Depends(get_db),
     ctx: deps.AccessContext = Depends(deps.require_company("manager")),
 ):
     """
     Get members of a company.
     """
-    return crud.get_company_members(db, str(company_id), status)
+    is_active = None if status is None else status == "active"
+    return crud.get_company_members(db, str(company_id), is_active)
 
 
 @router.put("/{company_id}/members/order", response_model=dict)
@@ -155,58 +162,76 @@ def update_members_order(
 @router.post("/{company_id}/members/add", response_model=schemas.CompanyMemberResponse)
 def add_company_member(
     company_id: UUID,
-    member_data: schemas.TokenData,
+    member_data: schemas.AddMemberRequest,
     db: Session = Depends(get_db),
-    ctx: deps.AccessContext = Depends(deps.require_company("manager")),
+    actor: models.User = Depends(deps.require_platform_admin),
 ):
     """
-    Admin: Add a user to a company directly by email (bypass request).
+    Platform admin: anade un usuario a la empresa por email (alta directa, sin solicitud).
     """
+    if crud.get_company(db, company_id) is None:
+        raise HTTPException(status_code=404, detail=MSG_COMPANY_NOT_FOUND)
+
     user_to_add = crud.get_user_by_email(db, member_data.email)
     if not user_to_add:
         raise HTTPException(status_code=404, detail="User email not found")
 
-    # Check if exists
-    existing = crud.join_company(db, str(user_to_add.id), str(company_id))
-
-    # If it was inactive or just created, force active and ensure role is set (healing)
-    needs_update = False
-    if not existing.is_active:
-        existing.is_active = True
-        needs_update = True
-
-    if not existing.role:  # Heal potential legacy NULLs
-        existing.role = models.CompanyRole.worker
-        needs_update = True
-
-    if existing.rates_config is None:  # Heal missing JSONB field
-        existing.rates_config = {}
-        needs_update = True
-
-    if needs_update:
-        db.commit()
-        db.refresh(existing)
-        access_cache.invalidate_membership(existing.user_id, existing.company_id)
-
-    return existing
+    return crud.add_member(db, company_id, user_to_add.id, actor_id=actor.id)
 
 
 @router.put("/{company_id}/members/{user_id}/status", response_model=schemas.CompanyMemberResponse)
 def update_member_status(
     company_id: UUID,
     user_id: UUID,
-    status: str,
+    status: MemberStatusValue,
     db: Session = Depends(get_db),
-    ctx: deps.AccessContext = Depends(deps.require_company("manager")),
+    actor: models.User = Depends(deps.require_platform_admin),
 ):
     """
-    Approve/Reject company membership.
+    Platform admin: activa o desactiva la membresia.
     """
-    member = crud.update_company_member_status(db, str(company_id), str(user_id), status)
-    if not member:
-        raise HTTPException(status_code=404, detail="Member request not found")
+    member = crud.set_member_status(
+        db, company_id, user_id, status in ACTIVE_STATUS_VALUES, actor_id=actor.id
+    )
+    if member is None:
+        raise HTTPException(status_code=404, detail=MSG_MEMBER_NOT_FOUND)
 
     return member
+
+
+@router.put("/{company_id}/members/{user_id}/role", response_model=schemas.CompanyMemberResponse)
+def update_member_role(
+    company_id: UUID,
+    user_id: UUID,
+    role_data: schemas.MemberRoleUpdate,
+    db: Session = Depends(get_db),
+    actor: models.User = Depends(deps.require_platform_admin),
+):
+    """
+    Platform admin: cambia el rol de la membresia (worker o manager).
+    """
+    member = crud.set_member_role(db, company_id, user_id, role_data.role, actor_id=actor.id)
+    if member is None:
+        raise HTTPException(status_code=404, detail=MSG_MEMBER_NOT_FOUND)
+
+    return member
+
+
+@router.delete("/{company_id}/members/{user_id}", response_model=schemas.MemberDeleteResponse)
+def delete_company_member(
+    company_id: UUID,
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    actor: models.User = Depends(deps.require_platform_admin),
+):
+    """
+    Platform admin: borra la membresia; si tiene turnos, la desactiva y conserva los turnos.
+    """
+    result = crud.remove_member(db, company_id, user_id, actor_id=actor.id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=MSG_MEMBER_NOT_FOUND)
+
+    return result
 
 
 @router.get("/{company_id}", response_model=schemas.CompanyResponse)
@@ -228,75 +253,44 @@ def read_company_rates(
     return crud.get_company_rates(db, str(company_id))
 
 
-@router.put("/{company_id}/members/{user_id}", response_model=schemas.CompanyMemberResponse)
-def update_company_member(
+@router.put("/{company_id}/members/{user_id}/rates", response_model=schemas.CompanyMemberResponse)
+def update_member_rates(
     company_id: UUID,
     user_id: UUID,
-    member_data: schemas.CompanyMemberUpdate,
+    rates_data: schemas.MemberRatesUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user),
     ctx: deps.AccessContext = Depends(deps.require_company("worker")),
 ):
-    company = ctx.company
-    is_platform_admin = ctx.is_platform_admin
-    is_manager = ctx.role in (access_policy.ROLE_MANAGER, access_policy.ROLE_PLATFORM_ADMIN)
-    is_self = user_id == current_user.id
-
-    if not is_manager and not is_self:
-        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
-
-    cid = str(company_id)
-    uid = str(user_id)
-    target_member = crud.get_company_member(db, uid, cid)
-    if not target_member:
-        raise HTTPException(status_code=404, detail="Member not found")
-
-    requester_membership = (
-        db.query(models.CompanyMember)
-        .filter(
-            models.CompanyMember.user_id == current_user.id,
-            models.CompanyMember.company_id == company_id,
-            models.CompanyMember.is_active == True,
-        )
-        .first()
+    """
+    Edita las tarifas de una membresia. Gestor o PA: cualquier miembro. Trabajador: solo las suyas
+    y solo en empresas autonomas.
+    """
+    access_policy.can_edit_member_rates(
+        role=ctx.role, is_managed=ctx.is_managed, is_self=user_id == current_user.id
     )
-    is_company_admin = is_platform_admin or (
-        requester_membership and requester_membership.role == models.CompanyRole.admin
-    )
+    member = crud.set_member_rates(db, company_id, user_id, rates_data.rates_config, actor_id=current_user.id)
+    if member is None:
+        raise HTTPException(status_code=404, detail=MSG_MEMBER_NOT_FOUND)
+    return member
 
-    # 1. Role Change Restrictions:
-    # Only company admin or platform admin can change roles. Managers CANNOT change roles.
-    if member_data.role is not None:
-        target_role_str = target_member.role.value if hasattr(target_member.role, "value") else str(target_member.role)
-        if member_data.role != target_role_str:
-            if not is_company_admin:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Solo los administradores de la empresa o de la plataforma pueden modificar el rol de un miembro",
-                )
 
-    # 2. Managed Company Restrictions:
-    # In managed mode (is_managed == True), workers cannot edit their own rates_config or role.
-    if company.is_managed and is_self and not is_company_admin and not is_manager:
-        if member_data.rates_config is not None:
-            raise HTTPException(
-                status_code=403, detail="En empresas gestionadas las tarifas son fijadas por los administradores"
-            )
-        if member_data.role is not None:
-            raise HTTPException(
-                status_code=403, detail="En empresas gestionadas los trabajadores no pueden modificar su rol"
-            )
-
-    # 3. Security: Non-managers and non-admins cannot alter role or membership status
-    if not is_manager and not is_company_admin:
-        member_data = schemas.CompanyMemberUpdate(
-            ratesConfig=None if (company.is_managed and not is_company_admin) else member_data.rates_config,
-            settings=member_data.settings,
-        )
-
-    member = crud.update_company_member(db, cid, uid, member_data)
-    if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
+@router.put("/{company_id}/members/{user_id}/settings", response_model=schemas.CompanyMemberResponse)
+def update_member_settings(
+    company_id: UUID,
+    user_id: UUID,
+    settings_data: schemas.MemberSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+    ctx: deps.AccessContext = Depends(deps.require_company("worker")),
+):
+    """
+    Edita los ajustes de una membresia. Gestor o PA: cualquier miembro. Trabajador: solo los suyos.
+    """
+    access_policy.can_edit_member_settings(role=ctx.role, is_self=user_id == current_user.id)
+    member = crud.set_member_settings(db, company_id, user_id, settings_data.settings)
+    if member is None:
+        raise HTTPException(status_code=404, detail=MSG_MEMBER_NOT_FOUND)
     return member
 
 

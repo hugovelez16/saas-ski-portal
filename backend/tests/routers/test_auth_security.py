@@ -44,7 +44,7 @@ def _dev_env(monkeypatch, environment=None, bypass=None, node_env=None):
         ("PUT", "/companies/{cid}/members/{uid}/status", {"params": {"status": "active"}}),
         ("GET", "/companies/{cid}", {}),
         ("GET", "/companies/{cid}/rates-v2", {}),
-        ("PUT", "/companies/{cid}/members/{uid}", {"json": {}}),
+        ("PUT", "/companies/{cid}/members/{uid}/rates", {"json": {"ratesConfig": {}}}),
     ],
 )
 def test_2fa_pending_token_rejected_on_company_endpoints(client, db, method, path_template, kwargs):

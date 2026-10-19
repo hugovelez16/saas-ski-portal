@@ -72,7 +72,6 @@ def seed_initial_data(db: Session = None) -> bool:
             is_active=True,
             is_2fa_enabled=False,
             must_change_password=False,
-            default_company_id=company.id,
         )
         db.add(admin_user)
         db.commit()

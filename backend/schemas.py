@@ -5,12 +5,13 @@ This module defines the Pydantic models used for request validation and response
 It ensures that data sent to and received from the API conforms to the expected structure.
 """
 
+import math
 from datetime import date as dt_date
 from datetime import datetime, time
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, field_validator
 
 
 def to_camel(string: str) -> str:
@@ -105,7 +106,6 @@ class UserResponse(UserBase):
     active_role: str | None = None
     view_as: str | None = None
     is_read_only_view: bool = False
-    default_company_id: UUID | None = None
     created_at: datetime
 
     class Config:
@@ -116,15 +116,13 @@ class UserUpdate(CamelModel):
     first_name: str | None = None
     last_name: str | None = None
     email: EmailStr | None = None
-    role: str | None = None
+    role: Literal["admin", "user"] | None = None
     is_active: bool | None = None
-    default_company_id: UUID | None = None
 
 
 class UserSelfUpdate(CamelModel):
     first_name: str | None = None
     last_name: str | None = None
-    default_company_id: UUID | None = None
 
 
 class PasswordChange(CamelModel):
@@ -222,18 +220,46 @@ class CompanyMemberBase(CamelModel):
     settings: dict[str, Any] | None = None
 
 
-class CompanyMemberUpdate(CamelModel):
-    role: str | None = None
-    is_active: bool | None = None
-    rates_config: dict[str, Any] | None = None
-    settings: dict[str, Any] | None = None
-
-
 class CompanyMemberResponse(CompanyMemberBase):
     user_id: UUID
     company_id: UUID
     joined_at: datetime
     user: UserResponse | None = None
+
+
+class AddMemberRequest(CamelModel):
+    email: EmailStr
+
+
+class MemberRoleUpdate(CamelModel):
+    role: Literal["worker", "manager"]
+
+
+class MemberRatesUpdate(CamelModel):
+    rates_config: dict[str, dict[str, Any]]
+
+    @field_validator("rates_config")
+    @classmethod
+    def _base_rates_are_non_negative(cls, value: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        for shift_key, shift in value.items():
+            if "base_rate" not in shift:
+                continue
+            base_rate = shift["base_rate"]
+            if isinstance(base_rate, bool) or not isinstance(base_rate, (int, float)):
+                raise ValueError(f"base_rate de '{shift_key}' debe ser un numero")
+            if not math.isfinite(base_rate) or base_rate < 0:
+                raise ValueError(f"base_rate de '{shift_key}' debe ser un numero mayor o igual que 0")
+        return value
+
+
+class MemberSettingsUpdate(CamelModel):
+    settings: dict[str, Any]
+
+
+class MemberDeleteResponse(CamelModel):
+    deleted: bool
+    deactivated: bool
+    reason: str | None = None
 
 
 class CompanyWithMembers(CompanyResponse):

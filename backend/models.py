@@ -52,7 +52,6 @@ class User(Base):
     last_name = Column(String)
     role = Column(Enum(UserRole), default=UserRole.user)
     is_active = Column(Boolean, default=True)  # System Login Access
-    default_company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
 
     # Auth & Security
     must_change_password = Column(Boolean, default=False)
@@ -63,8 +62,6 @@ class User(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    default_company = relationship("Company", foreign_keys=[default_company_id])
 
     work_logs = relationship("WorkLog", back_populates="user")
     company_memberships = relationship("CompanyMember", back_populates="user")

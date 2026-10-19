@@ -15,6 +15,7 @@ import pytest
 from tests.factories import as_user
 
 MSG_SUSPENDED = "Empresa inactiva o suspendida"
+MSG_FORBIDDEN = "No tienes permisos para esta accion"
 MSG_MANAGED_READONLY = "En empresas gestionadas solo el equipo gestor puede modificar turnos y tarifas"
 
 PA_CLAIMS = {"is_admin": True}
@@ -132,29 +133,35 @@ def world(db):
 
 
 def test_manager_cannot_change_member_role(client, db, world):
-    """Un manager de empresa no debe poder ascender o cambiar el rol de un miembro."""
+    """Un manager de empresa no debe poder ascender o cambiar el rol de un miembro (PR-05: solo PA)."""
     as_user(client, world.manager_user, world.managed_company, claims=MANAGER_CLAIMS)
 
     resp = client.put(
-        f"/companies/{world.managed_company.id}/members/{world.other_worker.id}",
-        json={"role": "admin"},
+        f"/companies/{world.managed_company.id}/members/{world.other_worker.id}/role",
+        json={"role": "manager"},
     )
 
     assert resp.status_code == 403, resp.text
-    assert "Solo los administradores" in resp.json()["detail"]
+    assert resp.json()["detail"] == MSG_FORBIDDEN
+    member = (
+        db.query(models.CompanyMember)
+        .filter_by(company_id=world.managed_company.id, user_id=world.other_worker.id)
+        .one()
+    )
+    assert member.role == models.CompanyRole.worker
 
 
 def test_platform_admin_can_change_member_role(client, db, world):
-    """Un admin de plataforma si debe poder cambiar el rol de un miembro."""
+    """Un admin de plataforma si debe poder cambiar el rol de un miembro (worker -> manager)."""
     as_user(client, world.platform_admin, claims=PA_CLAIMS)
 
     resp = client.put(
-        f"/companies/{world.managed_company.id}/members/{world.other_worker.id}",
-        json={"role": "admin"},
+        f"/companies/{world.managed_company.id}/members/{world.other_worker.id}/role",
+        json={"role": "manager"},
     )
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["role"] == "admin"
+    assert resp.json()["role"] == "manager"
 
 
 def test_worker_cannot_edit_rates_in_managed_company(client, db, world):
@@ -162,12 +169,12 @@ def test_worker_cannot_edit_rates_in_managed_company(client, db, world):
     as_user(client, world.worker_user, world.managed_company, claims=WORKER_CLAIMS)
 
     resp = client.put(
-        f"/companies/{world.managed_company.id}/members/{world.worker_user.id}",
-        json={"ratesConfig": {"particular": 50.0}},
+        f"/companies/{world.managed_company.id}/members/{world.worker_user.id}/rates",
+        json={"ratesConfig": {"particular": {"base_rate": 50.0}}},
     )
 
     assert resp.status_code == 403, resp.text
-    assert "tarifas son fijadas por los administradores" in resp.json()["detail"]
+    assert resp.json()["detail"] == MSG_MANAGED_READONLY
 
 
 def test_worker_can_edit_rates_in_autonomous_company(client, db, world):
@@ -175,12 +182,12 @@ def test_worker_can_edit_rates_in_autonomous_company(client, db, world):
     as_user(client, world.worker_user, world.autonomous_company, claims=WORKER_CLAIMS)
 
     resp = client.put(
-        f"/companies/{world.autonomous_company.id}/members/{world.worker_user.id}",
-        json={"ratesConfig": {"particular": 45.0}},
+        f"/companies/{world.autonomous_company.id}/members/{world.worker_user.id}/rates",
+        json={"ratesConfig": {"particular": {"base_rate": 45.0}}},
     )
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["ratesConfig"] == {"particular": 45.0}
+    assert resp.json()["ratesConfig"] == {"particular": {"base_rate": 45.0}}
 
 
 def test_inactive_company_blocks_access_to_non_admin(client, db, world):

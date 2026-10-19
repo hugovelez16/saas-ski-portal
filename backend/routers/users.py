@@ -134,8 +134,6 @@ async def create_user_admin(
     # Company Linkage
     if user.company_id:
         crud.join_company(db, str(created_user.id), str(user.company_id))
-        created_user.default_company_id = user.company_id
-        db.commit()
 
     return created_user
 
@@ -147,9 +145,12 @@ def toggle_user_status(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.require_platform_admin),
 ):
-    user = crud.update_user_status(db, user_id=str(user_id), is_active=is_active)
-    if not user:
+    target = crud.get_user(db, str(user_id))
+    if not target:
         raise HTTPException(status_code=404, detail="User not found")
+    crud.ensure_platform_admin_invariants(db, current_user, target, new_role=None, new_is_active=is_active)
+
+    user = crud.update_user_status(db, user_id=str(user_id), is_active=is_active)
     return {"message": "Status updated", "is_active": user.is_active}
 
 
@@ -159,8 +160,12 @@ def update_user_me(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user),
 ):
-    # Create a full UserUpdate object but only with allowed fields
-    db_user = crud.update_user(db, str(current_user.id), schemas.UserUpdate(**user.dict()))
+    # Solo los campos enviados; un nombre null o ausente no borra el valor actual (M4)
+    data = user.model_dump(exclude_unset=True)
+    for name_field in ("first_name", "last_name"):
+        if data.get(name_field) is None:
+            data.pop(name_field, None)
+    db_user = crud.update_user(db, str(current_user.id), schemas.UserUpdate(**data))
     return db_user
 
 
@@ -184,14 +189,11 @@ def change_password(
 
 @router.post("/{user_id}/reset-password-email")
 async def reset_password_via_email(
-    user_id: UUID, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+    user_id: UUID, db: Session = Depends(get_db), current_user: models.User = Depends(deps.require_platform_admin)
 ):
     """
-    Admin only: Reset user password to a random one and email it.
+    Platform admin only: Reset user password to a random one and email it.
     """
-    if not deps.manages_user(db, current_user, user_id):
-        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
-
     user = crud.get_user(db, str(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -257,6 +259,13 @@ def update_user(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.require_platform_admin),
 ):
+    target = crud.get_user(db, str(user_id))
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    crud.ensure_platform_admin_invariants(
+        db, current_user, target, new_role=user.role, new_is_active=user.is_active
+    )
+
     db_user = crud.update_user(db, str(user_id), user)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
