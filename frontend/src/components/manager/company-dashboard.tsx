@@ -20,9 +20,8 @@ import {
 import { es } from "date-fns/locale";
 import { DateRange } from "react-day-picker";
 import { mkConfig, generateCsv, download } from "export-to-csv";
-import { getWorkLogs } from "@/lib/api/work-logs";
+import { getAllWorkLogs } from "@/lib/api/work-logs";
 import { getCompany, getCompaniesDetailed, getCompanyDashboardSummary } from "@/lib/api/companies";
-import { WorkLog } from "@/lib/types";
 
 // Modular Dashboard Components
 import { DashboardHeaderActions } from "./dashboard/dashboard-header-actions";
@@ -36,6 +35,7 @@ import {
 } from "./dashboard/dashboard-charts";
 import { DashboardTeamTable } from "./dashboard/dashboard-team-table";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface CompanyDashboardProps {
     companyId: string;
@@ -116,154 +116,81 @@ export function CompanyDashboard({ companyId, companyName }: CompanyDashboardPro
         return company?.worklogDefinitions || {};
     }, [company]);
 
-    // 4. Fetch Work Logs for the period
-    const { data: periodLogs = [], isLoading: loadingLogs } = useQuery({
-        queryKey: ["workLogs", companyId, startDateStr, endDateStr],
-        queryFn: () => getWorkLogs({
-            companyId,
-            startDate: startDateStr,
-            endDate: endDateStr,
-            limit: 10000
-        }),
+    // 4. Aggregates for the period (computed by the backend over the full range)
+    const { data: summary, isLoading: loadingSummary } = useQuery({
+        queryKey: ["companyDashboardSummary", companyId, startDateStr, endDateStr],
+        queryFn: () => getCompanyDashboardSummary(companyId, { startDate: startDateStr, endDate: endDateStr }),
         enabled: !!companyId
     });
 
-    // 5. Fetch Today's Logs for Real-time Operations Card
+    // 5. Fetch Today's Logs for Real-time Operations Card (detail rows, one day)
     const todayStr = format(new Date(), "yyyy-MM-dd");
     const { data: todayLogs = [] } = useQuery({
         queryKey: ["workLogsToday", companyId, todayStr],
-        queryFn: () => getWorkLogs({
+        queryFn: () => getAllWorkLogs({
             companyId,
             startDate: todayStr,
-            endDate: todayStr,
-            limit: 1000
+            endDate: todayStr
         }),
         enabled: !!companyId
     });
 
-    // 6. Calculate KPIs adaptively
+    // 6. KPIs from the period aggregates
     const kpis = useMemo<KpiSummaryData>(() => {
-        let totalHours = 0;
-        let totalGross = 0;
-        let totalNet = 0;
-        const distinctDays = new Set<string>();
-        const activeUsers = new Set<string>();
-
-        periodLogs.forEach((log: WorkLog) => {
-            activeUsers.add(log.userId);
-
-            if (log.duration) {
-                totalHours += Number(log.duration);
-            } else if (log.startTime && log.endTime) {
-                const [sh, sm] = log.startTime.split(':').map(Number);
-                const [eh, em] = log.endTime.split(':').map(Number);
-                const diff = (eh * 60 + em - (sh * 60 + sm)) / 60;
-                if (diff > 0) totalHours += diff;
-            }
-
-            if (log.startDate) {
-                distinctDays.add(log.startDate.split('T')[0]);
-            }
-
-            totalGross += Number(log.grossAmount || 0);
-            totalNet += Number(log.netAmount || log.grossAmount || log.amount || 0);
-        });
+        const periodMetrics = summary?.periodMetrics;
+        const totalGross = periodMetrics?.totalGross ?? 0;
+        const totalNet = periodMetrics?.totalNet ?? 0;
 
         const isSinglePrice = company?.settings?.business_logic?.price_type === 'net' ||
             company?.settings?.billing?.price_type === 'net' ||
             Math.abs(totalGross - totalNet) < 0.01;
 
         return {
-            totalHours,
+            totalHours: periodMetrics?.totalHours ?? 0,
             totalGross,
             totalNet,
-            totalLogs: periodLogs.length,
-            activeMembersCount: activeUsers.size,
-            daysCount: distinctDays.size,
+            totalLogs: periodMetrics?.totalLogs ?? 0,
+            activeMembersCount: periodMetrics?.activeMembersCount ?? 0,
+            daysCount: periodMetrics?.uniqueDays ?? 0,
             isSinglePrice
         };
-    }, [periodLogs, company]);
+    }, [summary, company]);
 
-    // 7. Calculate Charts Data
+    // 7. Charts data from the period aggregates
     const timeSeriesData = useMemo<TimeSeriesPoint[]>(() => {
-        if (!periodLogs.length) return [];
+        return (summary?.dailyBreakdown ?? [])
+            .filter(day => day.count > 0)
+            .sort((a, b) => a.date.localeCompare(b.date))
+            .map(day => {
+                let label = day.date;
+                try {
+                    label = format(parseISO(day.date), "d MMM", { locale: es });
+                } catch (e) {
+                    label = day.date;
+                }
 
-        const dayMap: Record<string, { hours: number; amount: number }> = {};
-
-        periodLogs.forEach(log => {
-            if (!log.startDate) return;
-            const dateKey = log.startDate.split('T')[0];
-            if (!dayMap[dateKey]) {
-                dayMap[dateKey] = { hours: 0, amount: 0 };
-            }
-
-            let dur = 0;
-            if (log.duration) {
-                dur = Number(log.duration);
-            } else if (log.startTime && log.endTime) {
-                const [sh, sm] = log.startTime.split(':').map(Number);
-                const [eh, em] = log.endTime.split(':').map(Number);
-                const diff = (eh * 60 + em - (sh * 60 + sm)) / 60;
-                if (diff > 0) dur = diff;
-            }
-
-            dayMap[dateKey].hours += dur;
-            dayMap[dateKey].amount += Number(log.grossAmount || log.netAmount || log.amount || 0);
-        });
-
-        return Object.keys(dayMap).sort().map(dKey => {
-            let label = dKey;
-            try {
-                label = format(parseISO(dKey), "d MMM", { locale: es });
-            } catch (e) {
-                label = dKey;
-            }
-
-            return {
-                date: dKey,
-                label,
-                hours: dayMap[dKey].hours,
-                amount: dayMap[dKey].amount
-            };
-        });
-    }, [periodLogs]);
+                return {
+                    date: day.date,
+                    label,
+                    hours: day.hours,
+                    amount: day.gross
+                };
+            });
+    }, [summary]);
 
     const typeDistribution = useMemo<TypeDistributionPoint[]>(() => {
-        const typeMap: Record<string, { hours: number; count: number; value: number }> = {};
-
-        periodLogs.forEach(log => {
-            const tKey = log.type || 'particular';
-            if (!typeMap[tKey]) {
-                typeMap[tKey] = { hours: 0, count: 0, value: 0 };
-            }
-
-            let dur = 0;
-            if (log.duration) {
-                dur = Number(log.duration);
-            } else if (log.startTime && log.endTime) {
-                const [sh, sm] = log.startTime.split(':').map(Number);
-                const [eh, em] = log.endTime.split(':').map(Number);
-                const diff = (eh * 60 + em - (sh * 60 + sm)) / 60;
-                if (diff > 0) dur = diff;
-            }
-
-            typeMap[tKey].hours += dur;
-            typeMap[tKey].count += 1;
-            typeMap[tKey].value += Number(log.grossAmount || log.netAmount || log.amount || 0);
-        });
-
-        return Object.entries(typeMap).map(([tKey, stats]) => {
-            const def = worklogDefs[tKey];
-            const name = def?.label || (tKey.charAt(0).toUpperCase() + tKey.slice(1));
+        return (summary?.typeBreakdown ?? []).map(item => {
+            const def = worklogDefs[item.type];
+            const name = def?.label || item.label || (item.type.charAt(0).toUpperCase() + item.type.slice(1));
             return {
-                typeKey: tKey,
+                typeKey: item.type,
                 name,
-                hours: stats.hours,
-                count: stats.count,
-                value: stats.value
+                hours: item.hours,
+                count: item.count,
+                value: item.gross
             };
         });
-    }, [periodLogs, worklogDefs]);
+    }, [summary, worklogDefs]);
 
     const weekdayDistribution = useMemo<WeekdayDistributionPoint[]>(() => {
         const days = [
@@ -276,34 +203,35 @@ export function CompanyDashboard({ companyId, companyName }: CompanyDashboardPro
             { day: "Domingo", shortDay: "Dom", hours: 0, count: 0 },
         ];
 
-        periodLogs.forEach(log => {
-            if (!log.startDate) return;
+        (summary?.dailyBreakdown ?? []).forEach(day => {
             try {
-                const d = parseISO(log.startDate);
+                const d = parseISO(day.date);
                 // getDay(): 0 is Sunday, 1 is Monday ... 6 is Saturday
                 const dayIndex = (d.getDay() + 6) % 7; // Convert to 0=Mon, 6=Sun
-                let dur = 0;
-                if (log.duration) {
-                    dur = Number(log.duration);
-                } else if (log.startTime && log.endTime) {
-                    const [sh, sm] = log.startTime.split(':').map(Number);
-                    const [eh, em] = log.endTime.split(':').map(Number);
-                    const diff = (eh * 60 + em - (sh * 60 + sm)) / 60;
-                    if (diff > 0) dur = diff;
-                }
-                days[dayIndex].hours += dur;
-                days[dayIndex].count += 1;
+                days[dayIndex].hours += day.hours;
+                days[dayIndex].count += day.count;
             } catch (e) {
                 // Ignore invalid date
             }
         });
 
         return days;
-    }, [periodLogs]);
+    }, [summary]);
 
-    // 8. Handle CSV Export
-    const handleExportCsv = () => {
-        if (!periodLogs.length) return;
+    // 8. Handle CSV Export (detail rows of the range, fetched on demand)
+    const handleExportCsv = async () => {
+        let exportRows: Awaited<ReturnType<typeof getAllWorkLogs>>;
+        try {
+            exportRows = await getAllWorkLogs({
+                companyId,
+                startDate: startDateStr,
+                endDate: endDateStr
+            });
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "No se pudo exportar el periodo");
+            return;
+        }
+        if (!exportRows.length) return;
 
         const csvConfig = mkConfig({
             fieldSeparator: ",",
@@ -312,7 +240,7 @@ export function CompanyDashboard({ companyId, companyName }: CompanyDashboardPro
             filename: `resumen_actividad_${companyName.toLowerCase().replace(/\s+/g, '_')}_${startDateStr}_${endDateStr}`
         });
 
-        const exportData = periodLogs.map(log => {
+        const exportData = exportRows.map(log => {
             const member = members.find((m: any) => m.userId === log.userId || m.user?.id === log.userId);
             const userName = member ? `${member.user?.firstName || ''} ${member.user?.lastName || ''}`.trim() : log.userId;
             const typeLabel = worklogDefs[log.type]?.label || log.type;
@@ -337,9 +265,10 @@ export function CompanyDashboard({ companyId, companyName }: CompanyDashboardPro
     const handleShiftCreated = () => {
         queryClient.invalidateQueries({ queryKey: ["workLogs"] });
         queryClient.invalidateQueries({ queryKey: ["workLogsToday"] });
+        queryClient.invalidateQueries({ queryKey: ["companyDashboardSummary"] });
     };
 
-    const isLoading = loadingCompany || loadingDetailed || loadingLogs;
+    const isLoading = loadingCompany || loadingDetailed || loadingSummary;
 
     if (isLoading && !company) {
         return (
@@ -370,7 +299,7 @@ export function CompanyDashboard({ companyId, companyName }: CompanyDashboardPro
                     users={usersForDialog}
                     onShiftCreated={handleShiftCreated}
                     onExportCsv={handleExportCsv}
-                    canExport={periodLogs.length > 0}
+                    canExport={(summary?.periodMetrics.totalLogs ?? 0) > 0}
                 />
             </div>
 
@@ -407,7 +336,7 @@ export function CompanyDashboard({ companyId, companyName }: CompanyDashboardPro
                 companyId={companyId}
                 members={members}
                 orderedMemberIds={orderedMemberIds}
-                workLogs={periodLogs}
+                workersSummary={summary?.workersSummary ?? []}
                 isLoading={isLoading}
             />
         </div>

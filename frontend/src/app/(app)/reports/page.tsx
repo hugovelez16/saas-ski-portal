@@ -23,10 +23,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import api from "@/lib/api";
 import { getMyCompanies, getCompanyMembers, getCompaniesDetailed } from "@/lib/api/companies";
 import { getUsers } from "@/lib/api/users";
-import { WorkLog, Company } from "@/lib/types";
+import { getAllWorkLogs, getWorkLogSummary } from "@/lib/api/work-logs";
+import { Company } from "@/lib/types";
 
 export default function ReportsPage() {
     const { user } = useAuth();
@@ -252,39 +252,44 @@ export default function ReportsPage() {
         return { start, end, title, filename };
     };
 
-    const fetchLogs = async (start: Date, end: Date) => {
-        const params: any = {
-            start_date: format(start, 'yyyy-MM-dd'),
-            end_date: format(end, 'yyyy-MM-dd'),
-            limit: 1000 // Ensure we get enough
-        };
+    // Filtros de alcance compartidos por las filas de detalle y el resumen
+    const buildScope = () => {
+        const scope: { companyId?: string; userId?: string } = {};
 
         if (reportType === 'company') {
+            // Con 'all' no se filtra por empresa (comportamiento previo sin cambios)
             if (selectedCompanyId !== 'all') {
-                params.company_id = selectedCompanyId;
-            } else {
-                // If company is 'all', do we want stats for ALL companies? 
-                // Currently backend treats no params as "me". Admin needs explicit logic or backend support to "get all logs of system".
-                // If user_id is null and company_id is null, backend defaults to "me" even for admin? 
-                // Let's check backend logic... (Lines 242-243 in main.py: if not company_id and not user_id: target_user_id = current_user.id)
-                // So purely "Global" logs might be tricky without specific param.
-                // However, user mostly asked for "generate report of any company". 
-                // If they select "All Companies", maybe it's "All My Managed Companies" or effectively "Global System".
-                // We'll leave company_id empty if 'all', and if backend defaults to 'me', that's a limitation for now unless we iterate companies.
-                // Actually, for Admin, if I pass user_id it works.
+                scope.companyId = selectedCompanyId;
             }
         } else {
             // Individual
             if (selectedUserId !== 'me') {
-                params.user_id = selectedUserId;
+                scope.userId = selectedUserId;
             }
             if (selectedCompanyId) {
-                params.company_id = selectedCompanyId;
+                scope.companyId = selectedCompanyId;
             }
         }
 
-        const response = await api.get<WorkLog[]>('/work-logs', { params });
-        return response.data;
+        return scope;
+    };
+
+    // Filas de detalle (PDF individual, texto, CSV): paginadas hasta el total del rango
+    const fetchLogs = async (start: Date, end: Date) => {
+        return getAllWorkLogs({
+            ...buildScope(),
+            startDate: format(start, 'yyyy-MM-dd'),
+            endDate: format(end, 'yyyy-MM-dd')
+        });
+    };
+
+    // Totales y desgloses por trabajador del rango, calculados por el backend
+    const fetchSummary = async (start: Date, end: Date) => {
+        return getWorkLogSummary({
+            ...buildScope(),
+            startDate: format(start, 'yyyy-MM-dd'),
+            endDate: format(end, 'yyyy-MM-dd')
+        });
     };
 
 
@@ -302,9 +307,12 @@ export default function ReportsPage() {
         try {
             const { pdf } = await import("@react-pdf/renderer");
 
-            // Fetch Data
-            const logs = await fetchLogs(range.start, range.end);
-            if (!logs || logs.length === 0) {
+            // Fetch Data: empresa usa el resumen del backend; individual usa filas de detalle
+            // Totales y desgloses: siempre del resumen. Filas de detalle solo para el informe individual.
+            const summary = await fetchSummary(range.start, range.end);
+            const logs = reportType === 'company' ? [] : await fetchLogs(range.start, range.end);
+            const hasRows = summary.totals.logsCount > 0;
+            if (!hasRows) {
                 setError("No hay registros dentro del rango seleccionado.");
                 setLoading(null);
                 return;
@@ -315,17 +323,7 @@ export default function ReportsPage() {
             if (reportType === 'company') {
                 const { CompanyPDFReport } = await import("@/components/reports/CompanyPDFReport");
 
-                const statsMap = new Map<string, { 
-                    name: string; 
-                    hours: number; 
-                    amount: number; 
-                    grossAmount: number;
-                    netAmount: number;
-                    days: number; 
-                    dates: Set<string>;
-                }>();
-
-                const company = companies.find(c => c.id === selectedCompanyId) || { 
+                const company = companies.find(c => c.id === selectedCompanyId) || {
                     id: '0', 
                     name: 'Company', 
                     settings: {},
@@ -333,53 +331,18 @@ export default function ReportsPage() {
                     worklogDefinitions: {}
                 } as any;
 
-                logs.forEach(log => {
-                    const u = userOptions.find(o => o.id === log.userId);
-                    const name = u ? u.name : `User ${log.userId}`;
-
-                    if (!statsMap.has(log.userId)) {
-                        statsMap.set(log.userId, { 
-                            name, 
-                            hours: 0, 
-                            amount: 0, 
-                            grossAmount: 0,
-                            netAmount: 0,
-                            days: 0, 
-                            dates: new Set() 
-                        });
-                    }
-                    const s = statsMap.get(log.userId)!;
-
-                    const effectiveGross = Number(log.grossAmount ?? log.netAmount ?? log.amount ?? 0);
-                    const effectiveNet = Number(log.netAmount ?? log.grossAmount ?? log.amount ?? 0);
-                    s.grossAmount += effectiveGross;
-                    s.netAmount += effectiveNet;
-                    s.amount += effectiveNet;
-
-                    const d = log.date || (log.startDate ? format(new Date(log.startDate), 'yyyy-MM-dd') : null);
-                    if (d) s.dates.add(d);
-
-                    let days = 1;
-                    if (log.startDate && log.endDate && log.startDate !== log.endDate) {
-                        try {
-                            days = Math.round(Math.abs((new Date(log.endDate).getTime() - new Date(log.startDate).getTime()) / 86400000)) + 1;
-                        } catch (e) {}
-                    }
-                    const isMultiDay = days > 1;
-
-                    const durationVal = Number(log.durationHours ?? log.duration ?? (isMultiDay ? days : 1));
-                    s.hours += durationVal;
+                const employeeStats = summary.byUser.map(stat => {
+                    const u = userOptions.find(o => o.id === stat.userId);
+                    return {
+                        userId: stat.userId,
+                        name: u ? u.name : `User ${stat.userId}`,
+                        totalHours: stat.hours,
+                        totalAmount: stat.net,
+                        totalGross: stat.gross,
+                        totalNet: stat.net,
+                        totalDays: stat.uniqueDays
+                    };
                 });
-
-                const employeeStats = Array.from(statsMap.entries()).map(([uid, stat]) => ({
-                    userId: uid,
-                    name: stat.name,
-                    totalHours: stat.hours,
-                    totalAmount: stat.amount,
-                    totalGross: stat.grossAmount,
-                    totalNet: stat.netAmount,
-                    totalDays: stat.dates.size
-                }));
 
                 blob = await pdf(
                     <CompanyPDFReport
@@ -404,7 +367,8 @@ export default function ReportsPage() {
                 blob = await pdf(
                     <PDFReport
                         workLogs={logs}
-                        companies={companies}
+                        summary={summary}
+                        worklogDefinitions={companies.find(c => c.id === selectedCompanyId)?.worklogDefinitions}
                         title={range.title}
                         dateRange={{ from: range.start, to: range.end }}
                     />
@@ -446,12 +410,16 @@ export default function ReportsPage() {
             
             const { generateTextReport } = await import("@/lib/reports/textGenerators");
             
+            const summary = await fetchSummary(range.start, range.end);
+
             const fullText = generateTextReport(logs, {
                 company,
                 companyId: selectedCompanyId,
                 userId: selectedUserId,
                 startDate: range.start,
-                endDate: range.end
+                endDate: range.end,
+                summary,
+                worklogDefinitions: company?.worklogDefinitions
             });
 
             setGeneratedText(fullText);

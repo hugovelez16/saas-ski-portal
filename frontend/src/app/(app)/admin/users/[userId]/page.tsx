@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getUser, getUserCompanies } from "@/lib/api/users";
-import { getWorkLogs, deleteWorkLog } from "@/lib/api/work-logs";
+import { getWorkLogsPage, deleteWorkLog } from "@/lib/api/work-logs";
 import { updateCompanyMember } from "@/lib/api/companies";
 import { useParams, useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -43,6 +43,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+
+const LOGS_PAGE_SIZE = 50;
 
 
 const numericSchema = z.preprocess(
@@ -392,11 +394,25 @@ export default function UserDetailPage() {
         enabled: !!userId,
     });
 
-    const { data: workLogs = [], isLoading: loadingLogs } = useQuery({
-        queryFn: () => getWorkLogs({ userId: userId, limit: 1000 }),
-        queryKey: ["work-logs", userId],
-        enabled: !!userId,
+    // Historial paginado en servidor: empresa seleccionada (por defecto la primera) y pagina
+    const [logCompanyId, setLogCompanyId] = useState<string | undefined>(undefined);
+    const [logPage, setLogPage] = useState(1);
+    const effectiveLogCompanyId = logCompanyId ?? companies[0]?.id;
+
+    const { data: logsPage, isLoading: loadingLogs } = useQuery({
+        queryFn: () => getWorkLogsPage({
+            userId: userId,
+            companyId: effectiveLogCompanyId,
+            limit: LOGS_PAGE_SIZE,
+            skip: (logPage - 1) * LOGS_PAGE_SIZE,
+        }),
+        queryKey: ["work-logs", userId, effectiveLogCompanyId ?? null, logPage],
+        enabled: !!userId && !loadingCompanies,
     });
+
+    const workLogs = logsPage?.items ?? [];
+    const totalLogs = logsPage?.total ?? 0;
+    const totalLogPages = Math.max(1, Math.ceil(totalLogs / LOGS_PAGE_SIZE));
 
     const updateMemberMutation = useMutation({
         mutationFn: ({ companyId, data }: { companyId: string, data: any }) =>
@@ -445,7 +461,9 @@ export default function UserDetailPage() {
                 <TabsContent value="worklogs" className="pt-4">
                     <Card className="border-none shadow-none bg-transparent">
                         <CardHeader className="px-0">
-                            <CardTitle>Partes Realizados</CardTitle>
+                            <CardTitle>
+                                Partes Realizados <span className="text-sm font-normal text-muted-foreground">({totalLogs} registros)</span>
+                            </CardTitle>
                             <CardDescription>Visualización completa de la actividad registrada.</CardDescription>
                         </CardHeader>
                         <CardContent className="px-0">
@@ -453,9 +471,22 @@ export default function UserDetailPage() {
                                 data={workLogs}
                                 companies={companies}
                                 user={user}
+                                companyId={effectiveLogCompanyId}
+                                onCompanyChange={(id) => { setLogCompanyId(id); setLogPage(1); }}
                                 onUpdate={() => queryClient.invalidateQueries({ queryKey: ["work-logs", userId] })}
                                 isLoading={loadingLogs}
                             />
+                            {totalLogs > LOGS_PAGE_SIZE && (
+                                <div className="flex items-center justify-end gap-3 pt-4 text-sm">
+                                    <span className="text-muted-foreground">Página {logPage} de {totalLogPages}</span>
+                                    <Button variant="outline" size="sm" disabled={logPage <= 1 || loadingLogs} onClick={() => setLogPage(p => p - 1)}>
+                                        Anterior
+                                    </Button>
+                                    <Button variant="outline" size="sm" disabled={logPage >= totalLogPages || loadingLogs} onClick={() => setLogPage(p => p + 1)}>
+                                        Siguiente
+                                    </Button>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </TabsContent>

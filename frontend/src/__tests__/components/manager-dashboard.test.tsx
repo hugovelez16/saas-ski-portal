@@ -40,24 +40,37 @@ describe("Manager Dashboard Components", () => {
             }
         ];
 
-        const mockLogs = [
+        // Agregados por trabajador tal como los devuelve el backend (dashboard-summary.workersSummary)
+        const mockWorkersSummary = [
             {
-                id: "l1",
                 userId: "user-2", // Ana has more hours
-                type: "particular",
-                startDate: "2026-09-29T10:00:00",
-                duration: 20,
-                grossAmount: 400,
-                netAmount: 350
+                firstName: "Ana",
+                lastName: "Monitora",
+                email: "ana@test.com",
+                role: "worker",
+                sortOrder: 1,
+                isActive: true,
+                totalHours: 20,
+                totalNet: 350,
+                totalGross: 400,
+                uniqueDays: 1,
+                logsCount: 1,
+                typesBreakdown: { particular: 1 }
             },
             {
-                id: "l2",
                 userId: "user-1", // Carlos has fewer hours
-                type: "particular",
-                startDate: "2026-09-29T10:00:00",
-                duration: 5,
-                grossAmount: 100,
-                netAmount: 90
+                firstName: "Carlos",
+                lastName: "Director",
+                email: "carlos@test.com",
+                role: "manager",
+                sortOrder: 2,
+                isActive: true,
+                totalHours: 5,
+                totalNet: 90,
+                totalGross: 100,
+                uniqueDays: 1,
+                logsCount: 1,
+                typesBreakdown: { particular: 1 }
             }
         ];
 
@@ -70,7 +83,7 @@ describe("Manager Dashboard Components", () => {
                     companyId="comp-1"
                     members={mockMembers}
                     orderedMemberIds={orderedIds}
-                    workLogs={mockLogs as any}
+                    workersSummary={mockWorkersSummary as any}
                 />
             );
 
@@ -79,6 +92,24 @@ describe("Manager Dashboard Components", () => {
             expect(rows[1]).toHaveTextContent("Beatriz Profesora");
             expect(rows[2]).toHaveTextContent("Carlos Director");
             expect(rows[3]).toHaveTextContent("Ana Monitora");
+        });
+
+        it("shows totals from the backend workersSummary and zero for members without aggregates", () => {
+            render(
+                <DashboardTeamTable
+                    companyId="comp-1"
+                    members={mockMembers}
+                    orderedMemberIds={["user-3", "user-1", "user-2"]}
+                    workersSummary={mockWorkersSummary as any}
+                />
+            );
+
+            const rows = screen.getAllByRole("row");
+            // Beatriz (user-3) has no aggregate in the summary
+            expect(rows[1]).toHaveTextContent("0.0 h");
+            // Carlos (user-1) and Ana (user-2) take their totals from the summary
+            expect(rows[2]).toHaveTextContent("5.0 h");
+            expect(rows[3]).toHaveTextContent("20.0 h");
         });
     });
 
