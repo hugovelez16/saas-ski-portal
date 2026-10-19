@@ -16,21 +16,22 @@ interface ScopeSelectionDialogProps {
 
 export function ScopeSelectionDialog({ open, onOpenChange }: ScopeSelectionDialogProps) {
     const { user, switchScope } = useAuth();
-    
+    const isPlatformAdmin = Boolean(user?.isPlatformAdmin || user?.role === 'admin');
+
     const { data: companies = [], isLoading } = useQuery({
         queryFn: async () => {
-            if (user?.role === 'admin') {
+            if (isPlatformAdmin) {
                 const response = await api.get('/companies');
                 return response.data;
             }
             return getMyCompanies();
         },
-        queryKey: ['scopeCompanies', user?.role],
+        queryKey: ['scopeCompanies', isPlatformAdmin],
         enabled: open && !!user
     });
 
-    const handleSelect = async (companyId: string, role: string) => {
-        await switchScope(companyId, role);
+    const handleSelect = async (companyId: string | null, viewAs?: 'manager' | 'worker') => {
+        await switchScope(companyId, viewAs);
         onOpenChange(false);
     };
 
@@ -40,13 +41,13 @@ export function ScopeSelectionDialog({ open, onOpenChange }: ScopeSelectionDialo
                 <DialogHeader>
                     <DialogTitle>Cambiar Contexto de Trabajo</DialogTitle>
                     <DialogDescription>
-                        {user?.role === 'admin' 
-                            ? "Como Administrador, puedes adoptar cualquier rol en cualquier empresa o volver al modo principal."
-                            : "Selecciona la empresa y el rol con el que deseas operar ahora."}
+                        {isPlatformAdmin
+                            ? "Como Administrador, puedes gestionar cualquier empresa, verla en modo solo lectura como manager o worker, o volver al modo principal."
+                            : "Selecciona la empresa con la que deseas operar ahora."}
                     </DialogDescription>
                 </DialogHeader>
-                
-                {user?.role === 'admin' && (
+
+                {isPlatformAdmin && (
                     <div className={cn(
                         "mb-2 p-4 rounded-xl border-2 transition-all flex items-center justify-between",
                         !user?.activeCompanyId ? "border-indigo-600 bg-indigo-50" : "border-slate-100 bg-slate-50/50"
@@ -60,10 +61,10 @@ export function ScopeSelectionDialog({ open, onOpenChange }: ScopeSelectionDialo
                                 <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Sin empresa asignada</p>
                             </div>
                         </div>
-                        <Button 
+                        <Button
                             variant={!user?.activeCompanyId ? "default" : "outline"}
                             size="sm"
-                            onClick={() => handleSelect(null as any, null as any)}
+                            onClick={() => handleSelect(null)}
                             className="text-xs h-8"
                         >
                             {!user?.activeCompanyId ? "Activo" : "Restablecer"}
@@ -80,8 +81,8 @@ export function ScopeSelectionDialog({ open, onOpenChange }: ScopeSelectionDialo
                         companies.map((company: any) => {
                             const isCurrentCompany = user?.activeCompanyId === company.id;
                             const dbRole = (company.role || 'N/A').toLowerCase();
-                            const isPlatformAdmin = user?.role === 'admin';
-                            const canBeManager = isPlatformAdmin || ['admin', 'manager', 'owner'].includes(dbRole);
+                            const isReadOnlyManager = isCurrentCompany && user?.viewAs === 'manager';
+                            const isReadOnlyWorker = isCurrentCompany && user?.viewAs === 'worker';
 
                             return (
                                 <div key={company.id} className={cn(
@@ -104,39 +105,64 @@ export function ScopeSelectionDialog({ open, onOpenChange }: ScopeSelectionDialo
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <Button
-                                            variant={user?.activeRole === 'worker' && isCurrentCompany ? "default" : "outline"}
-                                            size="sm"
-                                            className="justify-start h-auto py-2"
-                                            onClick={() => handleSelect(company.id, 'worker')}
-                                        >
-                                            <User className="mr-2 h-4 w-4 opacity-70" />
-                                            <div className="flex flex-col items-start">
-                                                <span className="text-xs font-semibold">Trabajador</span>
-                                            </div>
-                                            {user?.activeRole === 'worker' && isCurrentCompany && (
-                                                <Check className="ml-auto h-3 w-3" />
-                                            )}
-                                        </Button>
-
-                                        {canBeManager && (
+                                    {isPlatformAdmin ? (
+                                        <div className="grid grid-cols-3 gap-2">
                                             <Button
-                                                variant={user?.activeRole === 'manager' && isCurrentCompany ? "default" : "outline"}
+                                                variant={isCurrentCompany && !user?.isReadOnlyView ? "default" : "outline"}
+                                                size="sm"
+                                                className="justify-start h-auto py-2"
+                                                onClick={() => handleSelect(company.id)}
+                                            >
+                                                <div className="flex flex-col items-start">
+                                                    <span className="text-xs font-semibold">Gestionar</span>
+                                                </div>
+                                                {isCurrentCompany && !user?.isReadOnlyView && (
+                                                    <Check className="ml-auto h-3 w-3" />
+                                                )}
+                                            </Button>
+
+                                            <Button
+                                                variant={isReadOnlyManager ? "default" : "outline"}
                                                 size="sm"
                                                 className="justify-start h-auto py-2"
                                                 onClick={() => handleSelect(company.id, 'manager')}
                                             >
                                                 <ShieldCheck className="mr-2 h-4 w-4 opacity-70" />
                                                 <div className="flex flex-col items-start">
-                                                    <span className="text-xs font-semibold">Manager</span>
+                                                    <span className="text-xs font-semibold">Ver como manager</span>
+                                                    <span className="text-[10px] opacity-70">Solo lectura</span>
                                                 </div>
-                                                {user?.activeRole === 'manager' && isCurrentCompany && (
+                                                {isReadOnlyManager && (
                                                     <Check className="ml-auto h-3 w-3" />
                                                 )}
                                             </Button>
-                                        )}
-                                    </div>
+
+                                            <Button
+                                                variant={isReadOnlyWorker ? "default" : "outline"}
+                                                size="sm"
+                                                className="justify-start h-auto py-2"
+                                                onClick={() => handleSelect(company.id, 'worker')}
+                                            >
+                                                <User className="mr-2 h-4 w-4 opacity-70" />
+                                                <div className="flex flex-col items-start">
+                                                    <span className="text-xs font-semibold">Ver como worker</span>
+                                                    <span className="text-[10px] opacity-70">Solo lectura</span>
+                                                </div>
+                                                {isReadOnlyWorker && (
+                                                    <Check className="ml-auto h-3 w-3" />
+                                                )}
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <Button
+                                            variant={isCurrentCompany ? "default" : "outline"}
+                                            size="sm"
+                                            className="w-full"
+                                            onClick={() => handleSelect(company.id)}
+                                        >
+                                            Entrar
+                                        </Button>
+                                    )}
                                 </div>
                             );
                         })

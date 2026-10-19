@@ -16,6 +16,8 @@ export interface UserProfile {
     isPlatformAdmin?: boolean;
     activeCompanyId?: string | null;
     activeRole?: string | null;
+    viewAs?: 'manager' | 'worker' | null;
+    isReadOnlyView?: boolean;
     defaultCompanyId?: string | null;
     createdAt: string;
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import { useAuth } from "@/context/AuthContext"
+import { getLastCompanyId, LAST_COMPANY_KEY } from "@/lib/last-company"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
@@ -78,7 +79,7 @@ export default function LoginPage() {
 
     try {
       if (showTwoFactor) {
-        await verify2FA(twoFactorCode);
+        await verify2FA(twoFactorCode, getLastCompanyId(LAST_COMPANY_KEY) ?? undefined);
       } else if (isDevMode && (!email || !password || email === devEmail)) {
         await devLogin();
       } else {
@@ -199,7 +200,7 @@ export default function LoginPage() {
                         } else if (val && index === 5 && newCodeStr.length === 6) {
                           setIsLoading(true);
                           // Small delay to allow state update? passed directly
-                          verify2FA(newCodeStr)
+                          verify2FA(newCodeStr, getLastCompanyId(LAST_COMPANY_KEY) ?? undefined)
                             .catch((err) => {
                               setError(twoFactorErrorMessage(err));
                               setTwoFactorCode("");
