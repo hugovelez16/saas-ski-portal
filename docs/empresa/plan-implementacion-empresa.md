@@ -1282,3 +1282,68 @@ Ventana de despliegue (decision del usuario): durante los segundos en que corre 
 - PR-10: renombrar `ss`/`irpf` y eliminar `extra` NO es compatible del todo: el backend antiguo lee `ss`/`irpf` en `tax_overrides` y durante la ventana calcularia sin esos overrides. Riesgo acotado: la ventana dura lo que tarda `migrate` y el efecto solo existe con `is_gross=True`. Aceptado por el usuario: un solo PR, sin release previa que lea ambas claves; se despliega fuera de horas de uso.
 - PR-11: borrar claves de `settings` y `is_range` tiene el mismo caracter (el codigo antiguo lee `features`, `input_mode`, `is_range`). Mismo tratamiento que PR-10 (un solo PR, fuera de horas de uso) y, ademas, rollback por restauracion de backup.
 - PR-23: `DROP COLUMN fiscal_id` NO es compatible: el modelo antiguo seleccionaria una columna inexistente en cada consulta de `companies`. Decision del usuario: un solo PR cuya migracion borra `fiscal_id`; puede fallar alguna peticion del contenedor anterior durante la ventana (aceptado).
+
+## 11. Procedimiento de ejecucion de bloques (Orca)
+
+Cada bloque PR-nn se ejecuta en su propio worktree de Orca con un agente Claude independiente. La sesion principal prepara y revisa; el usuario decide y entrega. Este procedimiento vale para cualquier sesion nueva sin depender de la conversacion donde se definio.
+
+### 11.1 Reparto de responsabilidades
+
+- Usuario: ordena lanzar cada bloque, responde las dudas de diseno que el agente le devuelva, y ejecuta commit, push, PR y merge (regla 3 de `CLAUDE.md`). Tambien ejecuta las acciones de produccion por PR: backup y `--apply` del script de reparacion antes de PR-06, PR-09, PR-10, PR-11 y PR-23 (seccion 10).
+- Sesion principal (Claude): comprueba dependencias, crea el worktree, lanza el agente con el prompt, revisa el resultado (`git diff`, `ruff`, `pytest`) cuando el usuario lo pide y cierra los worktrees.
+- Agente del bloque: implementa su bloque del plan, delega lo delegable, pasa los reviewers y para a preguntar ante cualquier ambiguedad. No hace commit, push ni PR.
+- No hay vigilancia automatica de los agentes (se probo un monitor y no compensa). El usuario los observa en Orca y avisa a la sesion principal con "revisa PR-nn".
+
+### 11.2 Antes de lanzar un bloque
+
+1. Comprobar en la seccion 3 que sus dependencias estan mergeadas en `develop` (`gh pr list --state all` y `git log origin/develop`). Un bloque con "Paralelo con: -" no se lanza en paralelo con otro que toque `auth.py`, `models.py` u otros ficheros comunes.
+2. Comprobar la memoria y las notas del proyecto por si el bloque esta aparcado o tiene una decision pendiente (por ejemplo PR-22, aparcado por los proxies delante del gateway).
+3. Si el bloque migra: backup y script de reparacion en produccion antes de desplegarlo (seccion 10). El agente solo escribe codigo, script y tests.
+4. Elegir la rama `<tipo>/<descripcion-en-espanol>` (regla 2) y los reviewers: `code-reviewer` siempre; ademas `security-reviewer` (auth, endpoints, secretos) o `database-reviewer` (modelos, migraciones) segun el bloque.
+
+### 11.3 Crear el worktree y lanzar el agente
+
+Orca parte por defecto de `main`, que va por detras de `develop` y no tiene el plan. Hay que corregirlo y quitar el prefijo de usuario que Orca anade a la rama. Desde el checkout principal:
+
+```bash
+orca worktree create --name <tipo>-<descripcion> --no-parent --base-branch origin/develop --setup run --json
+cd <padre>/saas-ski-portal.worktrees/saas-ski-portal/<tipo>-<descripcion>
+git reset --hard origin/develop        # solo si el worktree esta vacio
+git branch -m "$(git branch --show-current)" <tipo>/<descripcion>
+git log --oneline -1                   # debe ser el ultimo commit de develop
+orca agent launch --agent claude --worktree path:<ruta-del-worktree> --prompt "$(cat <fichero-del-prompt>)" --json
+```
+
+Notas: el prompt se guarda en un fichero y se pasa con `cat` para no escapar comillas. Los worktrees quedan en `<padre>/saas-ski-portal.worktrees/saas-ski-portal/<nombre>` (ruta anidada por la configuracion de Orca). El agente corre con `bypass permissions`, por lo que el prompt debe prohibir explicitamente commit, push, lectura de `.env` y cualquier accion fuera del worktree.
+
+### 11.4 Plantilla del prompt de un bloque
+
+El prompt es un fichero de texto con estas secciones, sustituyendo lo marcado:
+
+- Rol: "Eres el agente de implementacion del bloque PR-nn (<titulo>) del plan docs/empresa/plan-implementacion-empresa.md. Trabaja SOLO dentro de este worktree."
+- Pasos iniciales: leer `CLAUDE.md` entero; leer la tabla de la seccion 3 y la seccion del bloque (PR-nn.0 a PR-nn.V) y lo que cite de las secciones 4, 7, 9 y 10; no ampliar el alcance (listar los items del bloque y advertir que el siguiente bloque es otro); comprobar con `git branch --show-current` que la rama es la esperada.
+- Reglas de git y estilo: prohibido `git commit`, `git push` y crear PR; sin emojis; ficheros solo con Edit y Write; nunca leer ni imprimir `.env` ni `backend/keys/`; Docker siempre con `docker compose -f docker-compose.dev.yml`; orden de trabajo del bloque (tests que fallan primero, luego implementacion, luego verificacion con `ruff check backend/` y `pytest tests/ -q`).
+- Delegacion: ver 11.5, incluyendo que partes del bloque NO se pueden delegar fuera.
+- Revision y cierre: lanzar `code-reviewer` y el reviewer especifico del bloque (solo lectura, en paralelo) y corregir hasta aprobar; probar `upgrade` y `downgrade` si hay migracion; subir la version al final (11.6); informar con ficheros cambiados, salida real de las pruebas, hallazgos de los reviewers y delegacion usada; ante cualquier duda o choque con el codigo, parar y preguntar.
+
+### 11.5 Regla de delegacion
+
+- El agente delega las tareas acotadas y mecanicas (buscar usos en el codigo, editar una lista cerrada de ficheros, renombrados, escribir tests de un caso ya definido) en subagentes. Prefiere agentes externos de Orca (codex, cursor, grok) y, si no, subagentes de Claude (`backend-dev`, `frontend-dev`, `tester`, `devops`).
+- Antes de usar un agente externo comprueba su cuota. El CLI de Orca no da el porcentaje de uso: si no puede medirlo, se lo pregunta al usuario y no lo da por bueno. Con poca cuota, sin cuota o sin poder comprobarla, usa subagentes de Claude.
+- Los agentes externos no leen `CLAUDE.md`: el prompt les ordena leerlo y repite las prohibiciones (sin commit, push ni PR; sin leer `.env`; solo Edit y Write). Un agente por worktree y sin solapar ficheros. El resultado se verifica con `git diff` y pruebas antes de darlo por bueno.
+- Nunca se delega fuera la logica de auth, tokens, politica de permisos, aislamiento multiempresa, migraciones, modelos ni seguridad (`CLAUDE.md`). En esos bloques solo se delegan fuera busquedas y listas cerradas de ficheros, con revision. En la practica, los bloques de auth, permisos y migraciones los implementan subagentes de Claude.
+
+### 11.6 Version y conflictos entre bloques paralelos
+
+El incremento SemVer (regla 8) edita `package.json`, `frontend/package.json` y `CHANGELOG.md`, que comparten todos los bloques. Cada agente lo hace al final, sobre `develop` actualizado (`git fetch origin develop`; si develop ya trae cambios de version, sube por encima). El primer bloque que se mergea gana y el otro rebasa o fusiona `develop` y ajusta la version. Los bloques sin version (docs, tooling interno) no tocan esos ficheros.
+
+### 11.7 Revision, entrega y cierre
+
+1. Cuando el agente termina o para a preguntar, el usuario avisa con "revisa PR-nn". La sesion principal lee el terminal del agente, ejecuta `git diff`, `ruff` y `pytest` y da un veredicto corto.
+2. Si hay fallos, se devuelven al agente del worktree (en su terminal) hasta que pasen.
+3. El usuario ordena `/smart-flow` (commit atomico en espanol, push y PR a `develop`) y el merge cuando pasan los tres checks de CI (Backend QA, Frontend QA, GitGuardian). GitHub no permite aprobar el propio PR; `develop` no exige review.
+4. Tras el merge: actualizar `develop` en el checkout principal, cerrar el worktree con la skill `workspace-clean` (baja el stack Docker y borra volumenes) y lanzar el siguiente bloque cuyas dependencias queden cumplidas.
+
+### 11.8 Bloques lanzables en paralelo
+
+Solo se lanzan a la vez bloques que la columna "Paralelo con" de la seccion 3 permite y que no comparten ficheros: PR-01 con PR-02, PR-05 con PR-07, PR-12 con PR-13, PR-14 con PR-15, y PR-22 con cualquiera si no esta aparcado. El resto es secuencial (por ejemplo PR-04 espera a PR-03, porque ambos tocan la capa de autenticacion).
