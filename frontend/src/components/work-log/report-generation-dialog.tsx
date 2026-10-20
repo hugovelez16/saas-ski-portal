@@ -17,8 +17,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { FileText, AlertCircle, Loader2 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, setMonth, setYear } from "date-fns";
 import { mkConfig, generateCsv, download } from "export-to-csv";
-import api from "@/lib/api";
-import { WorkLog, Company } from "@/lib/types";
+import { getAllWorkLogs } from "@/lib/api/work-logs";
+import { Company } from "@/lib/types";
 
 interface ReportGenerationDialogProps {
     companies?: Company[];
@@ -95,15 +95,11 @@ export function ReportGenerationDialog({ companies = [], children, open, onOpenC
 
         try {
             // Fetch records from API
-            const response = await api.get<WorkLog[]>('/work-logs', {
-                params: {
-                    start_date: format(start, 'yyyy-MM-dd'),
-                    end_date: format(end, 'yyyy-MM-dd'),
-                    limit: 1000 // Ensure we get enough records
-                }
+            // Filas de detalle del rango completo (paginadas): el CSV necesita cada registro
+            const logs = await getAllWorkLogs({
+                startDate: format(start, 'yyyy-MM-dd'),
+                endDate: format(end, 'yyyy-MM-dd')
             });
-
-            const logs = response.data;
 
             if (!logs || logs.length === 0) {
                 setError("No hay registros dentro del rango seleccionado.");

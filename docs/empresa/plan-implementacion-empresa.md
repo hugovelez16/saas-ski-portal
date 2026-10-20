@@ -1190,6 +1190,12 @@ Fuente: copia del backup de produccion de 2026-10-18 00:00, restaurada y anonimi
   - Refrescar una sesion impersonada emite un token `full` de 30 min para el usuario objetivo y alarga la impersonacion. Alternativa: negar el refresh a sesiones impersonadas (el access `impersonated` caduca a los 10 min y el PA vuelve con `stop-impersonation`).
   - `POST /admin/impersonate/{id}` permite impersonar a un usuario inactivo o a otro PA. Alternativa: rechazar ambos casos.
   - `auth.resolve_active_company` devuelve para un PA el `company_id` pedido sin validar su existencia (la valida `switch-scope`). Si otro llamador futuro pasa un `company_id` a un PA, debe validarlo antes.
+- Hallazgos de la revision de PR-07, pendientes (no se ejecutan en PR-07):
+  - `GET /work-logs/summary` no limita la duracion del rango (hasta unos 26 anos entre 2000-01-01 y hoy+730) y el caso sin empresa no se cachea. Proponer en PR-08, junto al tope de `limit`, un maximo de unos 400 dias con 422.
+  - `crud.get_dashboard_summary` y `GET /work-logs/summary` suman solo `duration`; antes el dashboard del frontend calculaba las horas con `end_time - start_time` cuando `duration` era NULL. Comprobado en produccion el 2026-10-20 (solo lectura): 93 turnos y 0 con `duration` NULL, por lo que no hay cambio de cifras; si en el futuro aparecen turnos sin `duration`, rellenarla o calcularla en la agregacion.
+  - `byDay` y `uniqueDays` agrupan por `start_date`: un turno multidia que empieza antes del rango pedido aparece en `byDay` con una fecha fuera del rango (los totales siguen cuadrando).
+  - La cache de `GET /work-logs/summary` (300 s) solo se invalida al escribir turnos: un cambio de nombre o email de usuario o de membresia puede tardar hasta 300 s en verse en `byUser`.
+  - Un worker con el modulo `worker_daily_report` recibe tambien el resumen de toda la empresa con importes (ya veia esas filas en `GET /work-logs`); lo resuelve PR-14.
 - Si se elige la opcion B de Q-1, ver la columna "Si se elige la otra" de la tabla 4.2.
 
 ## 9. Mecanismo de reparacion de datos previo a las migraciones con riesgo

@@ -369,4 +369,55 @@ export interface DashboardSummaryResponse {
     workersSummary: DashboardWorkerSummary[];
 }
 
+/** Totales globales del rango de GET /work-logs/summary (PR-07). */
+export interface WorkLogTotals {
+    logsCount: number;
+    totalHours: number;
+    totalNet: number;
+    totalGross: number;
+    uniqueDays: number;
+    activeUsers: number;
+}
+
+/** Desglose por tipo de turno de GET /work-logs/summary. */
+export interface WorkLogTypeTotals {
+    type: string;
+    logsCount: number;
+    hours: number;
+    net: number;
+    gross: number;
+}
+
+/** Desglose por dia de GET /work-logs/summary (date en formato yyyy-MM-dd). */
+export interface WorkLogDayTotals {
+    date: string;
+    logsCount: number;
+    hours: number;
+    net: number;
+    gross: number;
+}
+
+/** Desglose por trabajador de GET /work-logs/summary. */
+export interface WorkLogUserTotals {
+    userId: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    logsCount: number;
+    hours: number;
+    net: number;
+    gross: number;
+    uniqueDays: number;
+}
+
+/** Respuesta de GET /work-logs/summary (PR-07). */
+export interface WorkLogSummary {
+    startDate: string;
+    endDate: string;
+    totals: WorkLogTotals;
+    byType: WorkLogTypeTotals[];
+    byDay: WorkLogDayTotals[];
+    byUser: WorkLogUserTotals[];
+}
+
 

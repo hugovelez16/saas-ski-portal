@@ -5,9 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { parse } from "date-fns";
 import { useAuth } from "@/context/AuthContext";
-import api from "@/lib/api";
 import { getMyCompanies, getCompaniesDetailed } from "@/lib/api/companies";
-import { WorkLog } from "@/lib/types";
+import { getAllWorkLogs, getWorkLogSummary } from "@/lib/api/work-logs";
 import { PrintableReport } from "@/components/reports/PrintableReport";
 import { Loader2 } from "lucide-react";
 
@@ -29,28 +28,28 @@ export default function PrintReportPage() {
         enabled: !!user
     });
 
+    // Mismo alcance para el resumen y las filas de detalle
+    const scope = {
+        companyId: companyId && companyId !== 'all' ? companyId : undefined,
+        userId: userId && userId !== 'me' ? userId : undefined
+    };
+
     const { data: workLogs = [], isLoading: logsLoading } = useQuery({
         queryKey: ['reportLogs', startStr, endStr, companyId, userId],
         queryFn: async () => {
             if (!startStr || !endStr) return [];
-            const params: Record<string, any> = {
-                start_date: startStr,
-                end_date: endStr,
-                limit: 1000
-            };
-            if (companyId && companyId !== 'all') {
-                params.company_id = companyId;
-            }
-            if (userId && userId !== 'me') {
-                params.user_id = userId;
-            }
-            const response = await api.get<WorkLog[]>('/work-logs', { params });
-            return response.data;
+            return getAllWorkLogs({ ...scope, startDate: startStr, endDate: endStr });
         },
         enabled: !!user && !!startStr && !!endStr
     });
 
-    if (authLoading || companiesLoading || logsLoading) {
+    const { data: summary, isLoading: summaryLoading } = useQuery({
+        queryKey: ['reportSummary', startStr, endStr, companyId, userId],
+        queryFn: () => getWorkLogSummary({ ...scope, startDate: startStr!, endDate: endStr! }),
+        enabled: !!user && !!startStr && !!endStr
+    });
+
+    if (authLoading || companiesLoading || logsLoading || summaryLoading) {
         return (
             <div className="h-screen w-full flex items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -81,12 +80,15 @@ export default function PrintReportPage() {
                 </button>
             </div>
 
-            <PrintableReport
-                workLogs={workLogs}
-                companies={companies}
-                title={title}
-                dateRange={{ from: startDate, to: endDate }}
-            />
+            {summary && (
+                <PrintableReport
+                    workLogs={workLogs}
+                    summary={summary}
+                    worklogDefinitions={companies.find(c => c.id === companyId)?.worklogDefinitions}
+                    title={title}
+                    dateRange={{ from: startDate, to: endDate }}
+                />
+            )}
         </div>
     );
 }

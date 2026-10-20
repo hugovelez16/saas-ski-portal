@@ -23,6 +23,9 @@ interface WorkLogsTableProps {
     showUserColumn?: boolean;
     readOnly?: boolean;
     fixedCompanyId?: string;
+    /** Modo controlado opcional: el padre fija la empresa seleccionada y recibe los cambios. */
+    companyId?: string;
+    onCompanyChange?: (companyId: string) => void;
 }
 
 export function WorkLogsTable({
@@ -34,11 +37,22 @@ export function WorkLogsTable({
     showUserColumn = false,
     readOnly = false,
     fixedCompanyId,
+    companyId,
+    onCompanyChange,
 }: WorkLogsTableProps) {
     const { toast } = useToast();
-    const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
+    const isControlled = companyId !== undefined && onCompanyChange !== undefined;
+    const [internalCompanyId, setInternalCompanyId] = useState<string>(
         fixedCompanyId || (companies.length > 0 ? companies[0].id : "all")
     );
+    const selectedCompanyId = isControlled && companyId !== undefined ? companyId : internalCompanyId;
+    const setSelectedCompanyId = (id: string) => {
+        if (isControlled && onCompanyChange) {
+            onCompanyChange(id);
+        } else {
+            setInternalCompanyId(id);
+        }
+    };
     const [viewLog, setViewLog] = useState<WorkLog | null>(null);
     const [editLog, setEditLog] = useState<WorkLog | null>(null);
 
