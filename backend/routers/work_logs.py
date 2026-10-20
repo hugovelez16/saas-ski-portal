@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 
 import access_policy
@@ -8,7 +8,7 @@ import models
 import schemas
 from access_policy import PolicyError
 from database import get_db
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from routers import deps
@@ -16,6 +16,10 @@ from routers import deps
 router = APIRouter(prefix="/work-logs", tags=["work-logs"])
 
 _COMPANY_VIEW_ROLES = (access_policy.ROLE_MANAGER, access_policy.ROLE_PLATFORM_ADMIN)
+
+# Rango permitido para GET /work-logs/summary: desde 2000-01-01 hasta hoy + 730 dias
+_SUMMARY_MIN_DATE = date(2000, 1, 1)
+_SUMMARY_MAX_AHEAD_DAYS = 730
 
 
 def record_impersonation_audit(db: Session, current_user: models.User, action: str, extra_data: dict = None):
@@ -91,21 +95,18 @@ def create_work_log_bulk(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("", response_model=list[schemas.WorkLogResponse])
-def read_work_logs(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1),  # El tope superior se aplica en PR-08, tras los agregados de PR-07
-    user_id: UUID = None,  # Optional filter via query param
-    company_id: UUID = None,  # Optional filter via query param
-    start_date: date = None,
-    end_date: date = None,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user),
-):
+def _resolve_work_log_scope(
+    db: Session,
+    current_user: models.User,
+    company_id: UUID | None,
+    user_id: UUID | None,
+    start_date: date | None,
+    end_date: date | None,
+) -> tuple[UUID | None, UUID | None, bool]:
     """
-    Retrieve work logs.
-    Users can only see their own. Managers (and platform admins) see the whole company and can filter by user_id.
-    Workers with the worker_daily_report module keep the company view until PR-14.
+    Resuelve la visibilidad de turnos del usuario actual.
+    Devuelve (empresa objetivo, usuario filtrado o None para todos, solo empresas activas).
+    Compartido por GET /work-logs y GET /work-logs/summary.
     """
     only_active_companies = False
 
@@ -139,17 +140,83 @@ def read_work_logs(
             final_user_id = current_user.id
             only_active_companies = True
 
-    work_logs = crud.get_work_logs(
+    return target_company_id, final_user_id, only_active_companies
+
+
+@router.get("", response_model=list[schemas.WorkLogResponse])
+def read_work_logs(
+    response: Response,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1),  # El tope superior se aplica en PR-08, tras los agregados de PR-07
+    user_id: UUID = None,  # Optional filter via query param
+    company_id: UUID = None,  # Optional filter via query param
+    start_date: date = None,
+    end_date: date = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
+    """
+    Retrieve work logs.
+    Users can only see their own. Managers (and platform admins) see the whole company and can filter by user_id.
+    Workers with the worker_daily_report module keep the company view until PR-14.
+    La cabecera X-Total-Count indica el total de turnos que cumplen los filtros (sin skip/limit).
+    """
+    target_company_id, final_user_id, only_active_companies = _resolve_work_log_scope(
+        db, current_user, company_id, user_id, start_date, end_date
+    )
+
+    filters = {
+        "user_id": str(final_user_id) if final_user_id else None,
+        "company_id": str(target_company_id) if target_company_id else None,
+        "start_date": start_date,
+        "end_date": end_date,
+        "only_active_companies": only_active_companies,
+    }
+    work_logs = crud.get_work_logs(db, skip=skip, limit=limit, **filters)
+    response.headers["X-Total-Count"] = str(crud.count_work_logs(db, **filters))
+    return work_logs
+
+
+@router.get("/summary", response_model=schemas.WorkLogSummaryResponse)
+def get_work_logs_summary(
+    start_date: date,
+    end_date: date,
+    company_id: UUID | None = None,
+    user_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
+    """
+    Agregados de turnos en un rango de fechas: totales, por tipo, por dia y por usuario.
+    Misma visibilidad que GET /work-logs: los workers solo obtienen sus propios datos.
+    """
+    if start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date no puede ser posterior a end_date")
+    max_end_date = date.today() + timedelta(days=_SUMMARY_MAX_AHEAD_DAYS)
+    if not (
+        _SUMMARY_MIN_DATE <= start_date <= max_end_date and _SUMMARY_MIN_DATE <= end_date <= max_end_date
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Las fechas deben estar entre {_SUMMARY_MIN_DATE.isoformat()} y {max_end_date.isoformat()}",
+        )
+
+    target_company_id, final_user_id, only_active_companies = _resolve_work_log_scope(
+        db, current_user, company_id, user_id, start_date, end_date
+    )
+    if target_company_id is None and deps.acting_platform_admin(current_user):
+        # Sin empresa el PA agregaria toda la plataforma (con importes y emails): se exige empresa explicita
+        raise HTTPException(status_code=422, detail="company_id es obligatorio para el administrador de plataforma")
+
+    summary = crud.get_work_log_summary(
         db,
-        skip=skip,
-        limit=limit,
-        user_id=str(final_user_id) if final_user_id else None,
         company_id=str(target_company_id) if target_company_id else None,
+        user_id=str(final_user_id) if final_user_id else None,
         start_date=start_date,
         end_date=end_date,
         only_active_companies=only_active_companies,
     )
-    return work_logs
+    return schemas.WorkLogSummaryResponse(**summary)
 
 
 @router.get("/billing-summary", response_model=list[schemas.BillingSummaryItemResponse])

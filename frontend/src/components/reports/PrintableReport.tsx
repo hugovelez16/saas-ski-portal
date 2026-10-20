@@ -1,133 +1,61 @@
 "use client";
 
 import { useMemo } from "react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, subMonths, eachMonthOfInterval, parseISO } from "date-fns";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { WorkLog, Company } from "@/lib/types";
+import { format, eachDayOfInterval, parseISO } from "date-fns";
+import { WorkLog, WorkLogSummary } from "@/lib/types";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/data-table";
-import { Banknote, CalendarDays, Clock, Sparkles, Moon, User as UserIcon } from "lucide-react";
+import { Banknote, CalendarDays, Clock, User as UserIcon } from "lucide-react";
+import {
+    WorklogDefinitions,
+    buildTypeBlocks,
+    blockQuantity,
+    blockQuantityText,
+    netByMonth
+} from "@/lib/reports/report-types";
 
 interface PrintableReportProps {
+    /** Filas de detalle del rango (solo para el listado mensual). */
     workLogs: WorkLog[];
-    companies: Company[];
+    /** Totales, desgloses por tipo y por dia del rango (GET /work-logs/summary). */
+    summary: WorkLogSummary;
+    /** Definiciones de tipos de turno de la empresa (etiqueta y unidad). */
+    worklogDefinitions?: WorklogDefinitions;
     title: string;
     subtitle?: string;
     dateRange: { from: Date; to: Date };
 }
 
-export function PrintableReport({ workLogs, companies, title, subtitle, dateRange }: PrintableReportProps) {
+export function PrintableReport({ workLogs, summary, worklogDefinitions, title, dateRange }: PrintableReportProps) {
 
-    // --- Stats Calculation (Similar to OverviewV3) ---
+    // --- Totales y bloques por tipo (todo desde el resumen del backend) ---
+    const blocks = useMemo(
+        () => buildTypeBlocks(summary.byType, worklogDefinitions),
+        [summary, worklogDefinitions]
+    );
+
+    const monthlyNet = useMemo(
+        () => netByMonth(summary.byDay, date => format(parseISO(date), 'MMMM yyyy')),
+        [summary]
+    );
+
     const stats = useMemo(() => {
-        const income = workLogs.reduce((acc, log) => acc + Number(log.netAmount ?? log.grossAmount ?? log.amount ?? 0), 0);
-
-        // Detailed Calc
-        let particularHours = 0;
-        let tutorialHours = 0;
-
-        const tutorialDates = new Set<string>();
-        const particularDates = new Set<string>();
-
-        workLogs.forEach(log => {
-            const logDate = log.date || log.startDate;
-            let days = 1;
-            if (log.startDate && log.endDate && log.startDate !== log.endDate) {
-                try {
-                    const range = eachDayOfInterval({
-                        start: parseISO(log.startDate),
-                        end: parseISO(log.endDate)
-                    });
-                    range.forEach(d => tutorialDates.add(format(d, 'yyyy-MM-dd')));
-                    days = range.length;
-                } catch (e) {
-                    days = 1;
-                }
-                const dur = Number(log.durationHours ?? log.duration ?? days);
-                tutorialHours += dur;
-            } else if (logDate) {
-                particularDates.add(format(new Date(logDate), 'yyyy-MM-dd'));
-                const dur = Number(log.durationHours ?? log.duration ?? 1);
-                particularHours += dur;
-            }
-        });
-
-        // Day counts within the selected range matches logic
-        // For accurate Pie Chart of "Days Distribution", we need total days in range
-        let daysInRange: Date[] = [];
+        let totalDays = 0;
         try {
-            daysInRange = eachDayOfInterval({ start: dateRange.from, end: dateRange.to });
-        } catch (e) { daysInRange = [] }
-
-        let tutorialDaysCount = 0;
-        let particularDaysCount = 0;
-        let freeDaysCount = 0;
-
-        daysInRange.forEach(day => {
-            const dayStr = format(day, 'yyyy-MM-dd');
-            if (tutorialDates.has(dayStr)) {
-                tutorialDaysCount++;
-            } else if (particularDates.has(dayStr)) {
-                particularDaysCount++;
-            } else {
-                freeDaysCount++;
-            }
-        });
-
-        const totalHours = particularHours + tutorialHours;
-
-        const showTutorials = companies.length === 0 || companies.some(c => c.settings?.features?.tutorials !== false);
-
-        const pieDaysData = [
-            { name: 'Tutorials', value: tutorialDaysCount, color: '#3b82f6', show: showTutorials },
-            { name: 'Particulars', value: particularDaysCount, color: '#93c5fd', show: true },
-            { name: 'Off Days', value: freeDaysCount, color: '#e2e8f0', show: true }
-        ].filter(d => d.show && d.value > 0);
-
-        const pieHoursData = [
-            { name: 'Particular', value: particularHours, color: '#3b82f6' },
-            { name: 'Tutorials', value: tutorialHours, color: '#8b5cf6' }
-        ].filter(d => (d.name === 'Tutorials' ? showTutorials : true) && d.value > 0);
+            totalDays = eachDayOfInterval({ start: dateRange.from, end: dateRange.to }).length;
+        } catch (e) {
+            totalDays = 0;
+        }
 
         return {
-            income,
-            particularHours,
-            tutorialHours,
-            totalHours,
-            pieDaysData,
-            pieHoursData,
-            totalDays: daysInRange.length,
-            showTutorials
+            income: summary.totals.totalNet,
+            totalHours: summary.totals.totalHours,
+            workDays: summary.totals.uniqueDays,
+            totalDays
         };
-    }, [workLogs, companies, dateRange]);
+    }, [summary, dateRange]);
 
-    // Graph Data - Aggregate by Day for the timeline
-    const timelineData = useMemo(() => {
-        // Group by day
-        const grouped = new Map<string, number>();
-        workLogs.forEach(log => {
-            const dStr = log.date || (log.startDate ? format(new Date(log.startDate), 'yyyy-MM-dd') : '');
-            if (dStr) {
-                const current = grouped.get(dStr) || 0;
-                grouped.set(dStr, current + Number(log.netAmount ?? log.grossAmount ?? log.amount ?? 0));
-            }
-        });
-
-        // Fill dates
-        let days: Date[] = [];
-        try { days = eachDayOfInterval({ start: dateRange.from, end: dateRange.to }); } catch (e) { }
-
-        return days.map(day => {
-            const dStr = format(day, 'yyyy-MM-dd');
-            return {
-                date: format(day, 'dd MMM'),
-                value: grouped.get(dStr) || 0
-            };
-        });
-
-    }, [workLogs, dateRange]);
-
-    // --- Log Grouping ---
+    // --- Log Grouping (solo detalle) ---
     const groupedLogs = useMemo(() => {
         const groups = new Map<string, WorkLog[]>();
 
@@ -158,7 +86,6 @@ export function PrintableReport({ workLogs, companies, title, subtitle, dateRang
                     @page { margin: 10mm 15mm; size: auto; }
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                     .print-break-inside-avoid { break-inside: avoid; }
-                    .recharts-legend-wrapper { display: none !important; }
                 }
             `}</style>
 
@@ -197,7 +124,7 @@ export function PrintableReport({ workLogs, companies, title, subtitle, dateRang
                         <div className="absolute top-0 right-0 p-2 opacity-10"><CalendarDays size={48} /></div>
                         <p className="text-xs text-slate-500 font-bold uppercase mb-1">Días Trabajados</p>
                         <div className="text-3xl font-bold text-slate-900">
-                            {stats.pieDaysData.reduce((acc, curr) => curr.name !== 'Off Days' ? acc + curr.value : acc, 0)}
+                            {stats.workDays}
                             <span className="text-sm text-slate-400 font-normal">/{stats.totalDays}</span>
                         </div>
                     </div>
@@ -209,58 +136,26 @@ export function PrintableReport({ workLogs, companies, title, subtitle, dateRang
                     </div>
                 </div>
 
-                {/* Charts Section */}
-                <div className="grid grid-cols-2 gap-8 mb-6">
-                    {/* Days Distribution */}
-                    <div className="h-[220px] bg-slate-50/50 rounded p-4 border border-slate-100">
-                        <h3 className="text-xs font-bold uppercase text-slate-500 mb-2 text-center">Distribución de Días</h3>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={stats.pieDaysData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={30}
-                                    outerRadius={50}
-                                    paddingAngle={2}
-                                    dataKey="value"
-                                    stroke="none"
-                                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                                    labelLine={true}
-                                >
-                                    {stats.pieDaysData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                    ))}
-                                </Pie>
-                            </PieChart>
-                        </ResponsiveContainer>
+                {/* Bloque por tipo de turno: etiqueta y unidad de la definicion de la empresa */}
+                {blocks.length > 0 && (
+                    <div className="grid grid-cols-3 gap-4 mb-6">
+                        {blocks.map(block => {
+                            const quantity = blockQuantity(block);
+                            const valueText = block.unit === "fixed"
+                                ? `${quantity.value} ${quantity.suffix}`
+                                : `${quantity.value.toFixed(1)} ${quantity.suffix}`;
+                            return (
+                                <div key={block.type} className="p-4 border border-slate-200 rounded bg-slate-50 print:bg-slate-50 print:border-slate-300 shadow-sm">
+                                    <p className="text-xs text-slate-500 font-bold uppercase mb-1">{block.label}</p>
+                                    <p className="text-2xl font-bold text-slate-900">{valueText}</p>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        {block.logsCount} turnos · {formatCurrency(block.net)}
+                                    </p>
+                                </div>
+                            );
+                        })}
                     </div>
-
-                    {/* Hours Dist */}
-                    <div className="h-[220px] bg-slate-50/50 rounded p-4 border border-slate-100">
-                        <h3 className="text-xs font-bold uppercase text-slate-500 mb-2 text-center">Distribución de Horas</h3>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={stats.pieHoursData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={30}
-                                    outerRadius={50}
-                                    paddingAngle={2}
-                                    dataKey="value"
-                                    stroke="none"
-                                    label={({ name, value }) => `${name} ${value.toFixed(0)}h`}
-                                    labelLine={true}
-                                >
-                                    {stats.pieHoursData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                    ))}
-                                </Pie>
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
+                )}
             </div>
 
             {/* Monthly Details */}
@@ -306,11 +201,11 @@ export function PrintableReport({ workLogs, companies, title, subtitle, dateRang
                                         </TableCell>
                                     </TableRow>
                                 ))}
-                                {/* Monthly Subtotal */}
+                                {/* Monthly Subtotal (suma de los totales diarios del resumen) */}
                                 <TableRow className="bg-slate-100 font-bold border-t-2 border-slate-900">
                                     <TableCell colSpan={4} className="text-right py-2 text-xs uppercase">Total {month}</TableCell>
                                     <TableCell className="text-right py-2 text-xs">
-                                        {formatCurrency(logs.reduce((sum, l) => sum + Number(l.netAmount ?? l.grossAmount ?? l.amount ?? 0), 0))}
+                                        {formatCurrency(monthlyNet.get(month) ?? 0)}
                                     </TableCell>
                                 </TableRow>
                             </TableBody>

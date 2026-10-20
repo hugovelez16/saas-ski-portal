@@ -16,7 +16,7 @@ import models
 import schemas
 from pydantic import TypeAdapter
 from redis_config import logger, redis_manager
-from sqlalchemy import or_
+from sqlalchemy import distinct, func, or_
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -500,17 +500,17 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
     return created_logs[0] if created_logs else None
 
 
-def get_work_logs(
+def _filter_work_logs(
     db: Session,
-    skip: int = 0,
-    limit: int = 100,
+    query,
+    *,
     user_id: str = None,
     company_id: str = None,
     start_date: date = None,
     end_date: date = None,
     only_active_companies: bool = False,
 ):
-    query = db.query(models.WorkLog)
+    """Filtros comunes de turnos (listado, conteo y agregados). Rango con solape: end >= start y start <= end."""
     if only_active_companies:
         # Turnos sin empresa o de empresas activas (una empresa suspendida no expone sus turnos)
         active_company_ids = db.query(models.Company.id).filter(models.Company.is_active == True)
@@ -527,13 +527,225 @@ def get_work_logs(
 
     if end_date:
         query = query.filter(models.WorkLog.start_date <= end_date)
+    return query
+
+
+def get_work_logs(
+    db: Session,
+    skip: int = 0,
+    limit: int = 100,
+    user_id: str = None,
+    company_id: str = None,
+    start_date: date = None,
+    end_date: date = None,
+    only_active_companies: bool = False,
+):
+    query = _filter_work_logs(
+        db,
+        db.query(models.WorkLog),
+        user_id=user_id,
+        company_id=company_id,
+        start_date=start_date,
+        end_date=end_date,
+        only_active_companies=only_active_companies,
+    )
 
     return (
-        query.order_by(models.WorkLog.start_date.desc(), models.WorkLog.start_time.desc())
+        query.order_by(models.WorkLog.start_date.desc(), models.WorkLog.start_time.desc(), models.WorkLog.id.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
+
+
+def count_work_logs(
+    db: Session,
+    *,
+    user_id: str = None,
+    company_id: str = None,
+    start_date: date = None,
+    end_date: date = None,
+    only_active_companies: bool = False,
+) -> int:
+    """Total de turnos que cumplen los mismos filtros que get_work_logs (sin paginar)."""
+    query = _filter_work_logs(
+        db,
+        db.query(func.count(models.WorkLog.id)),
+        user_id=user_id,
+        company_id=company_id,
+        start_date=start_date,
+        end_date=end_date,
+        only_active_companies=only_active_companies,
+    )
+    return int(query.scalar() or 0)
+
+
+WORK_LOG_SUMMARY_CACHE_TTL = 300
+
+
+def _work_log_summary_cache_key(company_id: str, user_id: str | None, start_date: date, end_date: date) -> str:
+    # Prefijo dashboard_summary:{company_id}: para que invalidate_dashboard_summary lo borre al escribir turnos.
+    return f"dashboard_summary:{company_id}:wls:{user_id or '-'}:{start_date.isoformat()}:{end_date.isoformat()}"
+
+
+def get_work_log_summary(
+    db: Session,
+    *,
+    company_id: str | None,
+    user_id: str | None,
+    start_date: date,
+    end_date: date,
+    only_active_companies: bool = False,
+) -> dict:
+    """
+    Agregados de turnos en el rango (totales, por tipo, por dia y por usuario).
+    Toda la agregacion se hace en SQL. Con company_id se usa cache Redis de 300 s.
+    Devuelve tipos JSON-compatibles (fechas en ISO, UUID en str, numeros en float/int).
+    """
+    cache_key = None
+    if company_id:
+        cache_key = _work_log_summary_cache_key(str(company_id), str(user_id) if user_id else None, start_date, end_date)
+        try:
+            cached = redis_manager.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception as e:
+            logger.error(f"Error leyendo cache de resumen de turnos: {e}")
+
+    summary = _compute_work_log_summary(
+        db,
+        company_id=company_id,
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        only_active_companies=only_active_companies,
+    )
+
+    if cache_key:
+        try:
+            redis_manager.set(cache_key, json.dumps(summary), ex=WORK_LOG_SUMMARY_CACHE_TTL)
+        except Exception as e:
+            logger.error(f"Error guardando cache de resumen de turnos: {e}")
+    return summary
+
+
+def _compute_work_log_summary(
+    db: Session,
+    *,
+    company_id: str | None,
+    user_id: str | None,
+    start_date: date,
+    end_date: date,
+    only_active_companies: bool,
+) -> dict:
+    def _filtered(query):
+        return _filter_work_logs(
+            db,
+            query,
+            user_id=user_id,
+            company_id=company_id,
+            start_date=start_date,
+            end_date=end_date,
+            only_active_companies=only_active_companies,
+        )
+
+    logs = models.WorkLog
+    sum_hours = func.sum(logs.duration)
+    sum_net = func.sum(logs.net_amount)
+    sum_gross = func.sum(logs.gross_amount)
+
+    total_row = _filtered(
+        db.query(
+            func.count(logs.id),
+            sum_hours,
+            sum_net,
+            sum_gross,
+            func.count(distinct(logs.start_date)),
+            func.count(distinct(logs.user_id)),
+        ).select_from(logs)
+    ).one()
+
+    type_rows = (
+        _filtered(db.query(logs.type, func.count(logs.id), sum_hours, sum_net, sum_gross).select_from(logs))
+        .group_by(logs.type)
+        .order_by(logs.type)
+        .all()
+    )
+
+    day_rows = (
+        _filtered(db.query(logs.start_date, func.count(logs.id), sum_hours, sum_net, sum_gross).select_from(logs))
+        .group_by(logs.start_date)
+        .order_by(logs.start_date)
+        .all()
+    )
+
+    user_rows = (
+        _filtered(
+            db.query(
+                logs.user_id,
+                models.User.first_name,
+                models.User.last_name,
+                models.User.email,
+                func.count(logs.id),
+                sum_hours,
+                sum_net,
+                sum_gross,
+                func.count(distinct(logs.start_date)),
+            )
+            .select_from(logs)
+            .outerjoin(models.User, models.User.id == logs.user_id)
+        )
+        .group_by(logs.user_id, models.User.first_name, models.User.last_name, models.User.email)
+        .order_by(models.User.last_name, models.User.first_name, logs.user_id)
+        .all()
+    )
+
+    return {
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "totals": {
+            "logs_count": int(total_row[0] or 0),
+            "total_hours": float(total_row[1] or 0),
+            "total_net": float(total_row[2] or 0),
+            "total_gross": float(total_row[3] or 0),
+            "unique_days": int(total_row[4] or 0),
+            "active_users": int(total_row[5] or 0),
+        },
+        "by_type": [
+            {
+                "type": row[0],
+                "logs_count": int(row[1] or 0),
+                "hours": float(row[2] or 0),
+                "net": float(row[3] or 0),
+                "gross": float(row[4] or 0),
+            }
+            for row in type_rows
+        ],
+        "by_day": [
+            {
+                "date": row[0].isoformat(),
+                "logs_count": int(row[1] or 0),
+                "hours": float(row[2] or 0),
+                "net": float(row[3] or 0),
+                "gross": float(row[4] or 0),
+            }
+            for row in day_rows
+        ],
+        "by_user": [
+            {
+                "user_id": str(row[0]),
+                "first_name": row[1],
+                "last_name": row[2],
+                "email": row[3],
+                "logs_count": int(row[4] or 0),
+                "hours": float(row[5] or 0),
+                "net": float(row[6] or 0),
+                "gross": float(row[7] or 0),
+                "unique_days": int(row[8] or 0),
+            }
+            for row in user_rows
+        ],
+    }
 
 
 def update_work_log(db: Session, work_log_id: str, work_log: schemas.WorkLogCreate, apply_to_group: bool = False):

@@ -19,6 +19,23 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.10.0] - 2026-10-19
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Agregados de turnos y migracion de pantallas (PR-07 del plan de empresa).
+
+### Anadido
+
+- **`backend/routers/work_logs.py`**: `GET /work-logs/summary` (totales, por tipo, por dia y por usuario sobre el rango completo, con la misma visibilidad que `GET /work-logs`; un worker solo recibe sus propios datos) y cabecera `X-Total-Count` en `GET /work-logs`, expuesta por CORS.
+- **`backend/crud.py`**: `count_work_logs` y `get_work_log_summary` con agregacion SQL y cache Redis de 300 s invalidada con `invalidate_dashboard_summary`.
+- **`frontend/src/lib/api/work-logs.ts`**: `getWorkLogsPage`, `getAllWorkLogs` (falla si el total supera `maxRows`) y `getWorkLogSummary`.
+
+### Cambiado
+
+- **`backend/crud.py`**: `get_work_logs` ordena con desempate por `id` para que la paginacion sea estable.
+- **`frontend`**: el dashboard de empresa, los informes (PDF, impresion y texto), la tabla de turnos de usuario del administrador y el calendario dejan de sumar filas de una pagina o de usar `limit` altos; los totales salen del resumen y los bloques por tipo usan las definiciones de turno de la empresa. El calendario consulta solo el rango visible.
+
 ## [0.9.3] - 2026-10-19
 
 ### Tipo de Cambio SemVer

@@ -4,14 +4,14 @@ export const dynamic = "force-dynamic";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { type CalendarEvent, EventCalendar } from "@/components/event-calendar";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { WorkLogDetailsDialog } from "@/components/work-log/details-dialog";
 import { ManagerAddWorkLogDialog } from "@/components/work-log/manager-add-log-dialog";
-import { getWorkLogs, deleteWorkLog } from "@/lib/api/work-logs";
+import { getAllWorkLogs, deleteWorkLog } from "@/lib/api/work-logs";
 import { getCompaniesDetailed, getMyCompanies } from "@/lib/api/companies";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -51,11 +51,21 @@ export default function ManagerCalendarPage() {
         return companiesDetailed.find((c: any) => c.id === selectedCompanyId);
     }, [companiesDetailed, selectedCompanyId]);
 
-    // Fetch work logs for this company
+    // Rango visible del calendario (lo notifica EventCalendar); null hasta el primer render
+    const [visibleRange, setVisibleRange] = useState<{ startDate: string; endDate: string } | null>(null);
+    const handleRangeChange = useCallback(({ start, end }: { start: Date; end: Date }) => {
+        setVisibleRange({ startDate: format(start, "yyyy-MM-dd"), endDate: format(end, "yyyy-MM-dd") });
+    }, []);
+
+    // Filas del rango visible de la empresa seleccionada
     const { data: workLogs = [], isLoading: loadingLogs, refetch: refetchWorkLogs } = useQuery({
-        queryFn: () => getWorkLogs({ companyId: selectedCompanyId || undefined, limit: 1000 }),
-        queryKey: ["workLogs", "manager-calendar", selectedCompanyId],
-        enabled: !!selectedCompanyId,
+        queryFn: () => getAllWorkLogs({
+            companyId: selectedCompanyId || undefined,
+            startDate: visibleRange?.startDate,
+            endDate: visibleRange?.endDate,
+        }),
+        queryKey: ["workLogs", "manager-calendar", selectedCompanyId, visibleRange?.startDate, visibleRange?.endDate],
+        enabled: !!selectedCompanyId && !!visibleRange,
     });
 
     // Extract members for filtering dropdown
@@ -211,6 +221,7 @@ export default function ManagerCalendarPage() {
                     initialView="month"
                     onEventClick={handleEventClick}
                     onDateClick={handleDateClick}
+                    onRangeChange={handleRangeChange}
                     showAddButton={false}
                 />
             </div>

@@ -5,9 +5,13 @@ import {
   addDays,
   addMonths,
   addWeeks,
+  endOfDay,
+  endOfMonth,
   endOfWeek,
   format,
   isSameMonth,
+  startOfDay,
+  startOfMonth,
   startOfWeek,
   subMonths,
   subWeeks,
@@ -18,7 +22,7 @@ import {
   ChevronRightIcon,
   PlusIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -57,6 +61,31 @@ export interface EventCalendarProps {
   onEventClick?: (event: CalendarEvent) => void;
   onDateClick?: (date: Date) => void;
   showAddButton?: boolean;
+  /** Se llama con el rango de fechas visible (vista y fecha actuales) cada vez que cambia. */
+  onRangeChange?: (range: { start: Date; end: Date }) => void;
+}
+
+/** Rango de fechas que ocupa la vista visible (la rejilla del mes incluye dias de meses adyacentes). */
+function getVisibleRange(view: CalendarView, date: Date): { start: Date; end: Date } {
+  switch (view) {
+    case "month":
+      return {
+        start: startOfWeek(startOfMonth(date), { weekStartsOn: 1 }),
+        end: endOfWeek(endOfMonth(date), { weekStartsOn: 1 }),
+      };
+    case "week":
+      return {
+        start: startOfWeek(date, { weekStartsOn: 1 }),
+        end: endOfWeek(date, { weekStartsOn: 1 }),
+      };
+    case "day":
+      return { start: startOfDay(date), end: endOfDay(date) };
+    default:
+      return {
+        start: startOfDay(date),
+        end: endOfDay(addDays(date, AgendaDaysToShow - 1)),
+      };
+  }
 }
 
 function TimeRangeSelector() {
@@ -103,6 +132,7 @@ function EventCalendarInner({
   onEventClick,
   onDateClick,
   showAddButton = true,
+  onRangeChange,
 }: EventCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<CalendarView>(initialView);
@@ -110,6 +140,17 @@ function EventCalendarInner({
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
     null,
   );
+
+  // Notifica el rango visible; la referencia evita re-disparar el efecto si el padre
+  // pasa una funcion nueva en cada render.
+  const onRangeChangeRef = useRef(onRangeChange);
+  useEffect(() => {
+    onRangeChangeRef.current = onRangeChange;
+  }, [onRangeChange]);
+
+  useEffect(() => {
+    onRangeChangeRef.current?.(getVisibleRange(view, currentDate));
+  }, [view, currentDate]);
 
   // Add keyboard shortcuts for view switching
   useEffect(() => {
