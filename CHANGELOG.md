@@ -19,6 +19,35 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.12.0] - 2026-10-20
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Gestion de empresa solo plataforma, con migracion y script de reparacion de nombres (PR-06 del plan de empresa). Cambio incompatible en 0.y.z: manager y worker pierden los endpoints de lista, alta y edicion de empresa, y se retira `fiscalId` de las respuestas.
+
+### Anadido
+
+- **`backend/routers/companies.py`**: `DELETE /companies/{company_id}` (204) solo para el administrador de plataforma; responde 409 con los motivos si la empresa tiene miembros, turnos o suscripciones, sin cascadas.
+- **`backend/audit.py`**: eventos de empresa `company.created`, `company.updated`, `company.suspended`, `company.reactivated`, `company.managed_changed`, `company.tax_config_changed`, `company.settings_changed`, `company.worklog_definitions_changed` y `company.deleted`, con `reason` opcional al suspender o reactivar.
+- **`backend/crud.py`**: `get_company_for_actor`; `update_company` y `create_company` reciben el actor y registran auditoria.
+- **`frontend`**: confirmacion con motivo opcional antes de suspender, reactivar o cambiar `isManaged`, y edicion del nombre en el detalle de empresa.
+
+### Seguridad
+
+- **Empresa solo plataforma**: `GET`, `POST`, `PUT` y `DELETE /companies` devuelven 403 a manager, worker y administrador en modo "ver como". Un `PUT` sin cambios responde 422 (`No hay cambios que guardar`).
+- El nombre de empresa se normaliza (sin espacios sobrantes, de 1 a 120 caracteres) y `null` o vacio responde 422 en lugar de 500.
+
+### Cambiado
+
+- **`fiscalId`**: se retira de los esquemas, respuestas, seeds, dominio y frontend; la columna se conserva hasta PR-23.
+- **`frontend`**: el manager solo ve la tarjeta de modulos activos en la configuracion de empresa; la lista de empresas deja de ofrecer acciones de edicion sin permiso.
+- **`docs/empresa/analisis-entidad-empresa.md`**: una empresa sin manager es un estado valido; se documenta el procedimiento de recuperacion (E7).
+
+### Cambios Internos
+
+- **Migracion `b7e1a0d10002`**: limita `companies.name` a 120 caracteres (recrea la vista `"Work Logs"` porque depende de la columna) y aborta con `RuntimeError` si quedan nombres no validos; `downgrade` completo. Requiere el paso previo de despliegue de la seccion 10 del plan.
+- **Nuevo `backend/scripts/repair_company_names.py`** (con `repair_common.py`): obligatorio ejecutarlo en `--dry-run` y despues `--apply --backup-dir <directorio fuera del repo>` antes de desplegar (seccion 10 del plan).
+
 ## [0.11.0] - 2026-10-20
 
 ### Tipo de Cambio SemVer
