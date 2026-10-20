@@ -11,7 +11,6 @@ from typing import Any, Dict, Optional
 class Company:
     id: str
     name: str
-    fiscal_id: Optional[str] = None
     tax_config: Dict[str, Any] = field(default_factory=dict)
     worklog_definitions: Dict[str, Any] = field(default_factory=dict)
     settings: Dict[str, Any] = field(default_factory=dict)

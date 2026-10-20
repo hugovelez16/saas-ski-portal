@@ -80,7 +80,6 @@ class SqlAlchemyCompanyRepository(CompanyRepositoryPort):
         existing = self.db.query(models.Company).filter(models.Company.id == company.id).first()
         if existing:
             existing.name = company.name
-            existing.fiscal_id = company.fiscal_id
             existing.tax_config = company.tax_config
             existing.worklog_definitions = company.worklog_definitions
             existing.settings = company.settings

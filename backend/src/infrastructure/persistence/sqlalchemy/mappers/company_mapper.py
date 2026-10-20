@@ -12,7 +12,6 @@ class SqlAlchemyCompanyMapper:
         return Company(
             id=str(orm_company.id),
             name=orm_company.name,
-            fiscal_id=orm_company.fiscal_id,
             tax_config=orm_company.tax_config or {},
             worklog_definitions=orm_company.worklog_definitions or {},
             settings=orm_company.settings or {},
@@ -24,7 +23,6 @@ class SqlAlchemyCompanyMapper:
         return models.Company(
             id=domain_company.id,
             name=domain_company.name,
-            fiscal_id=domain_company.fiscal_id,
             tax_config=domain_company.tax_config,
             worklog_definitions=domain_company.worklog_definitions,
             settings=domain_company.settings,
