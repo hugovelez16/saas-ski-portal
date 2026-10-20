@@ -13,6 +13,7 @@ import { format, parseISO } from "date-fns";
 import { Pencil, Trash2, Sparkles, Moon } from "lucide-react";
 import type { WorkLog, Company } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { usePermissions } from "@/hooks/use-permissions";
 
 interface WorkLogsTableProps {
     data: WorkLog[];
@@ -53,6 +54,11 @@ export function WorkLogsTable({
             setInternalCompanyId(id);
         }
     };
+    // Permisos de la empresa seleccionada; con "todas las empresas" no hay empresa de referencia
+    const tableCompany = selectedCompanyId !== "all" ? companies.find(c => c.id === selectedCompanyId) ?? null : null;
+    const { canEditWorkLog, role, isManaged } = usePermissions(tableCompany);
+    const showManagedNotice = role === 'worker' && isManaged && !readOnly;
+
     const [viewLog, setViewLog] = useState<WorkLog | null>(null);
     const [editLog, setEditLog] = useState<WorkLog | null>(null);
 
@@ -257,20 +263,22 @@ export function WorkLogsTable({
                 id: "actions",
                 header: "",
                 cell: ({ row }) => (
-                    <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => setEditLog(row.original)}>
-                            <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteClick(row.original.id)}>
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                    </div>
+                    canEditWorkLog(row.original) ? (
+                        <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => setEditLog(row.original)}>
+                                <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteClick(row.original.id)}>
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    ) : null
                 )
             });
         }
 
         return columns;
-    }, [companies, dynamicExtraKeys, fieldDefinitions, selectedCompanyId, fixedCompanyId, showUserColumn, readOnly]);
+    }, [companies, dynamicExtraKeys, fieldDefinitions, selectedCompanyId, fixedCompanyId, showUserColumn, readOnly, canEditWorkLog]);
 
     const activeUser = user || (editLog?.userId ? { id: editLog.userId } : { id: "" });
 
@@ -291,6 +299,12 @@ export function WorkLogsTable({
                         </SelectContent>
                     </Select>
                 </div>
+            )}
+
+            {showManagedNotice && (
+                <p className="text-sm text-muted-foreground italic">
+                    En esta empresa los turnos los registra el equipo gestor
+                </p>
             )}
 
             {/* Standard Data Table */}

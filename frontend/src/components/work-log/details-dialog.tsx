@@ -21,6 +21,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { getMyCompanies } from "@/lib/api/companies";
 import { Badge } from "@/components/ui/badge";
+import { usePermissions } from "@/hooks/use-permissions";
 
 interface WorkLogDetailsDialogProps {
     log: WorkLog | null;
@@ -45,10 +46,16 @@ export function WorkLogDetailsDialog({ log, open, onOpenChange, companies: initi
 
     const companies = initialCompanies || myCompanies;
 
+    // Empresa del turno: sus reglas (gestionada o autonoma) deciden si se puede editar o borrar
+    const logCompany = log ? companies?.find(c => c.id === log.companyId) ?? null : null;
+    const { canEditWorkLog, role, isManaged } = usePermissions(logCompany);
+    const canEdit = !!log && !!logCompany && canEditWorkLog(log);
+    const isManagedWorker = role === 'worker' && isManaged;
+
     if (!log) return null;
 
     // Resolve Definition
-    const company = companies?.find(c => c.id === log.companyId);
+    const company = logCompany;
     const definition = company?.worklogDefinitions?.[log.type];
     const typeLabel = definition?.label || log.type;
 
@@ -190,7 +197,7 @@ export function WorkLogDetailsDialog({ log, open, onOpenChange, companies: initi
                     </div>
 
                     {/* Group Action Checkbox - Only for Managers/Admins */}
-                    {log.groupId && (user?.isPlatformAdmin || company?.role === 'manager' || company?.role === 'admin' || user?.activeRole === 'manager') && (
+                    {canEdit && log.groupId && (user?.isPlatformAdmin || company?.role === 'manager' || company?.role === 'admin' || user?.activeRole === 'manager') && (
                         <div className="flex items-center space-x-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-100 dark:border-blue-800 transition-colors hover:bg-blue-100 dark:hover:bg-blue-900/30">
                             <Checkbox 
                                 id="applyToGroup" 
@@ -206,17 +213,22 @@ export function WorkLogDetailsDialog({ log, open, onOpenChange, companies: initi
 
                 <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 border-t pt-4">
                     <div className="flex gap-2 w-full sm:w-auto mr-auto">
-                        {onEdit && (
+                        {onEdit && canEdit && (
                             <Button variant="secondary" onClick={() => {
                                 onEdit(log, applyToGroup);
                             }}>
                                 Editar
                             </Button>
                         )}
-                        {onDelete && (
+                        {onDelete && canEdit && (
                             <Button variant="destructive" onClick={() => onDelete(log)}>
                                 Eliminar
                             </Button>
+                        )}
+                        {(onEdit || onDelete) && !canEdit && isManagedWorker && (
+                            <p className="text-xs text-muted-foreground italic self-center">
+                                En esta empresa los turnos los registra el equipo gestor
+                            </p>
                         )}
                     </div>
                     <DialogClose asChild>
