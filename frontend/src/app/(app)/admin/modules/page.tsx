@@ -256,7 +256,7 @@ export default function AdminModulesPage() {
                                     <SelectContent>
                                         {companies.map(c => (
                                             <SelectItem key={c.id} value={c.id}>
-                                                {c.name} {c.fiscalId ? `(${c.fiscalId})` : ""}
+                                                {c.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

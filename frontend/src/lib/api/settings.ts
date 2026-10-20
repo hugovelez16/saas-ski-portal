@@ -56,8 +56,3 @@ export const updateUserRates = async (companyId: string, userId: string, data: a
 
 // Deprecated alias
 export const updateUserSettings = updateUserRates;
-
-export const getCompanies = async () => {
-    const response = await api.get('/companies');
-    return response.data;
-};

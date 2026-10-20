@@ -7,6 +7,7 @@ import api from "@/lib/api";
 import { CompanyConfigurationTab } from "@/components/admin/company-configuration-tab";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function ManagerSettingsPage() {
     const { user, loading: authLoading } = useAuth();
@@ -18,6 +19,9 @@ export default function ManagerSettingsPage() {
         queryFn: async () => (await api.get(`/companies/${selectedCompanyId}`)).data,
         enabled: !!selectedCompanyId,
     });
+
+    // Con null no se consulta la empresa activa; solo interesa el rol de plataforma.
+    const { isPlatformAdmin } = usePermissions(company ?? null);
 
     if (authLoading || (isLoadingCompany && selectedCompanyId)) {
         return (
@@ -56,7 +60,9 @@ export default function ManagerSettingsPage() {
             <div>
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Configuración de Escuela</h1>
                 <p className="text-muted-foreground text-sm">
-                    Gestiona los turnos, tarifas, reglas de negocio y opciones del panel para tu escuela.
+                    {isPlatformAdmin
+                        ? "Gestiona los turnos, tarifas, reglas de negocio y opciones del panel para tu escuela."
+                        : "La configuración de la empresa la gestiona el administrador de la plataforma."}
                 </p>
             </div>
 

@@ -11,7 +11,9 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbS
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import type { AxiosError } from "axios";
 import { Check, X, Shield, Loader2, Settings, Database, Pencil, FileJson, FileCode } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
@@ -41,7 +43,7 @@ export default function CompanyDetailsPage() {
     });
 
     const company = companies.find(c => c.id === companyId);
-    const { canManageMembers } = usePermissions();
+    const { canManageMembers, canEditCompany } = usePermissions();
 
     const updateCompanyMutation = useMutation({
         mutationFn: (data: any) => updateCompany(companyId as string, data),
@@ -166,7 +168,7 @@ export default function CompanyDetailsPage() {
 
             <div className="flex justify-between items-start">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{company.name}</h1>
+                    <CompanyNameHeading companyId={companyId as string} name={company.name} canEdit={canEditCompany} />
                     <p className="text-muted-foreground">Panel avanzado de gestión para administradores.</p>
                 </div>
                 <div className="flex gap-2">
@@ -182,7 +184,7 @@ export default function CompanyDetailsPage() {
                     <TabsTrigger value="managers">Managers ({managers.length})</TabsTrigger>
                     <TabsTrigger value="taxes">Tasas & IRPF</TabsTrigger>
                     <TabsTrigger value="settings">Ajustes UI</TabsTrigger>
-                    {user?.role === 'admin' && (
+                    {canEditCompany && (
                         <TabsTrigger value="master" className="text-indigo-600 font-bold border-l-2 border-indigo-200 ml-2">
                             <Database className="h-4 w-4 mr-2" />
                             Master Config
@@ -248,7 +250,7 @@ export default function CompanyDetailsPage() {
                 </TabsContent>
 
                 {/* MASTER CONFIG TAB */}
-                {user?.role === 'admin' && (
+                {canEditCompany && (
                     <TabsContent value="master" className="pt-4">
                         <MasterConfigPanel company={company} onSave={(data) => updateCompanyMutation.mutate(data)} />
                     </TabsContent>
@@ -259,6 +261,101 @@ export default function CompanyDetailsPage() {
                     <CompanyConfigurationTab key={company.id} company={company} />
                 </TabsContent>
             </Tabs>
+        </div>
+    );
+}
+
+const COMPANY_NAME_MAX_LENGTH = 120;
+
+function CompanyNameHeading({ companyId, name, canEdit }: { companyId: string, name: string, canEdit: boolean }) {
+    const { toast } = useToast();
+    const queryClient = useQueryClient();
+    const [isEditing, setIsEditing] = React.useState(false);
+    const [draftName, setDraftName] = React.useState("");
+    const [validationError, setValidationError] = React.useState<string | null>(null);
+
+    const nameMutation = useMutation({
+        mutationFn: (newName: string) => updateCompany(companyId, { name: newName }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
+            setIsEditing(false);
+            setValidationError(null);
+            toast({ title: "Nombre de la empresa actualizado" });
+        },
+        onError: (error: AxiosError<{ detail?: string }>) => toast({
+            title: "Error al guardar el nombre",
+            description: error.response?.data?.detail || "No se pudo actualizar el nombre.",
+            variant: "destructive",
+        }),
+    });
+
+    if (!canEdit) {
+        return <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{name}</h1>;
+    }
+
+    const startEditing = () => {
+        setDraftName(name);
+        setValidationError(null);
+        setIsEditing(true);
+    };
+
+    const cancelEditing = () => {
+        setIsEditing(false);
+        setValidationError(null);
+    };
+
+    const saveName = () => {
+        const trimmed = draftName.trim();
+        if (trimmed.length === 0) {
+            setValidationError("El nombre no puede estar vacío.");
+            return;
+        }
+        if (trimmed.length > COMPANY_NAME_MAX_LENGTH) {
+            setValidationError(`El nombre no puede superar los ${COMPANY_NAME_MAX_LENGTH} caracteres.`);
+            return;
+        }
+        if (trimmed === name) {
+            setValidationError("El nombre no ha cambiado.");
+            return;
+        }
+        setValidationError(null);
+        nameMutation.mutate(trimmed);
+    };
+
+    if (!isEditing) {
+        return (
+            <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{name}</h1>
+                <Button variant="ghost" size="icon" onClick={startEditing} aria-label="Editar nombre de la empresa" title="Editar nombre">
+                    <Pencil className="h-4 w-4" />
+                </Button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-1">
+            <div className="flex items-center gap-2">
+                <Input
+                    value={draftName}
+                    onChange={(e) => {
+                        setDraftName(e.target.value);
+                        setValidationError(null);
+                    }}
+                    aria-label="Nombre de la empresa"
+                    aria-invalid={validationError !== null}
+                    className="max-w-md text-2xl font-bold h-auto py-1"
+                    disabled={nameMutation.isPending}
+                    autoFocus
+                />
+                <Button size="icon" onClick={saveName} disabled={nameMutation.isPending} aria-label="Guardar nombre" title="Guardar">
+                    {nameMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                </Button>
+                <Button variant="outline" size="icon" onClick={cancelEditing} disabled={nameMutation.isPending} aria-label="Cancelar edición de nombre" title="Cancelar">
+                    <X className="h-4 w-4" />
+                </Button>
+            </div>
+            {validationError && <p className="text-sm text-destructive">{validationError}</p>}
         </div>
     );
 }

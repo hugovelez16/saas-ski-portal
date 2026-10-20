@@ -33,7 +33,6 @@ const formSchema = z.object({
     name: z.string().min(2, {
         message: "El nombre de la empresa debe tener al menos 2 caracteres.",
     }),
-    fiscalId: z.string().optional(),
     isManaged: z.boolean().default(false),
     isActive: z.boolean().default(true),
 });
@@ -47,7 +46,6 @@ export function CompanyDialog() {
         resolver: zodResolver(formSchema),
         defaultValues: {
             name: "",
-            fiscalId: "",
             isManaged: false,
             isActive: true,
         },
@@ -109,19 +107,6 @@ export function CompanyDialog() {
                                     <FormLabel>Nombre de la empresa</FormLabel>
                                     <FormControl>
                                         <Input placeholder="Ej: Escuela Esquí Sierra" {...field} />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="fiscalId"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>NIF / CIF (Opcional)</FormLabel>
-                                    <FormControl>
-                                        <Input placeholder="B-12345678" {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>

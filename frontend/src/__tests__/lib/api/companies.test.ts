@@ -53,6 +53,15 @@ describe('Companies API Client', () => {
         expect(result.name).toBe('Escuela Actualizada');
     });
 
+    it('updateCompany should send reason only as audit payload field', async () => {
+        const payload = { isActive: false, reason: 'Impago' };
+        (mockedApi.put as any).mockResolvedValue({ data: { id: 'c-1', isActive: false } });
+
+        const result = await updateCompany('c-1', payload);
+        expect(mockedApi.put).toHaveBeenCalledWith('/companies/c-1', { isActive: false, reason: 'Impago' });
+        expect(result.isActive).toBe(false);
+    });
+
     it('getCompanies should GET /companies', async () => {
         (mockedApi.get as any).mockResolvedValue({ data: [{ id: 'c-1', name: 'Escuela 1' }] });
 

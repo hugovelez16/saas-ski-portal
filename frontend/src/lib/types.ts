@@ -30,7 +30,6 @@ export type UserSettings = any; // Placeholder for legacy references
 export interface Company {
     id: string;
     name: string;
-    fiscalId?: string | null;
     taxConfig: {
         social_security: number;
         irpf_base: number;
