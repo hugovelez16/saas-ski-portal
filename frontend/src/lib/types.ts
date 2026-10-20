@@ -184,7 +184,6 @@ export interface WorkLogCreate {
     hasNight?: boolean;
     arrivesPrior?: boolean;
     isGrossCalculation?: boolean;
-    groupId?: string | null;
 }
 
 export interface WorkLogBulkCreate extends Omit<WorkLogCreate, 'userId'> {

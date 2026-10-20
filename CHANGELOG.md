@@ -19,6 +19,27 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.12.1] - 2026-10-20
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Reglas de turnos (PR-08 del plan de empresa): membresia activa obligatoria, solo lectura del worker en empresa gestionada, turno inmutable en empresa y usuario, grupo generado por el servidor, validaciones de entrada y tope de `limit`.
+
+### Corregido
+
+- **`backend/routers/work_logs.py`**: crear un turno exige que el usuario del turno sea miembro activo de la empresa (tambien para el administrador de plataforma); `POST /work-logs/bulk` comprueba a todos los usuarios antes de crear ninguno y descarta usuarios duplicados. El worker en empresa gestionada no puede crear, editar ni borrar. `PUT /work-logs/{id}` rechaza (422) cambiar empresa o usuario del turno. Para quien no es administrador de plataforma, un turno inexistente responde 403 igual que uno ajeno.
+- **`backend/crud.py`**: `update_work_log` ya no falla con 500 en `apply_to_group` (el grupo se busca en `extra_data` y solo dentro de la misma empresa; la validacion es todo o nada). `update_work_log` y `delete_work_log` filtran por `company_id`. `create_work_log` y `create_work_log_bulk` rechazan miembros inactivos y generan siempre el `group_id` del lote; el `groupId` enviado por el cliente se ignora. Los turnos antiguos de miembros inactivos siguen siendo editables.
+- **`backend/schemas.py`**: `companyId` obligatorio al crear; fechas entre 2000-01-01 y hoy + 730 dias y `startDate <= endDate`; `duration`, `netAmount`, `grossAmount` y `amount` no negativos; `userIds` de 1 a 500; nuevo `WorkLogUpdate` con campos opcionales; `WorkLogResponse.groupId` se rellena desde `extra_data`. Las reglas de entrada no se aplican a las respuestas, para no romper la lectura de turnos antiguos.
+- **`GET /work-logs`**: `limit` limitado a 1..2000 (decision P-12); `X-Total-Count` sigue reflejando el total real.
+- **`frontend/`**: `list/page.tsx`, `calendar/page.tsx`, `work-logs-table.tsx` y `details-dialog.tsx` ocultan crear, editar y borrar turnos segun `usePermissions`; el worker en empresa gestionada ve el aviso "En esta empresa los turnos los registra el equipo gestor". `user-dialog.tsx` muestra el `detail` del 422 del backend y conserva el titular original al editar. `lib/types.ts` retira `groupId` de `WorkLogCreate`.
+
+### Cambios Internos
+
+- **Pruebas**: nuevo `backend/tests/routers/test_work_log_rules.py` y `frontend/src/__tests__/components/work-log-permissions.test.tsx`; `test_company_access.py` pasa a esperar 422 con `limit` por encima de 2000.
+- **`docs/empresa/plan-implementacion-empresa.md`**: decision sobre la carrera de `crud.remove_member` anotada en los seguimientos de PR-05.
+
+---
+
 ## [0.12.0] - 2026-10-20
 
 ### Tipo de Cambio SemVer

@@ -8,11 +8,11 @@ It ensures that data sent to and received from the API conforms to the expected 
 import json
 import math
 from datetime import date as dt_date
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 def to_camel(string: str) -> str:
@@ -40,21 +40,83 @@ class WorkLogBase(CamelModel):
     extra_data: dict[str, Any] | None = Field(default={}, alias="extraData")
     description: str | None = None
     company_id: UUID | None = Field(None, alias="companyId")
-    group_id: UUID | None = Field(None, alias="groupId")
 
 
-class WorkLogCreate(WorkLogBase):
-    """Schema for creating a new WorkLog entry."""
+MIN_WORKLOG_DATE = dt_date(2000, 1, 1)
+MAX_WORKLOG_FUTURE_DAYS = 730
+
+
+def _validate_worklog_dates(start: dt_date | None, end: dt_date | None) -> None:
+    """Rango de fechas de un turno: ordenadas y entre 2000-01-01 y hoy + 730 dias."""
+    max_date = dt_date.today() + timedelta(days=MAX_WORKLOG_FUTURE_DAYS)
+    for value in (start, end):
+        if value is not None and not (MIN_WORKLOG_DATE <= value <= max_date):
+            raise ValueError(f"Las fechas deben estar entre {MIN_WORKLOG_DATE.isoformat()} y {max_date.isoformat()}")
+    if start is not None and end is not None and start > end:
+        raise ValueError("start_date no puede ser posterior a end_date")
+
+
+class WorkLogInput(WorkLogBase):
+    """Reglas de entrada de turnos. No se aplican a WorkLogResponse para no romper la lectura de turnos antiguos."""
+
+    duration: float | None = Field(None, ge=0)
+    net_amount: float | None = Field(None, alias="netAmount", ge=0)
+    gross_amount: float | None = Field(None, alias="grossAmount", ge=0)
+    amount: float | None = Field(None, ge=0)  # Allow manual amount override
+
+    @model_validator(mode="after")
+    def _check_dates(self):
+        _validate_worklog_dates(self.start_date, self.end_date)
+        return self
+
+    @model_validator(mode="after")
+    def _check_company(self):
+        if self.company_id is None:
+            raise ValueError("company_id es obligatorio")
+        return self
+
+
+class WorkLogCreate(WorkLogInput):
+    """Schema for creating a new WorkLog entry. El `groupId` del cliente se ignora (lo genera el backend)."""
 
     user_id: UUID
-    amount: float | None = None  # Allow manual amount override
 
 
-class WorkLogBulkCreate(WorkLogBase):
+class WorkLogBulkCreate(WorkLogInput):
     """Schema for creating multiple WorkLog entries at once."""
 
-    user_ids: list[UUID] = Field(..., alias="userIds")
-    amount: float | None = None
+    user_ids: list[UUID] = Field(..., alias="userIds", min_length=1, max_length=500)
+
+
+class WorkLogUpdate(CamelModel):
+    """Edicion de un turno: campos opcionales. `user_id` y `company_id` solo se aceptan si no cambian."""
+
+    type: str | None = None
+    start_date: dt_date | None = Field(None, alias="startDate")
+    end_date: dt_date | None = Field(None, alias="endDate")
+    start_time: time | None = Field(None, alias="startTime")
+    end_time: time | None = Field(None, alias="endTime")
+    duration: float | None = Field(None, ge=0)
+    net_amount: float | None = Field(None, alias="netAmount", ge=0)
+    gross_amount: float | None = Field(None, alias="grossAmount", ge=0)
+    amount: float | None = Field(None, ge=0)
+    extra_data: dict[str, Any] | None = Field(None, alias="extraData")
+    description: str | None = None
+    user_id: UUID | None = Field(None, alias="userId")
+    company_id: UUID | None = Field(None, alias="companyId")
+
+    @model_validator(mode="after")
+    def _check_required_not_null(self):
+        # Un null explicito en un campo obligatorio del turno no es una edicion valida
+        for name in ("type", "start_date", "end_date"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} no puede ser nulo")
+        return self
+
+    @model_validator(mode="after")
+    def _check_dates(self):
+        _validate_worklog_dates(self.start_date, self.end_date)
+        return self
 
 
 class WorkLogResponse(WorkLogBase):
@@ -64,12 +126,23 @@ class WorkLogResponse(WorkLogBase):
     user_id: UUID
     amount: float | None = None
     gross_amount: float | None = Field(None, alias="grossAmount")
+    group_id: UUID | None = Field(None, alias="groupId")
 
     # SaaS Evolution: Historical snapshot (includes rate_applied inside snapshot["rate_applied"])
     calculation_snapshot: dict[str, Any] | None = Field(None, alias="calculationSnapshot")
 
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def _fill_group_id(self):
+        """El grupo vive en extra_data, no es columna."""
+        if self.group_id is None and self.extra_data and self.extra_data.get("group_id"):
+            try:
+                self.group_id = UUID(str(self.extra_data["group_id"]))
+            except ValueError:
+                pass
+        return self
 
 
 # UserDeviceResponse removed. Use SessionResponse instead.

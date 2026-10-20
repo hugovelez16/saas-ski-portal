@@ -21,6 +21,24 @@ import { WorkLogForm } from "./work-log-form";
 import { createWorkLog, updateWorkLog } from "@/lib/api/work-logs";
 import api from "@/lib/api";
 
+/**
+ * Convierte `detail` de una respuesta de error de FastAPI (string, lista de `{ msg }` o objeto)
+ * en un texto para el usuario. Devuelve null si no hay nada que mostrar.
+ */
+function extractDetailMessage(detail: unknown): string | null {
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+        return detail
+            .map((d: any) => (typeof d === 'string' ? d : d?.msg ?? JSON.stringify(d)))
+            .join(", ");
+    }
+    if (detail && typeof detail === 'object') {
+        const message = (detail as { message?: unknown }).message;
+        return typeof message === 'string' ? message : JSON.stringify(detail);
+    }
+    return null;
+}
+
 interface UserCreateWorkLogDialogProps {
     user: { id: string; firstName?: string | null; lastName?: string | null; activeCompanyId?: string | null };
     onLogUpdate?: () => void;
@@ -146,9 +164,10 @@ export function UserCreateWorkLogDialog({
             return;
         }
 
+        // En edicion el titular del turno es el dueno original: el backend rechaza cambiarlo (422)
         let logData: any = {
             ...formData,
-            userId: user.id,
+            userId: logToEdit ? logToEdit.userId : user.id,
             type: logType,
         };
 
@@ -193,17 +212,11 @@ export function UserCreateWorkLogDialog({
 
         } catch (error: any) {
             console.error("Error saving work log:", error);
-            let msg = "Could not save the log.";
-            
-            if (error.response?.data?.detail) {
-                const detail = error.response.data.detail;
-                if (typeof detail === 'string') {
-                    msg = detail;
-                } else if (Array.isArray(detail)) {
-                    msg = detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
-                } else if (typeof detail === 'object') {
-                    msg = detail.message || JSON.stringify(detail);
-                }
+            let msg = "No se pudo guardar el turno.";
+            const detailMsg = extractDetailMessage(error.response?.data?.detail);
+
+            if (detailMsg) {
+                msg = detailMsg;
             } else if (error.message) {
                 msg = error.message;
             }

@@ -25,6 +25,7 @@ import { WorkLogDetailsDialog } from "@/components/work-log/details-dialog";
 import { UserCreateWorkLogDialog } from "@/components/work-log/user-dialog";
 import { ExportLogsDialog } from "@/components/work-log/export-dialog";
 import { FilterBar, FilterConfig } from "@/components/ui/filter-bar";
+import { usePermissions } from "@/hooks/use-permissions";
 
 
 import { useSearchParams } from "next/navigation";
@@ -193,6 +194,7 @@ export default function ListPage() {
     if (!activeCompanyId) return null;
     return companies.find(c => c.id === activeCompanyId);
   }, [companies, activeCompanyId]);
+  const perms = usePermissions(activeCompany ?? null);
 
   const dynamicFields = useMemo(() => {
     const keys = new Set<string>();
@@ -299,17 +301,24 @@ export default function ListPage() {
           <p className="text-muted-foreground">All your work logs in one place.</p>
         </div>
         {user && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <ExportLogsDialog workLogs={sortedWorkLogs} />
-            <UserCreateWorkLogDialog
-              user={{ id: user.id }}
-              onLogUpdate={handleLogUpdate}
-            >
-              <Button>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add Work Log
-              </Button>
-            </UserCreateWorkLogDialog>
+            {perms.canCreateWorkLog && (
+              <UserCreateWorkLogDialog
+                user={{ id: user.id }}
+                onLogUpdate={handleLogUpdate}
+              >
+                <Button>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Add Work Log
+                </Button>
+              </UserCreateWorkLogDialog>
+            )}
+            {perms.role === 'worker' && perms.isManaged && (
+              <p className="text-sm text-muted-foreground italic">
+                En esta empresa los turnos los registra el equipo gestor
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -563,12 +572,16 @@ export default function ListPage() {
                     </TableCell>
                     <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingLog(log)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600" onClick={() => handleDeleteLog(log.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {perms.canEditWorkLog(log) && (
+                          <>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingLog(log)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600" onClick={() => handleDeleteLog(log.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
