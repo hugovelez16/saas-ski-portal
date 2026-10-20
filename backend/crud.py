@@ -78,17 +78,21 @@ def update_user_status(db: Session, user_id: str, is_active: bool):
     return user
 
 
-def get_company_member(db: Session, user_id: Any, company_id: Any):
+MSG_NO_ACTIVE_MEMBERSHIP = "El usuario no tiene una membresia activa en esta empresa"
+
+
+def get_company_member(db: Session, user_id: Any, company_id: Any, *, only_active: bool = False):
     try:
         cid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
         uid = uuid.UUID(str(user_id)) if not isinstance(user_id, uuid.UUID) else user_id
     except (ValueError, TypeError, AttributeError):
         return None
-    return (
-        db.query(models.CompanyMember)
-        .filter(models.CompanyMember.user_id == uid, models.CompanyMember.company_id == cid)
-        .first()
+    query = db.query(models.CompanyMember).filter(
+        models.CompanyMember.user_id == uid, models.CompanyMember.company_id == cid
     )
+    if only_active:
+        query = query.filter(models.CompanyMember.is_active == True)  # noqa: E712
+    return query.first()
 
 
 def get_worklog_unit(type_def: dict) -> str:
@@ -343,15 +347,13 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
 
     # Get definitions and rates
     company = db.query(models.Company).filter(models.Company.id == company_id).first()
-    member = get_company_member(db, user_id, str(company_id))
+    member = get_company_member(db, user_id, str(company_id), only_active=True)
 
     if not company or not member:
-        # Fallback or error handling - for now, basic defaults if missing
-        defs = {}
-        rates = {}
-    else:
-        defs = company.worklog_definitions or {}
-        rates = member.rates_config or {}
+        # Defensa en profundidad: el router ya exige membresia activa (T1)
+        raise ValueError(MSG_NO_ACTIVE_MEMBERSHIP)
+    defs = company.worklog_definitions or {}
+    rates = member.rates_config or {}
 
     # Identify work type definition and rate
     work_type = work_log.type.value if hasattr(work_log.type, "value") else work_log.type
@@ -367,6 +369,7 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
 
     # Prepare DB Obj
     work_log_data = work_log.model_dump()
+    work_log_data.pop("group_id", None)
 
     # Adjust end_date if it crosses midnight
     if get_worklog_unit(type_def) == "hours" and work_log_data.get("start_time") and work_log_data.get("end_time"):
@@ -382,11 +385,9 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
     for k in ["net_amount", "gross_amount", "rate_applied", "duration", "amount"]:
         work_log_data.pop(k, None)
 
-    # Handle group_id which is not a dedicated column
-    group_id = work_log_data.pop("group_id", None)
-    extra_data = work_log_data.get("extra_data") or {}
-    if group_id:
-        extra_data["group_id"] = str(group_id)
+    # El grupo solo lo genera el backend (bulk): se descarta un group_id colado en extra_data
+    extra_data = dict(work_log_data.get("extra_data") or {})
+    extra_data.pop("group_id", None)
     work_log_data["extra_data"] = extra_data
 
     db_work_log = models.WorkLog(
@@ -409,7 +410,7 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
     """
     Creates multiple work log entries for different users with the same group_id.
     """
-    group_id = work_log_bulk.group_id or uuid.uuid4()
+    group_id = uuid.uuid4()
     company_id = work_log_bulk.company_id
 
     company = db.query(models.Company).filter(models.Company.id == company_id).first()
@@ -422,9 +423,18 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
 
     created_logs = []
 
-    for user_id in work_log_bulk.user_ids:
-        member = get_company_member(db, str(user_id), str(company_id))
-        rates = member.rates_config or {} if member else {}
+    # Todo o nada: se comprueba a todos los usuarios antes de crear ningun turno
+    members = {}
+    user_ids = list(dict.fromkeys(work_log_bulk.user_ids))  # sin duplicados: un turno por usuario
+    for user_id in user_ids:
+        member = get_company_member(db, str(user_id), str(company_id), only_active=True)
+        if member is None:
+            raise ValueError(MSG_NO_ACTIVE_MEMBERSHIP)
+        members[user_id] = member
+
+    for user_id in user_ids:
+        member = members[user_id]
+        rates = member.rates_config or {}
         type_rate = rates.get(work_type, {})
 
         # Validation: Ensure rate is set (and non-zero) unless it's a manual override
@@ -439,8 +449,8 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
         # Build individual log data
         individual_log_data = work_log_bulk.model_dump(by_alias=False)
         individual_log_data.pop("user_ids", None)
+        individual_log_data.pop("group_id", None)
         individual_log_data["user_id"] = user_id
-        individual_log_data["group_id"] = group_id
 
         # Adjust end_date if it crosses midnight
         if (
@@ -461,11 +471,9 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
         for k in ["net_amount", "gross_amount", "rate_applied", "duration", "amount"]:
             individual_log_data.pop(k, None)
 
-        # Handle group_id which is not a dedicated column
-        group_id_val = individual_log_data.pop("group_id", None)
-        extra_data_val = individual_log_data.get("extra_data") or {}
-        if group_id_val:
-            extra_data_val["group_id"] = str(group_id_val)
+        # group_id no es una columna: vive en extra_data y lo genera siempre el backend
+        extra_data_val = dict(individual_log_data.get("extra_data") or {})
+        extra_data_val["group_id"] = str(group_id)
         individual_log_data["extra_data"] = extra_data_val
 
         db_work_log = models.WorkLog(
@@ -737,29 +745,45 @@ def _compute_work_log_summary(
     }
 
 
-def update_work_log(db: Session, work_log_id: str, work_log: schemas.WorkLogCreate, apply_to_group: bool = False):
+def update_work_log(
+    db: Session,
+    work_log_id: str,
+    work_log: schemas.WorkLogUpdate,
+    *,
+    company_id: Any,
+    apply_to_group: bool = False,
+):
     """
     SaaS Evolution: Updates using the dynamic engine.
     Supports cascading updates for grouped logs.
+    Solo toca turnos de `company_id`: devuelve None si el turno no existe o es de otra empresa.
     """
-    db_work_log = db.query(models.WorkLog).filter(models.WorkLog.id == work_log_id).first()
+    db_work_log = (
+        db.query(models.WorkLog)
+        .filter(models.WorkLog.id == work_log_id, models.WorkLog.company_id == company_id)
+        .first()
+    )
     if not db_work_log:
         return None
 
-    # If apply_to_group is true and we have a group_id
-    group_id = getattr(db_work_log, "group_id", None) or (
-        db_work_log.extra_data.get("group_id") if db_work_log.extra_data else None
-    )
+    # If apply_to_group is true and we have a group_id (vive en extra_data, no es columna)
+    group_id = db_work_log.extra_data.get("group_id") if db_work_log.extra_data else None
 
     if apply_to_group and group_id:
-        # Find all logs in the group
+        # Turnos del mismo grupo Y de la misma empresa
         logs_in_group = (
             db.query(models.WorkLog)
             .filter(
-                or_(models.WorkLog.group_id == group_id, models.WorkLog.extra_data["group_id"].astext == str(group_id))
+                models.WorkLog.company_id == db_work_log.company_id,
+                models.WorkLog.extra_data["group_id"].as_string() == str(group_id),
             )
             .all()
         )
+
+        # Todo o nada: se valida cada turno del grupo antes de aplicar (y confirmar) ninguno
+        payload = work_log.model_dump(exclude_unset=True)
+        for log in logs_in_group:
+            _check_update_dates(log, payload)
 
         primary_updated = None
         for log in logs_in_group:
@@ -772,11 +796,33 @@ def update_work_log(db: Session, work_log_id: str, work_log: schemas.WorkLogCrea
     return _update_single_work_log(db, db_work_log, work_log)
 
 
-def _update_single_work_log(db: Session, db_work_log: models.WorkLog, work_log: schemas.WorkLogCreate):
+def _check_update_dates(db_work_log: models.WorkLog, new_data: dict):
+    """Una edicion parcial no puede dejar las fechas desordenadas. Solo se valida si el payload toca fechas,
+    para no bloquear la edicion de otros campos en turnos antiguos."""
+    if "start_date" not in new_data and "end_date" not in new_data:
+        return
+    start = new_data.get("start_date", db_work_log.start_date)
+    end = new_data.get("end_date", db_work_log.end_date)
+    if start > end:
+        raise ValueError("start_date no puede ser posterior a end_date")
+
+
+def _update_single_work_log(db: Session, db_work_log: models.WorkLog, work_log: schemas.WorkLogUpdate):
     # Merge existing and new data
     current_data = {c.name: getattr(db_work_log, c.name) for c in db_work_log.__table__.columns}
     new_data = work_log.model_dump(exclude_unset=True)
+    # Empresa y usuario no se pueden cambiar (T3); `amount` y `group_id` no son columnas
+    for key in ("user_id", "company_id", "group_id"):
+        new_data.pop(key, None)
+    if "extra_data" in new_data:
+        # El grupo no lo controla el cliente: se conserva el del turno
+        extra = dict(new_data["extra_data"] or {})
+        extra.pop("group_id", None)
+        if (db_work_log.extra_data or {}).get("group_id"):
+            extra["group_id"] = db_work_log.extra_data["group_id"]
+        new_data["extra_data"] = extra
     merged_data = {**current_data, **new_data}
+    _check_update_dates(db_work_log, new_data)
 
     # Recalculate
     owner_id = str(db_work_log.user_id)
@@ -1154,8 +1200,13 @@ def ensure_platform_admin_invariants(db: Session, actor, target, *, new_role: st
             raise PolicyError(409, "La plataforma no puede quedarse sin administradores")
 
 
-def delete_work_log(db: Session, work_log_id: str):
-    db_work_log = db.query(models.WorkLog).filter(models.WorkLog.id == work_log_id).first()
+def delete_work_log(db: Session, work_log_id: str, *, company_id: Any):
+    """Borra un turno solo si es de `company_id`; devuelve None si no existe o es de otra empresa."""
+    db_work_log = (
+        db.query(models.WorkLog)
+        .filter(models.WorkLog.id == work_log_id, models.WorkLog.company_id == company_id)
+        .first()
+    )
     if db_work_log:
         db.delete(db_work_log)
         db.commit()

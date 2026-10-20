@@ -49,9 +49,12 @@ def create_work_log(
     """
     ctx = deps.authorize(db, current_user, work_log.company_id, min_role=access_policy.ROLE_WORKER)
 
-    # Crear para otro usuario exige rol manager/PA en la empresa destino
-    if str(work_log.user_id) != str(current_user.id) and ctx.role not in _COMPANY_VIEW_ROLES:
-        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+    # T2: worker solo en empresa autonoma y para si mismo; manager y PA siempre
+    access_policy.can_write_work_log(
+        role=ctx.role, is_managed=ctx.is_managed, is_owner=str(work_log.user_id) == str(current_user.id)
+    )
+    # T1: el usuario del turno debe ser miembro activo de la empresa (tambien para el PA)
+    deps.require_active_member(db, work_log.user_id, work_log.company_id)
 
     try:
         new_log = crud.create_work_log(db=db, work_log=work_log)
@@ -76,6 +79,10 @@ def create_work_log_bulk(
     Create multiple work log entries at once (for managers).
     """
     deps.authorize(db, current_user, work_log_bulk.company_id, min_role=access_policy.ROLE_MANAGER)
+
+    # T1: un solo usuario invalido rechaza todo el lote antes de crear ningun turno
+    for user_id in work_log_bulk.user_ids:
+        deps.require_active_member(db, user_id, work_log_bulk.company_id)
 
     try:
         logs = crud.create_work_log_bulk(db=db, work_log_bulk=work_log_bulk)
@@ -147,7 +154,7 @@ def _resolve_work_log_scope(
 def read_work_logs(
     response: Response,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1),  # El tope superior se aplica en PR-08, tras los agregados de PR-07
+    limit: int = Query(100, ge=1, le=2000),  # Tope [P-12]: las sumas se piden a /work-logs/summary
     user_id: UUID = None,  # Optional filter via query param
     company_id: UUID = None,  # Optional filter via query param
     start_date: date = None,
@@ -263,6 +270,13 @@ def get_billing_summary(
     return summary
 
 
+def _work_log_not_found(current_user: models.User) -> Exception:
+    """Anti-enumeracion [P-5]: quien no es PA recibe el mismo 403 para un turno inexistente que para uno ajeno."""
+    if deps.acting_platform_admin(current_user):
+        return HTTPException(status_code=404, detail="Work log not found")
+    return PolicyError(403, access_policy.MSG_NO_ACCESS)
+
+
 def _authorize_work_log_write(db: Session, current_user: models.User, log: models.WorkLog) -> str:
     """Valida que el usuario puede escribir sobre el turno y devuelve su rol efectivo."""
     is_owner = str(log.user_id) == str(current_user.id)
@@ -285,7 +299,7 @@ def delete_work_log(
 ):
     log = db.query(models.WorkLog).filter(models.WorkLog.id == work_log_id).first()
     if not log:
-        raise HTTPException(status_code=404, detail="Work log not found")
+        raise _work_log_not_found(current_user)
 
     _authorize_work_log_write(db, current_user, log)
 
@@ -296,7 +310,7 @@ def delete_work_log(
         extra_data={"work_log_id": str(work_log_id), "user_id": str(log.user_id)},
     )
     company_id = log.company_id
-    crud.delete_work_log(db, str(work_log_id))
+    crud.delete_work_log(db, str(work_log_id), company_id=company_id)
     if company_id:
         crud.invalidate_dashboard_summary(company_id)
     return {"ok": True}
@@ -305,14 +319,14 @@ def delete_work_log(
 @router.put("/{work_log_id}", response_model=schemas.WorkLogResponse)
 def update_work_log(
     work_log_id: UUID,
-    work_log: schemas.WorkLogCreate,
+    work_log: schemas.WorkLogUpdate,
     apply_to_group: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user),
 ):
     log = db.query(models.WorkLog).filter(models.WorkLog.id == work_log_id).first()
     if not log:
-        raise HTTPException(status_code=404, detail="Work log not found")
+        raise _work_log_not_found(current_user)
 
     role = _authorize_work_log_write(db, current_user, log)
 
@@ -320,7 +334,20 @@ def update_work_log(
     if apply_to_group and role not in _COMPANY_VIEW_ROLES:
         raise PolicyError(403, access_policy.MSG_FORBIDDEN)
 
-    updated_log = crud.update_work_log(db, str(work_log_id), work_log, apply_to_group=apply_to_group)
+    # T3: empresa y usuario de un turno no cambian; se aceptan solo si coinciden con los actuales
+    if (work_log.user_id is not None and str(work_log.user_id) != str(log.user_id)) or (
+        work_log.company_id is not None and str(work_log.company_id) != str(log.company_id)
+    ):
+        raise PolicyError(422, "No se puede cambiar la empresa ni el usuario de un turno")
+
+    try:
+        updated_log = crud.update_work_log(
+            db, str(work_log_id), work_log, company_id=log.company_id, apply_to_group=apply_to_group
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if updated_log is None:
+        raise _work_log_not_found(current_user)
 
     record_impersonation_audit(
         db,

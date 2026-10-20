@@ -667,7 +667,7 @@ def test_expired_token_returns_401(client, db):
     assert resp.status_code == 401, resp.text
 
 
-# --- Limites de paginacion en GET /work-logs (sin tope de limit en PR-03) ---
+# --- Limites de paginacion en GET /work-logs (tope de limit 2000 desde PR-08) ---
 
 
 def test_work_logs_negative_skip_returns_422(client, db):
@@ -688,13 +688,14 @@ def test_work_logs_zero_limit_returns_422(client, db):
     assert resp.status_code == 422, resp.text
 
 
-def test_work_logs_limit_5000_is_accepted(client, db):
+def test_work_logs_limit_above_cap_returns_422(client, db):
+    """Tope de limit (2000) aplicado en PR-08 [P-12]."""
     user = make_user(db)
     as_user(client, user)
 
     resp = client.get("/work-logs", params={"limit": 5000})
 
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 422, resp.text
 
 
 # --- Cambio de empresa obligatorio: no PA miembro de A y B con token cid=B ---
