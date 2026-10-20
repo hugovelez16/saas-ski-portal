@@ -22,7 +22,7 @@ import { createWorkLog, updateWorkLog } from "@/lib/api/work-logs";
 import api from "@/lib/api";
 
 interface UserCreateWorkLogDialogProps {
-    user: { id: string; firstName?: string | null; lastName?: string | null; defaultCompanyId?: string | null; activeCompanyId?: string | null };
+    user: { id: string; firstName?: string | null; lastName?: string | null; activeCompanyId?: string | null };
     onLogUpdate?: () => void;
     children?: React.ReactNode;
     logToEdit?: WorkLog | null;
@@ -82,7 +82,7 @@ export function UserCreateWorkLogDialog({
     useEffect(() => {
         if (open && companies.length > 0 && !formData.companyId && !logToEdit) {
             // Priority: Active Context > Last Selected > User Default > Personal > First Available
-            let targetId = user?.activeCompanyId || lastSelectedCompanyId || user.defaultCompanyId;
+            let targetId = user?.activeCompanyId || lastSelectedCompanyId;
 
             if (!targetId) {
                 const personal = companies.find((c: any) => c.name === "Personal");
@@ -91,7 +91,7 @@ export function UserCreateWorkLogDialog({
 
             setFormData(prev => ({ ...prev, companyId: targetId || undefined }));
         }
-    }, [open, companies, formData.companyId, logToEdit, lastSelectedCompanyId, user?.activeCompanyId, user.defaultCompanyId]);
+    }, [open, companies, formData.companyId, logToEdit, lastSelectedCompanyId, user?.activeCompanyId]);
 
     // Initialize Form Data when entering Edit Mode
     useEffect(() => {
@@ -250,7 +250,6 @@ export function UserCreateWorkLogDialog({
                         logType={logType}
                         setLogType={setLogType}
                         companies={companies || []}
-                        defaultCompanyId={user.defaultCompanyId}
                     />
                 </DialogHeader>
 

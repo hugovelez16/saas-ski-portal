@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getUser, getUserCompanies } from "@/lib/api/users";
 import { getWorkLogsPage, deleteWorkLog } from "@/lib/api/work-logs";
-import { updateCompanyMember } from "@/lib/api/companies";
+import { updateMemberRates, updateMemberRole, updateMemberStatus, MemberRole } from "@/lib/api/companies";
 import { useParams, useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -132,7 +132,15 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
     }, [company, worklogDefinitions, ratesConfig, form]);
 
     const mutation = useMutation({
-        mutationFn: (data: any) => updateCompanyMember(company.id, user.id, data),
+        mutationFn: async (data: { role?: string; isActive?: boolean; ratesConfig: Record<string, any> }) => {
+            if (data.role && data.role !== company.role) {
+                await updateMemberRole(company.id, user.id, data.role as MemberRole);
+            }
+            if (data.isActive !== undefined && data.isActive !== (company.isActiveMember ?? true)) {
+                await updateMemberStatus(company.id, user.id, data.isActive ? "active" : "inactive");
+            }
+            return updateMemberRates(company.id, user.id, data.ratesConfig);
+        },
         onSuccess: () => {
             toast({ title: "Configuración actualizada" });
             onUpdate();
@@ -416,7 +424,7 @@ export default function UserDetailPage() {
 
     const updateMemberMutation = useMutation({
         mutationFn: ({ companyId, data }: { companyId: string, data: any }) =>
-            updateCompanyMember(companyId, userId, data),
+            updateMemberRates(companyId, userId, data.ratesConfig),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["user-companies", userId] });
             toast({ title: "Configuración de miembro actualizada" });

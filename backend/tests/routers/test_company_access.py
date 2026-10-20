@@ -20,6 +20,7 @@ from tests.factories import as_user, make_company, make_member, make_token, make
 MSG_NO_ACCESS = "No tienes acceso a esta empresa"
 MSG_SUSPENDED = "Empresa inactiva o suspendida"
 MSG_SWITCH_COMPANY = "Cambia a esta empresa para gestionarla"
+MSG_FORBIDDEN = "No tienes permisos para esta accion"
 MSG_VIEW_AS_READONLY_FRAGMENT = "solo lectura"
 
 PA_CLAIMS = {"is_admin": True}
@@ -192,7 +193,7 @@ def test_view_as_manager_pa_cannot_update_member_role(client, db):
     make_member(db, worker, company, role="worker")
     as_user(client, pa, company, claims={**PA_CLAIMS, "view_as": "manager"})
 
-    resp = client.put(f"/companies/{company.id}/members/{worker.id}", json={"role": "manager"})
+    resp = client.put(f"/companies/{company.id}/members/{worker.id}/role", json={"role": "manager"})
 
     assert resp.status_code == 403, resp.text
 
@@ -536,7 +537,7 @@ def test_role_downgrade_takes_effect_immediately(client, db):
     assert client.get(f"/companies/{company.id}/members").status_code == 200
 
     as_user(client, pa, company, claims=PA_CLAIMS)
-    resp_change = client.put(f"/companies/{company.id}/members/{manager.id}", json={"role": "worker"})
+    resp_change = client.put(f"/companies/{company.id}/members/{manager.id}/role", json={"role": "worker"})
     assert resp_change.status_code == 200, resp_change.text
 
     # El token del manager sigue siendo el mismo (claim role=manager); solo cambia la BD.
@@ -556,7 +557,9 @@ def test_membership_deactivation_takes_effect_immediately(client, db):
     assert client.get(f"/companies/{company.id}/members").status_code == 200
 
     as_user(client, pa, company, claims=PA_CLAIMS)
-    resp_change = client.put(f"/companies/{company.id}/members/{manager.id}", json={"isActive": False})
+    resp_change = client.put(
+        f"/companies/{company.id}/members/{manager.id}/status", params={"status": "inactive"}
+    )
     assert resp_change.status_code == 200, resp_change.text
 
     _set_token(client, manager, company, claims=MANAGER_CLAIMS)
@@ -768,14 +771,16 @@ def test_member_of_a_and_b_with_token_b_cannot_delete_work_log_of_a(client, db, 
 
 @pytest.mark.parametrize("role", ["manager", "worker"])
 def test_member_of_a_and_b_with_token_b_cannot_update_member_of_a(client, db, role):
+    # PR-05: el cambio de rol es solo de plataforma (PA). Para un no PA la respuesta es el 403 generico
+    # (anti-enumeracion, P-5), no el mensaje de cambio de empresa.
     user, company_a, company_b = _member_of_a_and_b(db, role)
     other = _other_member(db, company_a, role="worker")
     as_user(client, user, company_b, claims={"role": role})
 
-    resp = client.put(f"/companies/{company_a.id}/members/{other.id}", json={"role": "manager"})
+    resp = client.put(f"/companies/{company_a.id}/members/{other.id}/role", json={"role": "manager"})
 
     assert resp.status_code == 403, resp.text
-    assert resp.json()["detail"] == MSG_SWITCH_COMPANY
+    assert resp.json()["detail"] == MSG_FORBIDDEN
     member = db.query(models.CompanyMember).filter_by(user_id=other.id, company_id=company_a.id).one()
     assert member.role == models.CompanyRole.worker
 
@@ -820,10 +825,18 @@ def test_manager_of_a_and_b_with_token_a_can_write_company_a(client, db):
 
     assert client.post("/work-logs", json=_work_log_body(user, company_a)).status_code == 200
     assert client.put(f"/work-logs/{work_log.id}", json=_work_log_body(other, company_a)).status_code == 200
-    # Un manager no puede cambiar roles (regla del endpoint), pero si el estado de membresia.
-    assert (
-        client.put(f"/companies/{company_a.id}/members/{other.id}", json={"isActive": False}).status_code == 200
+    # PR-05: el estado de membresia es solo de plataforma (PA). Un manager recibe 403 y el estado no cambia.
+    status_resp = client.put(f"/companies/{company_a.id}/members/{other.id}/status", params={"status": "inactive"})
+    assert status_resp.status_code == 403, status_resp.text
+    assert status_resp.json()["detail"] == MSG_FORBIDDEN
+    member = db.query(models.CompanyMember).filter_by(user_id=other.id, company_id=company_a.id).one()
+    assert member.is_active is True
+    # Escritura de membresia que el manager si tiene: tarifas de un miembro de su empresa gestionada.
+    rates_resp = client.put(
+        f"/companies/{company_a.id}/members/{other.id}/rates",
+        json={"ratesConfig": {"particular": {"base_rate": 20.0}}},
     )
+    assert rates_resp.status_code == 200, rates_resp.text
     assert client.delete(f"/work-logs/{work_log.id}").status_code == 200
 
 

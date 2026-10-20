@@ -22,7 +22,6 @@ class SqlAlchemyUserMapper:
             role=role_enum,
             must_change_password=bool(orm_user.must_change_password),
             is_2fa_enabled=bool(orm_user.is_2fa_enabled),
-            default_company_id=str(orm_user.default_company_id) if orm_user.default_company_id else None,
             created_at=orm_user.created_at,
         )
 
@@ -38,7 +37,6 @@ class SqlAlchemyUserMapper:
             "role": role_orm,
             "must_change_password": domain_user.must_change_password,
             "is_2fa_enabled": domain_user.is_2fa_enabled,
-            "default_company_id": domain_user.default_company_id,
         }
         if hashed_password:
             kwargs["hashed_password"] = hashed_password

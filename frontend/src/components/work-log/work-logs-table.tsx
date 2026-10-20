@@ -19,7 +19,7 @@ interface WorkLogsTableProps {
     companies: Company[];
     onUpdate: () => void;
     isLoading?: boolean;
-    user?: { id: string; firstName?: string | null; lastName?: string | null; defaultCompanyId?: string | null; activeCompanyId?: string | null };
+    user?: { id: string; firstName?: string | null; lastName?: string | null; activeCompanyId?: string | null };
     showUserColumn?: boolean;
     readOnly?: boolean;
     fixedCompanyId?: string;

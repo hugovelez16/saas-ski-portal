@@ -18,7 +18,6 @@ export interface UserProfile {
     activeRole?: string | null;
     viewAs?: 'manager' | 'worker' | null;
     isReadOnlyView?: boolean;
-    defaultCompanyId?: string | null;
     createdAt: string;
 }
 

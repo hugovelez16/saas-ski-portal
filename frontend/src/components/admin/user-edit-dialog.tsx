@@ -33,6 +33,7 @@ import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { updateUser, resetUser2fa } from "@/lib/api/users";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Pencil } from "lucide-react";
 import { User } from "@/lib/types";
 
@@ -53,6 +54,8 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
     const [open, setOpen] = useState(false);
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    const { isPlatformAdmin, isReadOnlyView } = usePermissions();
+    const canResetPassword = isPlatformAdmin && !isReadOnlyView;
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -166,6 +169,7 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
                             )}
                         />
 
+                        {canResetPassword && (
                         <div className="flex justify-end -mt-2 mb-2">
                             <Button
                                 type="button"
@@ -187,6 +191,7 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
                                 Generate & Email Password
                             </Button>
                         </div>
+                        )}
                         {user.is2faEnabled && (
                             <div className="flex justify-end -mt-2 mb-2">
                                 <Button

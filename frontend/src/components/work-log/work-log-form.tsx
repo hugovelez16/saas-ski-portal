@@ -30,11 +30,10 @@ interface WorkLogFormProps {
     logType: string;
     setLogType: (type: string) => void;
     companies: any[];
-    defaultCompanyId?: string | null;
     hideCompanySelector?: boolean;
 }
 
-export function WorkLogForm({ formData, setFormData, logType, setLogType, companies, defaultCompanyId, hideCompanySelector }: WorkLogFormProps) {
+export function WorkLogForm({ formData, setFormData, logType, setLogType, companies, hideCompanySelector }: WorkLogFormProps) {
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const { user } = useAuth();
 
@@ -63,13 +62,13 @@ export function WorkLogForm({ formData, setFormData, logType, setLogType, compan
     useEffect(() => {
         if (companies.length > 0 && !formData.companyId) {
             // SaaS Context Driven: Always prefer active company from JWT context
-            const targetId = user?.activeCompanyId || defaultCompanyId || user?.defaultCompanyId || companies[0].id;
-            
+            const targetId = user?.activeCompanyId || companies[0].id;
+
             if (targetId) {
                 setFormData(prev => ({ ...prev, companyId: targetId }));
             }
         }
-    }, [companies, formData.companyId, user?.activeCompanyId, user?.defaultCompanyId, defaultCompanyId, setFormData]);
+    }, [companies, formData.companyId, user?.activeCompanyId, setFormData]);
 
     // Ensure valid logType when company changes or mounts
     useEffect(() => {

@@ -30,13 +30,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
 import { useToast } from "@/hooks/use-toast";
@@ -50,7 +43,6 @@ import { Company, CompanyMember } from "@/lib/types";
 const userFormSchema = z.object({
   firstName: z.string().min(2),
   lastName: z.string().min(2),
-  defaultCompanyId: z.string().optional(),
 });
 
 const passwordSchema = z.object({
@@ -109,7 +101,6 @@ export default function ProfilePage() {
     defaultValues: {
       firstName: user?.firstName || "",
       lastName: user?.lastName || "",
-      defaultCompanyId: user?.defaultCompanyId || "",
     }
   });
 
@@ -139,7 +130,6 @@ export default function ProfilePage() {
       userForm.reset({
         firstName: user.firstName || "",
         lastName: user.lastName || "",
-        defaultCompanyId: user.defaultCompanyId || "",
       });
     }
   }, [user?.id, userForm]);
@@ -198,7 +188,7 @@ export default function ProfilePage() {
 
   // Mutations
   const userMutation = useMutation({
-    mutationFn: (values: { firstName: string; lastName: string; defaultCompanyId?: string }) => updateMe(values),
+    mutationFn: (values: { firstName: string; lastName: string }) => updateMe(values),
     onSuccess: async () => {
       await checkAuth();
       toast({ title: "Profile updated" });
@@ -286,7 +276,7 @@ export default function ProfilePage() {
     rateMutation.mutate(payload);
   }
 
-  function onUserSubmit(data: { firstName: string; lastName: string; defaultCompanyId?: string }) {
+  function onUserSubmit(data: { firstName: string; lastName: string }) {
     userMutation.mutate(data);
   }
 
@@ -339,31 +329,6 @@ export default function ProfilePage() {
                       <FormControl>
                         <Input {...field} />
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={userForm.control}
-                  name="defaultCompanyId"
-                  render={({ field }) => (
-                    <FormItem className="md:col-span-2">
-                      <FormLabel>Empresa de Inicio (Login)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""} disabled={myCompanies.length === 0}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar empresa de inicio" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {myCompanies.map((c: any) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>Esta empresa se seleccionará automáticamente al iniciar sesión si no eliges otra.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

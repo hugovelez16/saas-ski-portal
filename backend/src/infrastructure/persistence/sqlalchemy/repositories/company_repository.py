@@ -40,7 +40,6 @@ class SqlAlchemyUserRepository(UserRepositoryPort):
             existing.first_name = user.first_name
             existing.last_name = user.last_name
             existing.is_active = user.is_active
-            existing.default_company_id = user.default_company_id
             self.db.commit()
             self.db.refresh(existing)
             return SqlAlchemyUserMapper.to_domain(existing)

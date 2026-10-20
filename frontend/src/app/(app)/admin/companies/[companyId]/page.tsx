@@ -3,7 +3,8 @@ export const dynamic = "force-dynamic";
 
 import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getCompaniesDetailed, updateMemberStatus, updateCompanyMember, getCompanyRates, updateCompany } from "@/lib/api/companies";
+import { getCompaniesDetailed, updateMemberStatus, updateMemberRole, MemberRole, getCompanyRates, updateCompany } from "@/lib/api/companies";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useParams, useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator, BreadcrumbPage } from "@/components/ui/breadcrumb";
@@ -40,6 +41,7 @@ export default function CompanyDetailsPage() {
     });
 
     const company = companies.find(c => c.id === companyId);
+    const { canManageMembers } = usePermissions();
 
     const updateCompanyMutation = useMutation({
         mutationFn: (data: any) => updateCompany(companyId as string, data),
@@ -61,8 +63,8 @@ export default function CompanyDetailsPage() {
     });
 
     const roleMutation = useMutation({
-        mutationFn: ({ userId, role }: { userId: string, role: string }) =>
-            updateCompanyMember(companyId as string, userId, { role }),
+        mutationFn: ({ userId, role }: { userId: string, role: MemberRole }) =>
+            updateMemberRole(companyId as string, userId, role),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
             toast({ title: "Rol actualizado" });
@@ -116,7 +118,7 @@ export default function CompanyDetailsPage() {
                 const member = row.original;
                 return (
                     <div className="flex items-center gap-2">
-                        {member.role === 'worker' ? (
+                        {canManageMembers && (member.role === 'worker' ? (
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -141,7 +143,7 @@ export default function CompanyDetailsPage() {
                             >
                                 Degradar
                             </Button>
-                        )}
+                        ))}
                     </div>
                 );
             }
@@ -168,7 +170,7 @@ export default function CompanyDetailsPage() {
                     <p className="text-muted-foreground">Panel avanzado de gestión para administradores.</p>
                 </div>
                 <div className="flex gap-2">
-                    {user?.role === 'admin' && (
+                    {canManageMembers && (
                         <AddMemberDialog companyId={companyId as string} companyName={company.name} existingMembers={company.members} />
                     )}
                 </div>

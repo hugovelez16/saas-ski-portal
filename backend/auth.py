@@ -259,7 +259,7 @@ def resolve_active_company(
       membresia activa de una empresa activa del usuario. Si no, se usa la primera membresia activa de
       empresa activa ordenada por `sort_order` y `joined_at`. Sin ninguna, None.
 
-    No lee `users.default_company_id` (campo que se retira en PR-05).
+    No lee `users.default_company_id` (ya no existe).
     """
     requested = _normalize_uuid(requested_company_id)
 

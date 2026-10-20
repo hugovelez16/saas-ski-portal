@@ -68,7 +68,6 @@ def ensure_dev_admin_user(db: Session) -> models.User:
             is_active=True,
             is_2fa_enabled=False,
             must_change_password=False,
-            default_company_id=company.id
         )
         db.add(user)
         db.commit()
@@ -85,9 +84,6 @@ def ensure_dev_admin_user(db: Session) -> models.User:
             updated = True
         if user.is_2fa_enabled:
             user.is_2fa_enabled = False
-            updated = True
-        if not user.default_company_id and company:
-            user.default_company_id = company.id
             updated = True
         if updated:
             db.commit()

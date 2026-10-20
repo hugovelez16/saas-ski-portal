@@ -51,8 +51,31 @@ export const addCompanyMember = async (companyId: string, email: string): Promis
     return response.data;
 };
 
-export const updateCompanyMember = async (companyId: string, userId: string, data: any): Promise<CompanyMemberResponse> => {
-    const response = await api.put<CompanyMemberResponse>(`/companies/${companyId}/members/${userId}`, data);
+export type MemberRole = 'worker' | 'manager';
+
+export const updateMemberRole = async (companyId: string, userId: string, role: MemberRole): Promise<CompanyMemberResponse> => {
+    const response = await api.put<CompanyMemberResponse>(`/companies/${companyId}/members/${userId}/role`, { role });
+    return response.data;
+};
+
+export const updateMemberRates = async (companyId: string, userId: string, ratesConfig: Record<string, any>): Promise<CompanyMemberResponse> => {
+    const response = await api.put<CompanyMemberResponse>(`/companies/${companyId}/members/${userId}/rates`, { ratesConfig });
+    return response.data;
+};
+
+export const updateMemberSettings = async (companyId: string, userId: string, settings: Record<string, any>): Promise<CompanyMemberResponse> => {
+    const response = await api.put<CompanyMemberResponse>(`/companies/${companyId}/members/${userId}/settings`, { settings });
+    return response.data;
+};
+
+export type MemberDeleteResponse = {
+    deleted: boolean;
+    deactivated: boolean;
+    reason: string | null;
+};
+
+export const removeCompanyMember = async (companyId: string, userId: string): Promise<MemberDeleteResponse> => {
+    const response = await api.delete(`/companies/${companyId}/members/${userId}`);
     return response.data;
 };
 
