@@ -346,8 +346,8 @@ Formato: pregunta, respuesta, estado (D = definido en codigo, H = hallazgo, ? = 
 | Que pasa con los miembros al suspender?         | Nada: conservan membresia y `default_company_id`. El token sigue valido hasta caducar                                                                                     | D, H4      |
 | Se puede renombrar?                             | El backend si (`PUT`); la UI no                                                                                                                                           | D          |
 | Hay historial de cambios?                       | No                                                                                                                                                                        | D, ver D17 |
-| Una empresa puede quedarse sin gestor?          | Si                                                                                                                                                                        | H9, ver D7 |
-| Quien recupera una empresa sin gestor?          | Platform admin cambiando de contexto; no hay procedimiento escrito                                                                                                        | ?          |
+| Una empresa puede quedarse sin gestor?          | Si. Es un estado valido, no un riesgo ni un estado invalido                                                                                                               | E7         |
+| Quien recupera una empresa sin gestor?          | El PA anade un manager con `POST /companies/{id}/members/add` y lo asciende con `PUT /companies/{id}/members/{uid}/role` (`manager`), o cambia el rol de un worker existente con ese mismo endpoint; no hay guardia de ultimo manager | E7         |
 | Que pasa al pasar `is_managed` de true a false? | Solo cambian permisos en tiempo de peticion; los importes de turnos existentes no se recalculan                                                                           | D, ver D12 |
 
 

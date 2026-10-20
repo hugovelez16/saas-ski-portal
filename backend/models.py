@@ -77,8 +77,8 @@ class Company(Base):
     __tablename__ = "companies"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String, nullable=False)
-    fiscal_id = Column(String)
+    name = Column(String(120), nullable=False)
+    fiscal_id = Column(String)  # Obsoleto: se borra en PR-23
 
     # SaaS Evolution: Dynamic tax/deduction configuration
     tax_config = Column(JSONB, default={"social_security": 0.0648})

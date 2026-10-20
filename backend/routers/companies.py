@@ -10,7 +10,7 @@ import models
 import schemas
 from access_policy import PolicyError
 from database import get_db
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from redis_config import redis_manager
 from sqlalchemy.orm import Session, joinedload
 
@@ -30,20 +30,9 @@ def read_companies(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=2000),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user),
+    current_user: models.User = Depends(deps.require_platform_admin),
 ):
-    query = db.query(models.Company)
-    if not deps.acting_platform_admin(current_user):
-        # Solo listar empresas donde el usuario tenga membresia activa o esten activas
-        user_memberships = (
-            db.query(models.CompanyMember)
-            .filter(models.CompanyMember.user_id == current_user.id, models.CompanyMember.is_active == True)
-            .all()
-        )
-        company_ids = [m.company_id for m in user_memberships]
-        query = query.filter(models.Company.id.in_(company_ids), models.Company.is_active == True)
-    companies = query.offset(skip).limit(limit).all()
-    return companies
+    return db.query(models.Company).offset(skip).limit(limit).all()
 
 
 @router.post("", response_model=schemas.CompanyResponse)
@@ -52,7 +41,7 @@ def create_company(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.require_platform_admin),
 ):
-    return crud.create_company(db, company)
+    return crud.create_company(db, company, actor_id=current_user.id)
 
 
 @router.put("/{company_id}", response_model=schemas.CompanyResponse)
@@ -60,16 +49,26 @@ def update_company(
     company_id: UUID,
     company: schemas.CompanyUpdate,
     db: Session = Depends(get_db),
-    ctx: deps.AccessContext = Depends(deps.require_company("manager")),
+    actor: models.User = Depends(deps.require_platform_admin),
 ):
-    if not ctx.is_platform_admin:
-        # Security: Non-platform admins cannot modify is_active or is_managed
-        update_data = company.model_dump(exclude_unset=True)
-        if any(k in update_data for k in ["is_active", "isActive", "is_managed", "isManaged"]):
-            raise PolicyError(403, access_policy.MSG_FORBIDDEN)
-
-    updated_company = crud.update_company(db, str(company_id), company)
+    updated_company = crud.update_company(db, company_id, company, actor=actor, reason=company.reason)
+    if updated_company is None:
+        raise HTTPException(status_code=404, detail=MSG_COMPANY_NOT_FOUND)
     return updated_company
+
+
+@router.delete("/{company_id}", status_code=204)
+def delete_company(
+    company_id: UUID,
+    db: Session = Depends(get_db),
+    actor: models.User = Depends(deps.require_platform_admin),
+):
+    """
+    Platform admin: borra la empresa si no tiene miembros, turnos ni suscripciones. Sin cascadas.
+    """
+    if not crud.delete_company(db, company_id, actor_id=actor.id):
+        raise HTTPException(status_code=404, detail=MSG_COMPANY_NOT_FOUND)
+    return Response(status_code=204)
 
 
 @router.get("/detailed", response_model=list[schemas.CompanyWithMembers])

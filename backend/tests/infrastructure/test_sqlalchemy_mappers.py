@@ -42,7 +42,6 @@ def test_company_mapper_bidirectional():
     comp = Company(
         id="comp-123",
         name="Escuela Sierra Nevada",
-        fiscal_id="B12345678",
         tax_config={"irpf_base": 0.15},
     )
 
@@ -53,7 +52,6 @@ def test_company_mapper_bidirectional():
     domain_comp = SqlAlchemyCompanyMapper.to_domain(orm_comp)
     assert domain_comp.id == comp.id
     assert domain_comp.name == comp.name
-    assert domain_comp.fiscal_id == "B12345678"
 
 
 def test_work_log_mapper_bidirectional():

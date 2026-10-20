@@ -1,0 +1,82 @@
+"""limitar companies.name a 120 caracteres
+
+Revision ID: b7e1a0d10002
+Revises: b7e1a0d10007
+Create Date: 2026-10-20 10:00:00.000000
+
+Solo comprueba y altera; no repara datos. Si hay nombres vacios, con espacios sobrantes o de
+mas de 120 caracteres, la migracion aborta sin cambiar nada. La reparacion es del script
+backend/scripts/repair_company_names.py (ver docs/empresa/plan-implementacion-empresa.md, seccion 9).
+
+Downgrade: vuelve a `VARCHAR` sin longitud. No restaura datos.
+"""
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision: str = 'b7e1a0d10002'
+down_revision: str | Sequence[str] | None = 'b7e1a0d10007'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+# La vista "Work Logs" (a1b2c3d4e5f6) lee companies.name y PostgreSQL no permite cambiar el tipo de
+# una columna usada por una vista: se elimina y se recrea con la misma definicion.
+WORK_LOGS_VIEW_SQL = """
+    CREATE VIEW "Work Logs" AS
+    SELECT
+        wl.id,
+        u.email AS worker_email,
+        c.name AS company_name,
+        wl.type,
+        wl.start_date,
+        wl.duration,
+        wl.net_amount,
+        wl.description,
+        wl.user_id,
+        wl.company_id
+    FROM work_logs wl
+    JOIN users u ON wl.user_id = u.id
+    JOIN companies c ON wl.company_id = c.id
+"""
+
+
+def _alter_name(new_type: sa.types.TypeEngine) -> None:
+    # El ALTER toma ACCESS EXCLUSIVE sobre companies: si no obtiene el bloqueo, falla en vez de encolar peticiones.
+    op.execute("SET LOCAL lock_timeout = '5s'")
+    op.execute('DROP VIEW IF EXISTS "Work Logs"')
+    op.alter_column(
+        'companies',
+        'name',
+        existing_type=sa.String(),
+        type_=new_type,
+        existing_nullable=False,
+    )
+    op.execute(WORK_LOGS_VIEW_SQL)
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    bind = op.get_bind()
+    invalid_ids = bind.execute(
+        sa.text(
+            "SELECT id FROM companies "
+            "WHERE name IS NULL OR length(btrim(name)) = 0 OR name <> btrim(name) OR length(name) > 120 "
+            "ORDER BY id"
+        )
+    ).scalars().all()
+    if invalid_ids:
+        ids = ", ".join(str(company_id) for company_id in invalid_ids)
+        raise RuntimeError(
+            f"Hay {len(invalid_ids)} empresas con nombre no valido (ids: {ids}). "
+            "Ejecuta backend/scripts/repair_company_names.py --apply antes de migrar "
+            "(ver docs/empresa/plan-implementacion-empresa.md, seccion 9)"
+        )
+
+    _alter_name(sa.String(120))
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    _alter_name(sa.String())

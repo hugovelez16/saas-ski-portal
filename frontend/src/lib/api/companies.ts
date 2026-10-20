@@ -3,7 +3,6 @@ import { CompanyResponse, CompanyWithMembers, CompanyMemberResponse, DashboardSu
 
 export const createCompany = async (data: {
     name: string;
-    fiscalId?: string;
     taxConfig?: Record<string, number>;
     worklogDefinitions?: Record<string, any>;
     isManaged?: boolean;
@@ -13,11 +12,26 @@ export const createCompany = async (data: {
     return response.data;
 };
 
-export const updateCompany = async (companyId: string, data: any): Promise<CompanyResponse> => {
+/**
+ * Payload de PUT /companies/:id (solo platform admin).
+ * `reason` es opcional y solo se registra en auditoria.
+ */
+export type CompanyUpdatePayload = {
+    name?: string;
+    isActive?: boolean;
+    isManaged?: boolean;
+    taxConfig?: Record<string, number>;
+    settings?: Record<string, any>;
+    worklogDefinitions?: Record<string, any>;
+    reason?: string;
+};
+
+export const updateCompany = async (companyId: string, data: CompanyUpdatePayload): Promise<CompanyResponse> => {
     const response = await api.put<CompanyResponse>(`/companies/${companyId}`, data);
     return response.data;
 };
 
+// Solo platform admin. Los demas roles deben usar getMyCompanies.
 export const getCompanies = async (): Promise<CompanyResponse[]> => {
     const response = await api.get<CompanyResponse[]>("/companies");
     return response.data;

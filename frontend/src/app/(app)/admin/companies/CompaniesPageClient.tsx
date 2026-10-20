@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getCompaniesDetailed, updateCompany } from "@/lib/api/companies";
+import { getCompaniesDetailed, updateCompany, CompanyUpdatePayload } from "@/lib/api/companies";
 import { CompanyWithMembers } from "@/lib/types";
 import { CompanyDialog } from "@/components/admin/company-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -11,18 +11,43 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useState, useEffect, useMemo } from "react";
 import { formatPercentage } from "@/lib/utils";
 
 type ViewMode = "cards" | "list";
 
+// Cambio pendiente de confirmacion antes de llamar a PUT /companies/:id.
+type PendingChange = {
+    company: CompanyWithMembers;
+    field: "isActive" | "isManaged";
+    value: boolean;
+};
+
+function describePendingChange(change: PendingChange) {
+    if (change.field === "isActive") {
+        return change.value
+            ? { title: "Reactivar empresa", description: "La empresa volvera a estar activa y sus miembros podran operar.", confirm: "Reactivar" }
+            : { title: "Suspender empresa", description: "Los miembros de la empresa no podran operar mientras este suspendida.", confirm: "Suspender" };
+    }
+    return change.value
+        ? { title: "Activar modo gestionada", description: "La direccion central fijara tarifas y gestionara turnos.", confirm: "Activar" }
+        : { title: "Desactivar modo gestionada", description: "La empresa pasara a modo autonomo.", confirm: "Desactivar" };
+}
+
 export default function AdminCompaniesPage() {
     const router = useRouter();
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    const { canEditCompany } = usePermissions();
     const [searchQuery, setSearchQuery] = useState("");
     const [viewMode, setViewMode] = useState<ViewMode>("cards");
+    const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
+    const [suspendReason, setSuspendReason] = useState("");
 
     useEffect(() => {
         const savedMode = localStorage.getItem("admin_companies_view_mode") as ViewMode;
@@ -42,22 +67,39 @@ export default function AdminCompaniesPage() {
     });
 
     const updateCompanyMutation = useMutation({
-        mutationFn: ({ companyId, data }: { companyId: string; data: any }) =>
+        mutationFn: ({ companyId, data }: { companyId: string; data: CompanyUpdatePayload }) =>
             updateCompany(companyId, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
             toast({ title: "Configuracion de empresa actualizada" });
+            setPendingChange(null);
+            setSuspendReason("");
         },
         onError: () => {
             toast({ title: "Error al actualizar empresa", variant: "destructive" });
         }
     });
 
+    const confirmPendingChange = () => {
+        if (!pendingChange) return;
+        const { company, field, value } = pendingChange;
+        const data: CompanyUpdatePayload = field === "isActive" ? { isActive: value } : { isManaged: value };
+        const reason = suspendReason.trim();
+        if (field === "isActive" && !value && reason) {
+            data.reason = reason;
+        }
+        updateCompanyMutation.mutate({ companyId: company.id, data });
+    };
+
+    const closePendingChange = () => {
+        setPendingChange(null);
+        setSuspendReason("");
+    };
+
     const filteredCompanies = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
         const filtered = companies.filter(company =>
-            company.name.toLowerCase().includes(query) ||
-            (company.fiscalId && company.fiscalId.toLowerCase().includes(query))
+            company.name.toLowerCase().includes(query)
         );
 
         return filtered.sort((a, b) => {
@@ -199,41 +241,31 @@ export default function AdminCompaniesPage() {
                                         </div>
                                     </div>
 
-                                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
-                                        <div className="flex items-center space-x-2">
-                                            <Switch
-                                                checked={isManaged}
-                                                disabled={updateCompanyMutation.isPending}
-                                                onCheckedChange={(checked) => {
-                                                    updateCompanyMutation.mutate({
-                                                        companyId: company.id,
-                                                        data: { isManaged: checked }
-                                                    });
-                                                }}
-                                            />
-                                            <span className="text-xs text-slate-600 font-medium">Modo Gestionada</span>
+                                    {canEditCompany && (
+                                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center space-x-2">
+                                                <Switch
+                                                    checked={isManaged}
+                                                    disabled={updateCompanyMutation.isPending}
+                                                    onCheckedChange={(checked) => setPendingChange({ company, field: "isManaged", value: checked })}
+                                                />
+                                                <span className="text-xs text-slate-600 font-medium">Modo Gestionada</span>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <Switch
+                                                    checked={isActive}
+                                                    disabled={updateCompanyMutation.isPending}
+                                                    onCheckedChange={(checked) => setPendingChange({ company, field: "isActive", value: checked })}
+                                                />
+                                                <span className={`text-xs font-medium ${isActive ? "text-emerald-700" : "text-slate-500"}`}>
+                                                    {isActive ? "Activa" : "Suspendida"}
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center space-x-2">
-                                            <Switch
-                                                checked={isActive}
-                                                disabled={updateCompanyMutation.isPending}
-                                                onCheckedChange={(checked) => {
-                                                    updateCompanyMutation.mutate({
-                                                        companyId: company.id,
-                                                        data: { isActive: checked }
-                                                    });
-                                                }}
-                                            />
-                                            <span className={`text-xs font-medium ${isActive ? "text-emerald-700" : "text-slate-500"}`}>
-                                                {isActive ? "Activa" : "Suspendida"}
-                                            </span>
-                                        </div>
-                                    </div>
+                                    )}
 
                                     <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium pt-1">
                                         <span>Ver configuración completa</span>
-                                        <div className="h-1 w-1 rounded-full bg-slate-300" />
-                                        <span>{company.fiscalId || "Sin CIF/NIF"}</span>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -277,25 +309,19 @@ export default function AdminCompaniesPage() {
                                                         <div className="font-semibold text-slate-900 group-hover:text-slate-800 transition-colors">
                                                             {company.name}
                                                         </div>
-                                                        <div className="text-xs text-slate-400">
-                                                            {company.fiscalId || "Sin CIF/NIF"}
-                                                        </div>
                                                     </div>
                                                 </div>
                                             </td>
                                             <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center gap-2.5">
-                                                    <Switch
-                                                        checked={isActive}
-                                                        disabled={updateCompanyMutation.isPending}
-                                                        onCheckedChange={(checked) => {
-                                                            updateCompanyMutation.mutate({
-                                                                companyId: company.id,
-                                                                data: { isActive: checked }
-                                                            });
-                                                        }}
-                                                    />
-                                                    <Badge 
+                                                    {canEditCompany && (
+                                                        <Switch
+                                                            checked={isActive}
+                                                            disabled={updateCompanyMutation.isPending}
+                                                            onCheckedChange={(checked) => setPendingChange({ company, field: "isActive", value: checked })}
+                                                        />
+                                                    )}
+                                                    <Badge
                                                         variant="outline" 
                                                         className={`text-[11px] font-medium px-2 py-0.5 shadow-none ${isActive ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" : "bg-rose-50/70 text-rose-700 border-rose-200/70"}`}
                                                     >
@@ -306,17 +332,14 @@ export default function AdminCompaniesPage() {
                                             </td>
                                             <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center gap-2.5">
-                                                    <Switch
-                                                        checked={isManaged}
-                                                        disabled={updateCompanyMutation.isPending}
-                                                        onCheckedChange={(checked) => {
-                                                            updateCompanyMutation.mutate({
-                                                                companyId: company.id,
-                                                                data: { isManaged: checked }
-                                                            });
-                                                        }}
-                                                    />
-                                                    <Badge 
+                                                    {canEditCompany && (
+                                                        <Switch
+                                                            checked={isManaged}
+                                                            disabled={updateCompanyMutation.isPending}
+                                                            onCheckedChange={(checked) => setPendingChange({ company, field: "isManaged", value: checked })}
+                                                        />
+                                                    )}
+                                                    <Badge
                                                         variant="outline" 
                                                         className={`text-[11px] font-medium px-2 py-0.5 shadow-none ${isManaged ? "bg-slate-900 text-slate-50 border-slate-900" : "bg-slate-50 text-slate-600 border-slate-200"}`}
                                                     >
@@ -365,6 +388,44 @@ export default function AdminCompaniesPage() {
                     </div>
                 </div>
             )}
+
+            <Dialog open={pendingChange !== null} onOpenChange={(open) => { if (!open) closePendingChange(); }}>
+                <DialogContent className="sm:max-w-[425px]">
+                    {pendingChange && (() => {
+                        const info = describePendingChange(pendingChange);
+                        return (
+                            <>
+                                <DialogHeader>
+                                    <DialogTitle>{info.title}</DialogTitle>
+                                    <DialogDescription>
+                                        {pendingChange.company.name}. {info.description}
+                                    </DialogDescription>
+                                </DialogHeader>
+                                {pendingChange.field === "isActive" && !pendingChange.value && (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="suspend-reason">Motivo (opcional)</Label>
+                                        <Textarea
+                                            id="suspend-reason"
+                                            maxLength={500}
+                                            value={suspendReason}
+                                            onChange={(e) => setSuspendReason(e.target.value)}
+                                            placeholder="Se registra solo en la auditoria"
+                                        />
+                                    </div>
+                                )}
+                                <DialogFooter>
+                                    <Button variant="outline" onClick={closePendingChange} disabled={updateCompanyMutation.isPending}>
+                                        Cancelar
+                                    </Button>
+                                    <Button onClick={confirmPendingChange} disabled={updateCompanyMutation.isPending}>
+                                        {info.confirm}
+                                    </Button>
+                                </DialogFooter>
+                            </>
+                        );
+                    })()}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

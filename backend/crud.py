@@ -12,6 +12,7 @@ from datetime import datetime as _dt
 from typing import Any
 
 import access_cache
+import access_policy
 import models
 import schemas
 from access_policy import PolicyError
@@ -19,6 +20,7 @@ from audit import AuditAction, record_audit
 from pydantic import TypeAdapter
 from redis_config import logger, redis_manager
 from sqlalchemy import distinct, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -878,7 +880,6 @@ def get_user_companies(db: Session, user_id: str, include_inactive: bool = False
             {
                 "id": company.id,
                 "name": company.name,
-                "fiscal_id": company.fiscal_id,
                 "tax_config": company.tax_config,
                 "worklog_definitions": company.worklog_definitions,
                 "is_active": company.is_active,
@@ -1164,12 +1165,34 @@ def delete_work_log(db: Session, work_log_id: str):
 # UserDevice management removed. Sessions are now managed via UserSession in auth.py
 
 
-def create_company(db: Session, company: schemas.CompanyCreate):
-    db_company = models.Company(**company.dict())
-    db.add(db_company)
-    db.commit()
-    db.refresh(db_company)
-    return db_company
+MSG_NO_CHANGES = "No hay cambios que guardar"
+MSG_DELETE_BLOCKED = "No se puede borrar la empresa: tiene "
+
+# Campos de empresa editables y su accion de auditoria (en el orden en que se emiten).
+_COMPANY_EVENT_ACTIONS = {
+    "name": AuditAction.COMPANY_UPDATED,
+    "is_active": AuditAction.COMPANY_SUSPENDED,
+    "is_managed": AuditAction.COMPANY_MANAGED_CHANGED,
+    "tax_config": AuditAction.COMPANY_TAX_CONFIG_CHANGED,
+    "settings": AuditAction.COMPANY_SETTINGS_CHANGED,
+    "worklog_definitions": AuditAction.COMPANY_DEFINITIONS_CHANGED,
+}
+_COMPANY_JSON_FIELDS = frozenset({"tax_config", "settings", "worklog_definitions"})
+
+
+def _is_acting_platform_admin(user: Any) -> bool:
+    """PA real que no esta en modo 'ver como' (mismo criterio que deps.acting_platform_admin)."""
+    return bool(getattr(user, "is_platform_admin", False)) and not getattr(user, "view_as", None)
+
+
+def _company_snapshot(company: models.Company) -> dict[str, Any]:
+    return {"name": company.name, "is_active": bool(company.is_active), "is_managed": bool(company.is_managed)}
+
+
+def _company_event(field: str, new_value: Any) -> AuditAction:
+    if field == "is_active":
+        return AuditAction.COMPANY_REACTIVATED if new_value else AuditAction.COMPANY_SUSPENDED
+    return _COMPANY_EVENT_ACTIONS[field]
 
 
 def get_company(db: Session, company_id: Any):
@@ -1180,27 +1203,138 @@ def get_company(db: Session, company_id: Any):
     return db.query(models.Company).filter(models.Company.id == cid).first()
 
 
-def update_company(db: Session, company_id: Any, company: schemas.CompanyUpdate):
-    try:
-        cid = uuid.UUID(str(company_id)) if not isinstance(company_id, uuid.UUID) else company_id
-    except (ValueError, TypeError, AttributeError):
+def get_company_for_actor(db: Session, company_id: Any, actor: Any):
+    """PA actuando: cualquier empresa. Resto: solo si tiene membresia activa en ella. Si no, None."""
+    company = get_company(db, company_id)
+    if company is None:
         return None
-    db_company = db.query(models.Company).filter(models.Company.id == cid).first()
-    if db_company:
-        # Use model_dump(by_alias=False) to ensure we get snake_case property names for setattr
-        update_data = company.model_dump(exclude_unset=True, by_alias=False)
-        for key, value in update_data.items():
-            if hasattr(db_company, key):
-                setattr(db_company, key, value)
-                if key in ["settings", "tax_config", "worklog_definitions"]:
-                    flag_modified(db_company, key)
-            else:
-                logger.warning("Unknown field %s for Company update", key)
-        db.commit()
-        db.refresh(db_company)
-        if "is_active" in update_data or "is_managed" in update_data:
-            access_cache.invalidate_company(cid)
+    if _is_acting_platform_admin(actor):
+        return company
+    membership = (
+        db.query(models.CompanyMember.user_id)
+        .filter(
+            models.CompanyMember.user_id == actor.id,
+            models.CompanyMember.company_id == company.id,
+            models.CompanyMember.is_active.is_(True),
+        )
+        .first()
+    )
+    return company if membership is not None else None
+
+
+def create_company(db: Session, company: schemas.CompanyCreate, *, actor_id: Any):
+    db_company = models.Company(**company.model_dump())
+    db.add(db_company)
+    db.flush()  # Asigna el id antes de auditar; el commit lo confirma todo junto.
+    record_audit(
+        db,
+        action=AuditAction.COMPANY_CREATED,
+        actor_id=actor_id,
+        company_id=db_company.id,
+        new_value=_company_snapshot(db_company),
+    )
+    db.commit()
+    db.refresh(db_company)
     return db_company
+
+
+def update_company(
+    db: Session,
+    company_id: Any,
+    data: schemas.CompanyUpdate,
+    *,
+    actor: Any,
+    reason: str | None = None,
+):
+    """Solo PA. Emite un evento de auditoria por cada campo que cambia. Devuelve None si no existe."""
+    access_policy.require_platform_admin(_is_acting_platform_admin(actor))
+    db_company = get_company(db, company_id)
+    if db_company is None:
+        return None
+
+    # by_alias=False: nombres snake_case del modelo. `reason` es solo para auditoria.
+    update_data = data.model_dump(exclude_unset=True, by_alias=False, exclude={"reason"})
+    changes = []
+    for field in _COMPANY_EVENT_ACTIONS:
+        if field not in update_data:
+            continue
+        old_value = getattr(db_company, field)
+        new_value = update_data[field]
+        if old_value != new_value:
+            changes.append((field, old_value, new_value))
+
+    if not changes:
+        raise PolicyError(422, MSG_NO_CHANGES)
+
+    for field, _old_value, new_value in changes:
+        setattr(db_company, field, new_value)
+        if field in _COMPANY_JSON_FIELDS:
+            flag_modified(db_company, field)
+
+    for field, old_value, new_value in changes:
+        record_audit(
+            db,
+            action=_company_event(field, new_value),
+            actor_id=actor.id,
+            company_id=db_company.id,
+            old_value={field: old_value},
+            new_value={field: new_value},
+            reason=reason if field == "is_active" else None,
+        )
+    db.commit()
+    db.refresh(db_company)
+    access_cache.invalidate_company(db_company.id)
+    return db_company
+
+
+def delete_company(db: Session, company_id: Any, *, actor_id: Any) -> bool:
+    """Borra la empresa solo si no tiene miembros, turnos ni suscripciones (sin cascadas).
+
+    Devuelve False si no existe. Lanza PolicyError(409) con los motivos de bloqueo.
+    """
+    db_company = get_company(db, company_id)
+    if db_company is None:
+        return False
+    cid = db_company.id
+
+    members = (
+        db.query(func.count(models.CompanyMember.user_id))
+        .filter(models.CompanyMember.company_id == cid)
+        .scalar()
+    )
+    shifts = db.query(func.count(models.WorkLog.id)).filter(models.WorkLog.company_id == cid).scalar()
+    subscriptions = (
+        db.query(func.count(models.ModuleSubscription.id))
+        .filter(models.ModuleSubscription.company_id == cid)
+        .scalar()
+    )
+
+    blockers = []
+    if members:
+        blockers.append(f"{members} miembros")
+    if shifts:
+        blockers.append(f"{shifts} turnos")
+    if subscriptions:
+        blockers.append(f"{subscriptions} suscripciones")
+    if blockers:
+        raise PolicyError(409, MSG_DELETE_BLOCKED + ", ".join(blockers))
+
+    record_audit(
+        db,
+        action=AuditAction.COMPANY_DELETED,
+        actor_id=actor_id,
+        company_id=cid,
+        old_value=_company_snapshot(db_company),
+    )
+    db.delete(db_company)
+    try:
+        db.commit()
+    except IntegrityError:
+        # Un miembro, turno o suscripcion llego entre el conteo y el borrado (las FK lo impiden).
+        db.rollback()
+        raise PolicyError(409, MSG_DELETE_BLOCKED + "datos asociados creados durante el borrado") from None
+    access_cache.invalidate_company(cid)
+    return True
 
 
 def update_user(db: Session, user_id: Any, user: schemas.UserUpdate):

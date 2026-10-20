@@ -33,7 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 
 import { useToast } from "@/hooks/use-toast";
-import { getUserRates, updateUserRates, getCompanies } from "@/lib/api/settings";
+import { getUserRates, updateUserRates } from "@/lib/api/settings";
 import { getMyCompanies } from "@/lib/api/companies";
 import { updateMe, changePassword } from "@/lib/api/users";
 import { useAuth } from "@/context/AuthContext";

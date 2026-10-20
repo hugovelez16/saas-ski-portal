@@ -72,9 +72,10 @@ def read_user_companies(db: Session = Depends(get_db), current_user: models.User
                 {
                     "id": company.id,
                     "name": company.name,
-                    "fiscal_id": company.fiscal_id,
                     "tax_config": company.tax_config,
                     "worklog_definitions": company.worklog_definitions,
+                    "is_active": company.is_active,
+                    "is_managed": company.is_managed,
                     "created_at": company.created_at,
                     "updated_at": company.updated_at,
                     "settings": company.settings if isinstance(company.settings, dict) else {},

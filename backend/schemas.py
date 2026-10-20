@@ -5,6 +5,7 @@ This module defines the Pydantic models used for request validation and response
 It ensures that data sent to and received from the API conforms to the expected structure.
 """
 
+import json
 import math
 from datetime import date as dt_date
 from datetime import datetime, time
@@ -162,9 +163,31 @@ class UpdateCompanyMembersOrder(CamelModel):
     user_ids: list[UUID] = Field(..., max_length=500)
 
 
+COMPANY_NAME_MAX = 120
+
+
+def normalize_company_name(v: str | None) -> str:
+    """Quita los espacios sobrantes y exige entre 1 y COMPANY_NAME_MAX caracteres."""
+    if v is None:
+        raise ValueError("El nombre de la empresa es obligatorio")
+    name = v.strip()
+    if not 1 <= len(name) <= COMPANY_NAME_MAX:
+        raise ValueError(f"El nombre debe tener entre 1 y {COMPANY_NAME_MAX} caracteres")
+    return name
+
+
+# Tope del JSON de `settings` y `worklog_definitions`: cada edicion se copia entera a la auditoria.
+COMPANY_JSON_MAX_BYTES = 65536
+
+
+def limit_company_json(v: dict[str, Any] | None) -> dict[str, Any] | None:
+    if v is not None and len(json.dumps(v, default=str).encode("utf-8")) > COMPANY_JSON_MAX_BYTES:
+        raise ValueError(f"El contenido supera el maximo de {COMPANY_JSON_MAX_BYTES} bytes")
+    return v
+
+
 class CompanyBase(CamelModel):
     name: str
-    fiscal_id: str | None = None
     tax_config: dict[str, float] | None = Field(default={"social_security": 0.0, "irpf_base": 0.0}, alias="taxConfig")
 
     # SaaS Evolution: Dynamic shift definitions
@@ -175,6 +198,16 @@ class CompanyBase(CamelModel):
 
     settings: dict[str, Any] | None = None
 
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        return normalize_company_name(v)
+
+    @field_validator("settings", "worklog_definitions")
+    @classmethod
+    def _limit_json(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        return limit_company_json(v)
+
 
 class CompanyCreate(CompanyBase):
     pass
@@ -182,12 +215,31 @@ class CompanyCreate(CompanyBase):
 
 class CompanyUpdate(CamelModel):
     name: str | None = None
-    fiscal_id: str | None = None
     tax_config: dict[str, float] | None = Field(None, alias="taxConfig")
     worklog_definitions: dict[str, Any] | None = Field(None, alias="worklogDefinitions")
     is_active: bool | None = Field(None, alias="isActive")
     is_managed: bool | None = Field(None, alias="isManaged")
     settings: dict[str, Any] | None = None
+    # Solo para auditoria (motivo de suspension, etc.). No se persiste en la empresa.
+    reason: str | None = Field(None, max_length=500)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str | None) -> str:
+        return normalize_company_name(v)
+
+    @field_validator("settings", "worklog_definitions")
+    @classmethod
+    def _limit_json(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        return limit_company_json(v)
+
+    @field_validator("is_active", "is_managed")
+    @classmethod
+    def _reject_null_flag(cls, v: bool | None) -> bool | None:
+        # Evita un 500 por violar NOT NULL: si el campo viene en la peticion debe ser true/false.
+        if v is None:
+            raise ValueError("Debe ser true o false")
+        return v
 
 
 class Company(CompanyBase):
