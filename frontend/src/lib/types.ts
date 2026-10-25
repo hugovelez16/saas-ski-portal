@@ -109,6 +109,55 @@ export interface CompanyWithMembers extends Company {
     members: CompanyMember[];
 }
 
+/**
+ * Parte diario (GET /companies/:id/daily-report).
+ * netAmount y grossAmount solo llegan a manager y platform admin; para worker las claves estan ausentes.
+ */
+export interface DailyReportMember {
+    userId: string;
+    firstName: string | null;
+    lastName: string | null;
+    role: string;
+    isActive: boolean;
+    sortOrder: number;
+}
+
+export interface DailyReportLog {
+    id: string;
+    userId: string;
+    companyId: string;
+    type: string;
+    startDate: string;
+    endDate: string;
+    startTime: string | null;
+    endTime: string | null;
+    duration: number | null;
+    description: string | null;
+    netAmount?: number | null;
+    grossAmount?: number | null;
+}
+
+/**
+ * Definicion de un tipo de turno (misma forma que una entrada de Company.worklogDefinitions).
+ * label y unit siempre vienen; el resto de claves depende de la definicion de la empresa.
+ */
+export interface DailyReportWorkType {
+    label: string;
+    unit: string;
+    is_range?: boolean;
+    fields?: string[];
+    icon?: string;
+    [key: string]: unknown;
+}
+
+export interface DailyReportResponse {
+    companyId: string;
+    date: string;
+    members: DailyReportMember[];
+    workTypes: Record<string, DailyReportWorkType>;
+    logs: DailyReportLog[];
+}
+
 export interface WorkLogExtraData {
     datos?: Record<string, string | number>;
     opciones?: Record<string, boolean>;

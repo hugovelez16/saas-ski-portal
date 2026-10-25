@@ -11,6 +11,7 @@ import schemas
 from access_policy import PolicyError
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import JSONResponse
 from redis_config import redis_manager
 from sqlalchemy.orm import Session, joinedload
 
@@ -93,30 +94,6 @@ def read_companies_detailed(db: Session = Depends(get_db), current_user: models.
     )
 
     allowed_company_ids = {m.company_id for m in supervisor_memberships if active_cid and str(m.company_id) == active_cid}
-
-    # 2. Worker Daily Report permissions
-    # Check if user is a member of any company that has this feature enabled
-    user_memberships = (
-        db.query(models.CompanyMember)
-        .options(joinedload(models.CompanyMember.company))
-        .join(models.Company)
-        .filter(
-            models.CompanyMember.user_id == current_user.id,
-            models.CompanyMember.is_active == True,
-            models.Company.is_active == True,
-        )
-        .all()
-    )
-
-    for m in user_memberships:
-        company = m.company  # The Company relationship
-        # Con empresa activa en el token no se exponen otras empresas
-        if active_cid and str(m.company_id) != active_cid:
-            continue
-        if company and company.is_active:
-            has_wr = crud.user_has_module(db, str(current_user.id), str(company.id), "worker_daily_report")
-            if has_wr:
-                allowed_company_ids.add(company.id)
 
     if allowed_company_ids:
         companies = (
@@ -231,6 +208,58 @@ def delete_company_member(
         raise HTTPException(status_code=404, detail=MSG_MEMBER_NOT_FOUND)
 
     return result
+
+
+@router.get(
+    "/{company_id}/daily-report",
+    response_model=None,
+    responses={200: {"model": schemas.DailyReportFullResponse | schemas.DailyReportWorkerResponse}},
+)
+def read_daily_report(
+    company_id: UUID,
+    day: date | None = Query(None, alias="date"),
+    ctx: deps.AccessContext = Depends(deps.require_company(access_policy.ROLE_WORKER, module="worker_daily_report")),
+):
+    """
+    Parte diario de la empresa: miembros activos y turnos del dia de toda la empresa.
+    Manager y platform admin reciben importes; el worker (incluido el PA en "ver como" worker) recibe
+    un esquema distinto en el que las claves de importe no existen [P-14].
+    """
+    day = day or date.today()
+    company = ctx.company
+    if company is None:
+        raise PolicyError(403, access_policy.MSG_NO_ACCESS)
+
+    logs = crud.get_daily_report_logs(db=ctx.db, company_id=ctx.company_id, day=day)
+    log_user_ids = {log.user_id for log in logs}
+    members = [
+        {
+            "user_id": m.user_id,
+            "first_name": m.user.first_name if m.user else None,
+            "last_name": m.user.last_name if m.user else None,
+            "role": m.role.value if hasattr(m.role, "value") else str(m.role),
+            "is_active": bool(m.is_active),
+            "sort_order": m.sort_order if m.sort_order is not None else 1000,
+        }
+        for m in company.members
+        if m.is_active or m.user_id in log_user_ids
+    ]
+    work_types = {
+        code: {**definition, "label": str(definition.get("label", code)), "unit": str(definition.get("unit", "hours"))}
+        for code, definition in (company.worklog_definitions or {}).items()
+        if isinstance(definition, dict)
+    }
+    payload = {"company_id": company.id, "date": day, "members": members, "work_types": work_types}
+
+    if ctx.role in (access_policy.ROLE_MANAGER, access_policy.ROLE_PLATFORM_ADMIN):
+        body = schemas.DailyReportFullResponse(
+            **payload, logs=[schemas.DailyReportLogFull.model_validate(log) for log in logs]
+        )
+    else:
+        body = schemas.DailyReportWorkerResponse(
+            **payload, logs=[schemas.DailyReportLogWorker.model_validate(log) for log in logs]
+        )
+    return JSONResponse(content=body.model_dump(mode="json", by_alias=True))
 
 
 @router.get("/{company_id}", response_model=schemas.CompanyResponse)

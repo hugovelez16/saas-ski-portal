@@ -19,6 +19,29 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.13.0] - 2026-10-25
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Parte diario y modulos (PR-14 del plan de empresa). Cambio incompatible en 0.y.z: el worker con el modulo `worker_daily_report` deja de ver la empresa en `GET /work-logs` y `GET /companies/detailed`; la vista de empresa pasa al nuevo endpoint del parte diario.
+
+### Anadido
+
+- **`GET /companies/{company_id}/daily-report?date=`**: miembros activos (y los inactivos con turno ese dia) y turnos del dia de toda la empresa, incluidos los que cruzan medianoche. Exige el modulo `worker_daily_report`. Manager y administrador de plataforma reciben `netAmount` y `grossAmount`; el worker, incluido el administrador en "ver como" worker, recibe un esquema sin esas claves (ausentes, no `null`). `workTypes` devuelve la definicion de cada tipo de turno y cada turno incluye `companyId`.
+- **`backend/tests/routers/test_daily_report.py`** y **`test_subscriptions.py`**: pruebas del parte diario, de la retirada de la vista de empresa y de las validaciones de suscripcion.
+
+### Cambiado
+
+- **`backend/schemas.py` y `backend/crud.py`**: `scope`, `status` y `target_scope` de modulos y suscripciones pasan a valores cerrados (422 si no son validos); `scope` exige `companyId` o `userId` coherente; el `target_scope` del modulo debe admitir el `scope`; el alta o la reactivacion de una suscripcion `active` o `trial` duplicada de la misma empresa o usuario y modulo responde 409. Solo afecta a altas nuevas; no hay migracion.
+- **`GET /work-logs` y `GET /companies/detailed`**: se elimina la rama "worker con modulo ve la empresa".
+- **`frontend/`**: `manager/daily-reports/page.tsx` y `admin/daily-reports/DailyReportPageClient.tsx` usan `getDailyReport` en lugar de `getCompaniesDetailed` y `getWorkLogs` con `limit: 2000`; la pagina de administrador muestra la empresa elegida con un selector. Nuevos `getDailyReport` y tipos del parte diario.
+
+### Cambios Internos
+
+- **Pruebas**: `test_company_access.py` y `test_work_logs_supervisor.py` pasan a esperar que el worker con modulo no vea la empresa.
+
+---
+
 ## [0.12.1] - 2026-10-20
 
 ### Tipo de Cambio SemVer

@@ -131,10 +131,7 @@ def _resolve_work_log_scope(
         if effective_company_id:
             ctx = deps.authorize(db, current_user, effective_company_id, min_role=access_policy.ROLE_WORKER)
             target_company_id = ctx.company_id
-            sees_company = ctx.role in _COMPANY_VIEW_ROLES or crud.user_has_module(
-                db, str(current_user.id), ctx.company_id, "worker_daily_report"
-            )
-            if sees_company:
+            if ctx.role in _COMPANY_VIEW_ROLES:
                 final_user_id = user_id  # None: todos los usuarios de la empresa
             elif user_id and user_id != current_user.id:
                 raise PolicyError(403, access_policy.MSG_FORBIDDEN)
@@ -165,7 +162,7 @@ def read_work_logs(
     """
     Retrieve work logs.
     Users can only see their own. Managers (and platform admins) see the whole company and can filter by user_id.
-    Workers with the worker_daily_report module keep the company view until PR-14.
+    El parte diario de empresa para el worker es GET /companies/{id}/daily-report.
     La cabecera X-Total-Count indica el total de turnos que cumplen los filtros (sin skip/limit).
     """
     target_company_id, final_user_id, only_active_companies = _resolve_work_log_scope(
