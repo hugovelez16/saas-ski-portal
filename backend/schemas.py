@@ -451,6 +451,11 @@ class PasswordResetConfirm(CamelModel):
 # ─── Módulos y Suscripciones ───────────────────────────────────────────────
 
 
+ModuleTargetScope = Literal["company", "user", "both"]
+SubscriptionScopeValue = Literal["company", "user"]
+SubscriptionStatusValue = Literal["active", "trial", "cancelled", "expired"]
+
+
 class AppModuleCreate(CamelModel):
     """Schema para crear un módulo en el catálogo (solo Platform Admin)."""
 
@@ -458,7 +463,7 @@ class AppModuleCreate(CamelModel):
     name: str
     description: str | None = None
     is_active: bool = True
-    target_scope: str = "both"  # "company" | "user" | "both"
+    target_scope: ModuleTargetScope = "both"
     price_monthly: float | None = None
 
 
@@ -468,7 +473,7 @@ class AppModuleUpdate(CamelModel):
     name: str | None = None
     description: str | None = None
     is_active: bool | None = None
-    target_scope: str | None = None
+    target_scope: ModuleTargetScope | None = None
     price_monthly: float | None = None
 
 
@@ -492,16 +497,25 @@ class ModuleSubscriptionCreate(CamelModel):
     module_id: UUID = Field(..., alias="moduleId")
     company_id: UUID | None = Field(None, alias="companyId")
     user_id: UUID | None = Field(None, alias="userId")
-    scope: str  # "company" | "user"
-    status: str = "active"  # "active" | "trial" | "cancelled" | "expired"
+    scope: SubscriptionScopeValue
+    status: SubscriptionStatusValue = "active"
     expires_at: datetime | None = Field(None, alias="expiresAt")
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def _scope_matches_target(self):
+        """El scope exige su destino y excluye el otro."""
+        if self.scope == "company" and (self.company_id is None or self.user_id is not None):
+            raise ValueError("Una suscripción de empresa requiere companyId y no admite userId.")
+        if self.scope == "user" and (self.user_id is None or self.company_id is not None):
+            raise ValueError("Una suscripción de usuario requiere userId y no admite companyId.")
+        return self
 
 
 class ModuleSubscriptionUpdate(CamelModel):
     """Schema para actualizar el estado de una suscripción."""
 
-    status: str | None = None
+    status: SubscriptionStatusValue | None = None
     expires_at: datetime | None = Field(None, alias="expiresAt")
     notes: str | None = None
 
@@ -522,6 +536,54 @@ class ModuleSubscriptionResponse(CamelModel):
     module: AppModuleResponse | None = None
     company: CompanyResponse | None = None
     user: UserResponse | None = None
+
+
+# ─── Parte diario (PR-14) ──────────────────────────────────────────────────
+
+
+class DailyReportMember(CamelModel):
+    user_id: UUID
+    first_name: str | None = None
+    last_name: str | None = None
+    role: str
+    is_active: bool
+    sort_order: int
+
+
+class DailyReportLogWorker(CamelModel):
+    """Turno del parte diario sin importes: es el que recibe el worker [P-14]."""
+
+    id: UUID
+    user_id: UUID
+    company_id: UUID | None = None
+    type: str
+    start_date: dt_date
+    end_date: dt_date
+    start_time: time | None = None
+    end_time: time | None = None
+    duration: float | None = None
+    description: str | None = None
+
+
+class DailyReportLogFull(DailyReportLogWorker):
+    net_amount: float | None = None
+    gross_amount: float | None = None
+
+
+class DailyReportWorkerResponse(CamelModel):
+    company_id: UUID
+    date: dt_date
+    members: list[DailyReportMember]
+    work_types: dict[str, dict[str, Any]]
+    logs: list[DailyReportLogWorker]
+
+
+class DailyReportFullResponse(CamelModel):
+    company_id: UUID
+    date: dt_date
+    members: list[DailyReportMember]
+    work_types: dict[str, dict[str, Any]]
+    logs: list[DailyReportLogFull]
 
 
 class BillingSummaryItemResponse(CamelModel):

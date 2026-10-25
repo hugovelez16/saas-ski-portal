@@ -93,20 +93,14 @@ def test_worker_with_daily_report_module_explicit_company_id(client, db):
     db.add(subscription)
     db.commit()
 
-    # Call GET /work-logs as worker passing company_id explicitly.
-    # Verify they receive all logs (both log_manager and log_worker)
+    # PR-14: el modulo ya no da vista de empresa en GET /work-logs (la da /companies/{id}/daily-report);
+    # el worker solo ve sus propios turnos, con o sin company_id explicito.
     as_user(client, worker, company)
     resp_explicit = client.get("/work-logs", params={"company_id": str(company.id)})
     assert resp_explicit.status_code == 200, resp_explicit.text
-    log_ids_explicit = _ids(resp_explicit)
-    assert str(log_manager.id) in log_ids_explicit
-    assert str(log_worker.id) in log_ids_explicit
+    assert _ids(resp_explicit) == {str(log_worker.id)}
 
-    # Call GET /work-logs as worker without company_id (cid del token = empresa efectiva).
-    # PR-03: el modulo worker_daily_report mantiene la vista de empresa tambien con cid en el token;
-    # antes solo veia sus propios turnos.
     resp_implicit = client.get("/work-logs")
     assert resp_implicit.status_code == 200, resp_implicit.text
-    log_ids_implicit = _ids(resp_implicit)
-    assert str(log_manager.id) in log_ids_implicit
-    assert str(log_worker.id) in log_ids_implicit
+    assert _ids(resp_implicit) == {str(log_worker.id)}
+    assert str(log_manager.id) not in _ids(resp_implicit)

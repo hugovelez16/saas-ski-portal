@@ -527,6 +527,14 @@ def _filter_work_logs(
     return query
 
 
+def get_daily_report_logs(db: Session, company_id: str, day: date):
+    """Turnos de la empresa que cubren el dia (incluye los que cruzan medianoche), sin paginar."""
+    query = _filter_work_logs(
+        db, db.query(models.WorkLog), company_id=company_id, start_date=day, end_date=day
+    )
+    return query.order_by(models.WorkLog.start_time.asc(), models.WorkLog.id.asc()).all()
+
+
 def get_work_logs(
     db: Session,
     skip: int = 0,
@@ -1456,12 +1464,39 @@ def update_module(db: Session, module_id: str, data: schemas.AppModuleUpdate):
     return db_module
 
 
+_LIVE_SUBSCRIPTION_STATUSES = ("active", "trial")
+
+
+def _ensure_no_live_duplicate(db: Session, module_id, company_id, user_id, exclude_id=None) -> None:
+    """409 si ya hay otra suscripcion active/trial del mismo modulo para la misma empresa o usuario."""
+    query = db.query(models.ModuleSubscription.id).filter(
+        models.ModuleSubscription.module_id == module_id,
+        models.ModuleSubscription.status.in_([models.SubscriptionStatus(s) for s in _LIVE_SUBSCRIPTION_STATUSES]),
+        or_(models.ModuleSubscription.expires_at.is_(None), models.ModuleSubscription.expires_at > _dt.utcnow()),
+    )
+    if company_id is not None:
+        query = query.filter(models.ModuleSubscription.company_id == company_id)
+    else:
+        query = query.filter(models.ModuleSubscription.user_id == user_id)
+    if exclude_id is not None:
+        query = query.filter(models.ModuleSubscription.id != exclude_id)
+    if query.first() is not None:
+        subject = "La empresa" if company_id is not None else "El usuario"
+        raise PolicyError(409, f"{subject} ya tiene este modulo activo")
+
+
 def create_subscription(db: Session, data: schemas.ModuleSubscriptionCreate):
     """Crea una suscripción. Valida que solo company_id O user_id esté presente."""
     if data.company_id and data.user_id:
         raise ValueError("Una suscripción no puede tener company_id y user_id a la vez.")
     if not data.company_id and not data.user_id:
         raise ValueError("Una suscripción debe tener company_id o user_id.")
+
+    module = get_module_by_id(db, str(data.module_id))
+    if module is not None and module.target_scope in ("company", "user") and module.target_scope != data.scope:
+        raise PolicyError(422, f"El módulo solo admite suscripciones con scope '{module.target_scope}'.")
+    if data.status in _LIVE_SUBSCRIPTION_STATUSES:
+        _ensure_no_live_duplicate(db, data.module_id, data.company_id, data.user_id)
 
     db_sub = models.ModuleSubscription(
         module_id=data.module_id,
@@ -1483,6 +1518,9 @@ def update_subscription(db: Session, sub_id: str, data: schemas.ModuleSubscripti
     if not db_sub:
         return None
     update_data = data.model_dump(exclude_unset=True, by_alias=False)
+    new_status = update_data.get("status")
+    if new_status in _LIVE_SUBSCRIPTION_STATUSES and new_status != db_sub.status.value:
+        _ensure_no_live_duplicate(db, db_sub.module_id, db_sub.company_id, db_sub.user_id, exclude_id=db_sub.id)
     for key, value in update_data.items():
         if key == "status" and value:
             setattr(db_sub, key, models.SubscriptionStatus(value))

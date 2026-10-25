@@ -866,7 +866,8 @@ def test_manager_of_a_and_b_with_token_b_lists_only_b_work_logs_without_company_
     assert {item["companyId"] for item in resp.json()} == {str(company_b.id)}
 
 
-def test_worker_of_a_and_b_with_daily_report_and_token_b_sees_only_b_in_detailed(client, db):
+def test_worker_of_a_and_b_with_daily_report_is_forbidden_in_detailed(client, db):
+    # PR-14: el worker con modulo ya no ve la empresa en /companies/detailed (usa /companies/{id}/daily-report)
     user, company_a, company_b = _member_of_a_and_b(db, "worker")
     # Con PostgreSQL migrado el modulo ya existe (lo siembra una migracion); con SQLite se crea.
     module = db.query(models.AppModule).filter(models.AppModule.code_name == "worker_daily_report").first()
@@ -889,8 +890,7 @@ def test_worker_of_a_and_b_with_daily_report_and_token_b_sees_only_b_in_detailed
 
     resp = client.get("/companies/detailed")
 
-    assert resp.status_code == 200, resp.text
-    assert [item["id"] for item in resp.json()] == [str(company_b.id)]
+    assert resp.status_code == 403, resp.text
 
 
 def test_pa_with_token_b_accesses_company_a(client, db):
