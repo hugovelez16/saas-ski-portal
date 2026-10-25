@@ -6,8 +6,8 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, addDays, subDays, isSameDay, parseISO, startOfDay } from "date-fns";
 import { getUsers, getUserCompanies } from "@/lib/api/users";
-import { getWorkLogs, deleteWorkLog } from "@/lib/api/work-logs"; // Assuming same API, simpler to fetch all and filter
-import { getCompaniesDetailed, getMyCompanies } from "@/lib/api/companies";
+import { deleteWorkLog } from "@/lib/api/work-logs";
+import { getDailyReport, getMyCompanies } from "@/lib/api/companies";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -22,6 +22,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { CalendarConfigProvider, useCalendarConfig } from "@/components/event-calendar/use-calendar-config";
+import type { DailyReportWorkType } from "@/lib/types";
 
 function TimeRangeSelector() {
   const { startHour, endHour, setStartHour, setEndHour } = useCalendarConfig();
@@ -103,57 +104,34 @@ function ManagerDailyReportInner() {
     // State for Create Dialog (Controlled)
     const [createLogState, setCreateLogState] = useState<{ open: boolean, data?: Partial<any> }>({ open: false });
 
-    // 2. Fetch Users for the selected company
-    // We can use getCompaniesDetailed to get members of the selected company
-    const { data: companyDetails } = useQuery({
-        queryFn: getCompaniesDetailed,
-        queryKey: ["companiesDetailed"],
+    // 2. Parte diario de la empresa seleccionada (miembros, tipos de turno y turnos del dia)
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const { data: dailyReport, isLoading: logsLoading } = useQuery({
+        queryFn: () => getDailyReport(selectedCompanyId, dateKey),
+        queryKey: ["daily-report", selectedCompanyId, dateKey],
         enabled: !!selectedCompanyId
     });
 
-    const companyUsers = useMemo(() => {
-        if (!selectedCompanyId || !companyDetails) return [];
-        const company = companyDetails.find((c: any) => c.id === selectedCompanyId);
-        if (!company) return [];
+    const workLogs = dailyReport?.logs ?? [];
+    const workTypes: Record<string, DailyReportWorkType> = dailyReport?.workTypes ?? {};
 
-        // Members structure: { user_id, role, status, user: { ... } }
-        return company.members.map((m: any) => ({
-            ...m.user,
+    const companyUsers = useMemo(() => {
+        return (dailyReport?.members ?? []).map((m) => ({
+            id: m.userId,
+            firstName: m.firstName,
+            lastName: m.lastName,
             relationRole: m.role,
             relationIsActive: m.isActive
         }));
-    }, [companyDetails, selectedCompanyId]);
-
-    const selectedCompany = useMemo(() => {
-        return managedCompanies.find((c: any) => c.id === selectedCompanyId) ||
-               companyDetails?.find((c: any) => c.id === selectedCompanyId);
-    }, [managedCompanies, companyDetails, selectedCompanyId]);
+    }, [dailyReport]);
 
     const defaultHourlyType = useMemo(() => {
-        const defs = selectedCompany?.worklogDefinitions;
-        if (defs && typeof defs === 'object') {
-            const hourlyEntry = Object.entries(defs).find(([_, def]: [string, any]) => def?.unit === 'hours');
-            if (hourlyEntry) return hourlyEntry[0];
-            const firstEntry = Object.keys(defs)[0];
-            if (firstEntry) return firstEntry;
-        }
+        const hourlyEntry = Object.entries(workTypes).find(([_, def]) => def?.unit === 'hours');
+        if (hourlyEntry) return hourlyEntry[0];
+        const firstEntry = Object.keys(workTypes)[0];
+        if (firstEntry) return firstEntry;
         return 'particular';
-    }, [selectedCompany]);
-
-
-    // 3. Fetch Logs (We might need to fetch all and filter by companyId and date)
-    // Ideally existing API supports companyId filter.
-    // If getWorkLogs supports { companyId: ... } it's best.
-    const { data: workLogs = [], isLoading: logsLoading } = useQuery({
-        queryFn: () => getWorkLogs({
-            startDate: format(date, 'yyyy-MM-dd'),
-            endDate: format(date, 'yyyy-MM-dd'),
-            limit: 2000,
-            companyId: selectedCompanyId
-        }),
-        queryKey: ["work-logs-daily-manager", date.toISOString().split('T')[0], selectedCompanyId],
-        enabled: !!selectedCompanyId
-    });
+    }, [workTypes]);
 
 
     const { startHour: configStartHour, endHour: configEndHour } = useCalendarConfig();
@@ -168,7 +146,7 @@ function ManagerDailyReportInner() {
             const logDate = log.date ? parseISO(log.date) : (log.startDate ? parseISO(log.startDate) : null);
             if (!logDate) return false;
 
-            const def = selectedCompany?.worklogDefinitions?.[log.type];
+            const def = workTypes[log.type];
             const isCrossDay = Boolean(
                 (log.startDate && log.endDate && log.startDate !== log.endDate) ||
                 def?.unit === 'days'
@@ -388,7 +366,7 @@ function ManagerDailyReportInner() {
                             await deleteWorkLog(log.id);
                             toast({ title: "Éxito", description: "Registro eliminado correctamente." });
                             setSelectedLog(null);
-                            queryClient.invalidateQueries({ queryKey: ["work-logs-daily-manager"] });
+                            queryClient.invalidateQueries({ queryKey: ["daily-report"] });
                         } catch (error) {
                             console.error("Error deleting work log:", error);
                             toast({ title: "Error", description: "No se pudo eliminar el registro.", variant: "destructive" });
@@ -405,10 +383,10 @@ function ManagerDailyReportInner() {
                     initialData={createLogState.data}
                     companyId={selectedCompanyId || ""}
                     companyName={managedCompanies.find(c => c.id === selectedCompanyId)?.name || "Company"}
-                    worklogDefinitions={managedCompanies.find(c => c.id === selectedCompanyId)?.worklogDefinitions}
+                    worklogDefinitions={workTypes}
                     users={companyUsers}
                     onSuccess={() => {
-                        queryClient.invalidateQueries({ queryKey: ["work-logs-daily-manager"] });
+                        queryClient.invalidateQueries({ queryKey: ["daily-report"] });
                         setCreateLogState({ open: false });
                     }}
                 >

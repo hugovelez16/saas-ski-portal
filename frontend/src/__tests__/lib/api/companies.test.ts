@@ -16,7 +16,8 @@ import {
     getCompanyRates,
     getCompanyMembers,
     updateCompanyMembersOrder,
-    getCompanyDashboardSummary
+    getCompanyDashboardSummary,
+    getDailyReport
 } from '@/lib/api/companies';
 
 vi.mock('@/lib/api', () => ({
@@ -191,5 +192,50 @@ describe('Companies API Client', () => {
             }
         });
         expect(result.periodMetrics.totalHours).toBe(10);
+    });
+
+    it('getDailyReport should GET /companies/:id/daily-report with date param', async () => {
+        const body = {
+            companyId: 'c-1',
+            date: '2026-10-25',
+            members: [],
+            workTypes: {},
+            logs: []
+        };
+        (mockedApi.get as any).mockResolvedValue({ data: body });
+
+        const result = await getDailyReport('c-1', '2026-10-25');
+        expect(mockedApi.get).toHaveBeenCalledWith('/companies/c-1/daily-report', {
+            params: { date: '2026-10-25' }
+        });
+        expect(result).toEqual(body);
+    });
+
+    it('getDailyReport should keep amount keys absent for worker responses', async () => {
+        const workerLog = {
+            id: 'l-1',
+            userId: 'u-1',
+            type: 'particular',
+            startDate: '2026-10-25',
+            endDate: '2026-10-25',
+            startTime: '09:00',
+            endTime: '13:00',
+            duration: 4,
+            description: null
+        };
+        (mockedApi.get as any).mockResolvedValue({
+            data: {
+                companyId: 'c-1',
+                date: '2026-10-25',
+                members: [{ userId: 'u-1', firstName: 'Ana', lastName: 'Lopez', role: 'worker', isActive: true, sortOrder: 0 }],
+                workTypes: { particular: { label: 'Particular', unit: 'hours' } },
+                logs: [workerLog]
+            }
+        });
+
+        const result = await getDailyReport('c-1', '2026-10-25');
+        expect(result.logs[0]).toEqual(workerLog);
+        expect('netAmount' in result.logs[0]).toBe(false);
+        expect('grossAmount' in result.logs[0]).toBe(false);
     });
 });

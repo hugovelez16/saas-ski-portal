@@ -1,5 +1,5 @@
 import api from "@/lib/api";
-import { CompanyResponse, CompanyWithMembers, CompanyMemberResponse, DashboardSummaryResponse } from "@/lib/types";
+import { CompanyResponse, CompanyWithMembers, CompanyMemberResponse, DailyReportResponse, DashboardSummaryResponse } from "@/lib/types";
 
 export const createCompany = async (data: {
     name: string;
@@ -44,6 +44,14 @@ export const getCompany = async (companyId: string): Promise<CompanyResponse> =>
 
 export const getCompaniesDetailed = async (): Promise<CompanyWithMembers[]> => {
     const response = await api.get<CompanyWithMembers[]>("/companies/detailed");
+    return response.data;
+};
+
+// Parte diario de un dia (date: YYYY-MM-DD). Los importes solo vienen a manager y platform admin.
+export const getDailyReport = async (companyId: string, date: string): Promise<DailyReportResponse> => {
+    const response = await api.get<DailyReportResponse>(`/companies/${companyId}/daily-report`, {
+        params: { date }
+    });
     return response.data;
 };
 
