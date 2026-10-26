@@ -81,8 +81,8 @@ class Company(Base):
     fiscal_id = Column(String)  # Obsoleto: se borra en PR-23
 
     # SaaS Evolution: Dynamic tax/deduction configuration
-    tax_config = Column(JSONB, default={"social_security": 0.0648})
-    # Structure example: { "social_security": 0.0648, "irpf_base": 0.15 }
+    tax_config = Column(JSONB, nullable=True)
+    # Structure example: { "IRPF": 0.15, "Seguridad Social": 0.0648 } (nombre libre -> tasa 0..1; {} o NULL = sin impuestos)
 
     # SaaS Evolution: Dynamic shift definitions
     worklog_definitions = Column(JSONB, default={})

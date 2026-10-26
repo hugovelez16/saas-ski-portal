@@ -17,6 +17,7 @@ import models
 import schemas
 from access_policy import PolicyError
 from audit import AuditAction, record_audit
+from contracts import resolve_taxes
 from pydantic import TypeAdapter
 from redis_config import logger, redis_manager
 from sqlalchemy import distinct, func, or_
@@ -115,6 +116,14 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     """
     SaaS Evolution: Dynamic calculation engine.
     Calculates amounts based on company definitions and user rates stored in JSONB.
+
+    Semantica de `is_gross` (P-10):
+    - True: la tarifa es bruta; se descuentan todos los impuestos efectivos (empresa + overrides
+      de miembro): neto = (base + extras) * (1 - suma de tasas).
+    - False (o ausente): la tarifa es neta; no se deduce ningun impuesto y neto = base + extras.
+      El bruto devuelto es solo informativo (neto / (1 - suma de tasas) si la suma es < 1).
+    `settings.price_type` NO interviene aqui: solo decide la vista del dashboard.
+    Un importe manual (`amount` / `net_amount`) no aplica impuestos.
     """
     # 1. Manual Amount Override
     manual_amount = log_data.get("amount")
@@ -136,18 +145,11 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     base_rate = _safe_float(user_rate.get("base_rate", 0))
     is_gross = user_rate.get("is_gross", False)
 
-    # Tax configuration (Priority: rate override > company default > 0)
-    user_overrides = user_rate.get("tax_overrides", {})
-    company_defaults = company_tax_config if company_tax_config else {}
-
-    irpf_val = user_overrides.get("irpf")
-    irpf = _safe_float(irpf_val if irpf_val is not None else company_defaults.get("irpf_base", 0))
-
-    ss_val = user_overrides.get("ss")
-    ss = _safe_float(ss_val if ss_val is not None else company_defaults.get("social_security", 0))
-
-    extra_val = user_overrides.get("extra")
-    extra = _safe_float(extra_val if extra_val is not None else company_defaults.get("extra", 0))
+    # Impuestos efectivos con claves libres (override de miembro > empresa)
+    taxes = {
+        name: _safe_float(rate)
+        for name, rate in resolve_taxes(company_tax_config, user_rate.get("tax_overrides") or {}).items()
+    }
 
     duration = 0.0
 
@@ -201,14 +203,14 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
             applied_extras[extra_key] = extra_amt
 
     # 5. Apply Taxes and handle Gross/Net modes
-    total_tax_rate = irpf + ss + extra
+    total_tax_rate = sum(taxes.values())
 
     if is_gross:
-        # Rate is Gross: Gross -> Net
+        # Rate is Gross: Gross -> Net (se descuentan todos los impuestos efectivos)
         gross_total = amount_base + extras_total
         net_total = gross_total * (1.0 - total_tax_rate)
     else:
-        # Rate is Net: Net -> Gross (Reverse Tax)
+        # Rate is Net: no se deduce ningun impuesto; el bruto es informativo (Net -> Gross)
         net_total = amount_base + extras_total
         if total_tax_rate < 1.0:
             gross_total = net_total / (1.0 - total_tax_rate)
@@ -242,33 +244,16 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     display_lines.append({"type": "subtotal", "label": "Total Bruto", "value": round(float(gross_total), 2)})
 
     # Taxes lines
-    if ss > 0:
-        display_lines.append(
-            {
-                "type": "tax",
-                "code": "ss",
-                "label": f"Seguridad Social ({round(ss * 100, 2)}%)",
-                "value": -round(float(gross_total * ss), 2),
-            }
-        )
-    if irpf > 0:
-        display_lines.append(
-            {
-                "type": "tax",
-                "code": "irpf",
-                "label": f"IRPF ({round(irpf * 100, 2)}%)",
-                "value": -round(float(gross_total * irpf), 2),
-            }
-        )
-    if extra > 0:
-        display_lines.append(
-            {
-                "type": "tax",
-                "code": "other",
-                "label": f"Otros ({round(extra * 100, 2)}%)",
-                "value": -round(float(gross_total * extra), 2),
-            }
-        )
+    for tax_name, tax_rate in taxes.items():
+        if tax_rate > 0:
+            display_lines.append(
+                {
+                    "type": "tax",
+                    "code": tax_name,
+                    "label": f"{tax_name} ({round(tax_rate * 100, 2)}%)",
+                    "value": -round(float(gross_total * tax_rate), 2),
+                }
+            )
 
     # Final Net line
     display_lines.append({"type": "total", "label": "Total Neto", "value": round(float(net_total), 2)})
@@ -286,7 +271,8 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
             "duration": float(duration),
             "unit": unit,
         },
-        "version": "2.2-structured-snapshot",
+        "tax_applied": taxes,
+        "version": "2.3-free-taxes",
     }
 
     return {

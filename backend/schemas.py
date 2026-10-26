@@ -12,6 +12,7 @@ from datetime import datetime, time, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
+from contracts import TaxConfig, validate_tax_overrides
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
@@ -261,7 +262,8 @@ def limit_company_json(v: dict[str, Any] | None) -> dict[str, Any] | None:
 
 class CompanyBase(CamelModel):
     name: str
-    tax_config: dict[str, float] | None = Field(default={"social_security": 0.0, "irpf_base": 0.0}, alias="taxConfig")
+    # Obligatorio y estricto en escritura ({} es valido). Las respuestas lo relajan en `Company`.
+    tax_config: TaxConfig = Field(alias="taxConfig")
 
     # SaaS Evolution: Dynamic shift definitions
     worklog_definitions: dict[str, Any] | None = Field(default={}, alias="worklogDefinitions")
@@ -288,7 +290,7 @@ class CompanyCreate(CompanyBase):
 
 class CompanyUpdate(CamelModel):
     name: str | None = None
-    tax_config: dict[str, float] | None = Field(None, alias="taxConfig")
+    tax_config: TaxConfig | None = Field(None, alias="taxConfig")
     worklog_definitions: dict[str, Any] | None = Field(None, alias="worklogDefinitions")
     is_active: bool | None = Field(None, alias="isActive")
     is_managed: bool | None = Field(None, alias="isManaged")
@@ -316,6 +318,8 @@ class CompanyUpdate(CamelModel):
 
 
 class Company(CompanyBase):
+    # Lectura tolerante: filas existentes con tax_config NULL o cualquier dict.
+    tax_config: dict[str, float] | None = Field(None, alias="taxConfig")
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -374,6 +378,18 @@ class MemberRatesUpdate(CamelModel):
                 raise ValueError(f"base_rate de '{shift_key}' debe ser un numero")
             if not math.isfinite(base_rate) or base_rate < 0:
                 raise ValueError(f"base_rate de '{shift_key}' debe ser un numero mayor o igual que 0")
+        return value
+
+    @field_validator("rates_config")
+    @classmethod
+    def _tax_overrides_are_valid(cls, value: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        for shift_key, shift in value.items():
+            if not isinstance(shift, dict) or "tax_overrides" not in shift:
+                continue
+            try:
+                validate_tax_overrides(shift["tax_overrides"])
+            except ValueError as exc:
+                raise ValueError(f"tax_overrides de '{shift_key}' no es valido: {exc}") from exc
         return value
 
 
