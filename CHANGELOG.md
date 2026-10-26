@@ -19,6 +19,21 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.14.0] - 2026-10-25
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Consulta de logs de auditoria (PR-15 del plan de empresa). Solo lectura, sin migracion.
+
+### Anadido
+
+- **`GET /audit-logs`**: consulta paginada (`limit` 1..200, por defecto 50; `offset`) de los eventos de auditoria, solo para el administrador de plataforma (manager y worker reciben 403, el administrador en "ver como" tambien). Filtros `company_id`, `actor_user_id`, `target_user_id`, `action` (igualdad exacta), `from` y `to` (422 si `from` > `to`). Orden por fecha descendente y `total` del conjunto filtrado.
+- **`GET /audit-logs/actions`**: catalogo de acciones de auditoria.
+- **`frontend/`**: pagina `admin/audit-logs` con tabla, filtros, paginacion y detalle JSON de `oldValue`, `newValue` y `extraData`; enlace "Auditoria" en el menu del administrador; `lib/api/audit-logs.ts`.
+- **Pruebas**: `backend/tests/routers/test_audit_logs.py` y pruebas vitest de la API y de la pagina.
+
+---
+
 ## [0.13.0] - 2026-10-25
 
 ### Tipo de Cambio SemVer
