@@ -30,11 +30,7 @@ export type UserSettings = any; // Placeholder for legacy references
 export interface Company {
     id: string;
     name: string;
-    taxConfig: {
-        social_security: number;
-        irpf_base: number;
-        [key: string]: number;
-    };
+    taxConfig: Record<string, number>;
     worklogDefinitions?: Record<string, any>;
     settings?: Record<string, any>;
     createdAt: string;
@@ -79,11 +75,7 @@ export interface CompanySettings {
 export interface DynamicRateEntry {
     base_rate: number;
     is_gross: boolean;
-    tax_overrides: {
-        ss?: number | null;
-        irpf?: number | null;
-        extra?: number | null;
-    };
+    tax_overrides: Record<string, number | null>;
 }
 
 export type DynamicRateConfig = Record<string, DynamicRateEntry>;

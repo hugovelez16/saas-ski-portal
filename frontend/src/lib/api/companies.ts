@@ -3,7 +3,7 @@ import { CompanyResponse, CompanyWithMembers, CompanyMemberResponse, DailyReport
 
 export const createCompany = async (data: {
     name: string;
-    taxConfig?: Record<string, number>;
+    taxConfig: Record<string, number>;
     worklogDefinitions?: Record<string, any>;
     isManaged?: boolean;
     isActive?: boolean;

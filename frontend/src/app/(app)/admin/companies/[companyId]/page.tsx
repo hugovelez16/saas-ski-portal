@@ -516,9 +516,14 @@ function TaxOverview({ company, isAdmin }: { company: any, isAdmin?: boolean }) 
                 if (!primary) return <span className="text-muted-foreground text-[10px]">Sin configurar</span>;
 
                 const isGross = primary.is_gross !== false;
-                const ss = primary.tax_overrides?.ss;
-                const irpf = primary.tax_overrides?.irpf ?? 0;
-                const extra = primary.tax_overrides?.extra ?? 0;
+                const overrides = primary.tax_overrides || {};
+                const companyTaxes = company.taxConfig || {};
+                // Efectivos: empresa + overrides no nulos del miembro
+                const effective: Record<string, number> = { ...companyTaxes };
+                for (const [name, v] of Object.entries(overrides)) {
+                    if (v !== null && v !== undefined) effective[name] = v;
+                }
+                const taxEntries = Object.entries(effective);
 
                 return (
                     <div className="flex items-center gap-3">
@@ -526,17 +531,22 @@ function TaxOverview({ company, isAdmin }: { company: any, isAdmin?: boolean }) 
                             {isGross ? "Bruto" : "Neto"}
                         </Badge>
                         <div className="flex gap-2 text-[10px] font-mono">
-                            <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded" title="Seguridad Social">
-                                SS: <b className="ml-0.5">{formatPercentage(ss ?? company.taxConfig?.social_security)}</b>
-                            </span>
-                            <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded" title="IRPF">
-                                IRPF: <b className="ml-0.5">{formatPercentage(irpf)}</b>
-                            </span>
-                            {extra > 0 && (
-                                <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
-                                    EX: <b className="ml-0.5">{formatPercentage(extra)}</b>
-                                </span>
+                            {taxEntries.length === 0 && (
+                                <span className="text-muted-foreground">Sin impuestos</span>
                             )}
+                            {taxEntries.map(([name, rate]) => (
+                                <span
+                                    key={name}
+                                    className={
+                                        name in companyTaxes
+                                            ? "bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded"
+                                            : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded"
+                                    }
+                                    title={name}
+                                >
+                                    {name}: <b className="ml-0.5">{formatPercentage(rate)}</b>
+                                </span>
+                            ))}
                         </div>
                     </div>
                 );
