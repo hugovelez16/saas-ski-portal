@@ -1823,3 +1823,39 @@ def get_dashboard_summary(
         "daily_breakdown": sorted_daily,
         "workers_summary": workers_summary
     }
+
+
+def get_audit_logs(
+    db: Session,
+    *,
+    company_id: Any = None,
+    actor_user_id: Any = None,
+    target_user_id: Any = None,
+    action: str | None = None,
+    from_date: _dt | None = None,
+    to_date: _dt | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[int, list[models.AuditLog]]:
+    query = db.query(models.AuditLog)
+    if company_id is not None:
+        query = query.filter(models.AuditLog.company_id == company_id)
+    if actor_user_id is not None:
+        query = query.filter(models.AuditLog.actor_user_id == actor_user_id)
+    if target_user_id is not None:
+        query = query.filter(models.AuditLog.target_user_id == target_user_id)
+    if action is not None:
+        query = query.filter(models.AuditLog.action == action)
+    if from_date is not None:
+        query = query.filter(models.AuditLog.created_at >= from_date)
+    if to_date is not None:
+        query = query.filter(models.AuditLog.created_at <= to_date)
+
+    total = query.count()
+    rows = (
+        query.order_by(models.AuditLog.created_at.desc(), models.AuditLog.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return total, rows

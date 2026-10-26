@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 # Import modular routers
-from routers import auth, companies, modules, users, work_logs
+from routers import audit_logs, auth, companies, modules, users, work_logs
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -168,6 +168,7 @@ app.include_router(users.router)
 app.include_router(work_logs.router)
 app.include_router(companies.router)
 app.include_router(modules.router)
+app.include_router(audit_logs.router)
 
 if __name__ == "__main__":
     import uvicorn

@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getMyCompanies } from "@/lib/api/companies";
 import { CompanyResponse } from "@/lib/types";
 import { useAuth } from "@/context/AuthContext";
-import { LayoutDashboard, FileText, Calendar, Users, Building2, Banknote, CalendarDays, Package, LucideIcon } from "lucide-react";
+import { LayoutDashboard, FileText, Calendar, Users, Building2, Banknote, CalendarDays, Package, ScrollText, LucideIcon } from "lucide-react";
 import { Sidebar, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Suspense } from "react";
@@ -56,6 +56,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         { href: "/admin/daily-reports", label: "Parte Diario", icon: FileText },
         { href: "/admin/users", label: "Usuarios", icon: Users },
         { href: "/admin/modules", label: "Módulos", icon: Package },
+        { href: "/admin/audit-logs", label: "Auditoría", icon: ScrollText },
     ];
 
     const workerNavItems = [
