@@ -718,3 +718,22 @@ class WorkLogSummaryResponse(CamelModel):
     by_type: list[WorkLogTypeTotals]
     by_day: list[WorkLogDayTotals]
     by_user: list[WorkLogUserTotals]
+
+
+class AuditLogItem(CamelModel):
+    id: UUID
+    action: str
+    created_at: datetime
+    actor_user_id: UUID | None
+    actor_email: str | None
+    company_id: UUID | None
+    target_user_id: UUID | None
+    old_value: dict[str, Any] | None
+    new_value: dict[str, Any] | None
+    reason: str | None
+    extra_data: dict[str, Any] | None
+
+
+class AuditLogPage(CamelModel):
+    total: int
+    items: list[AuditLogItem]
