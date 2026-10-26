@@ -37,7 +37,7 @@ describe('Companies API Client', () => {
     });
 
     it('createCompany should POST /companies', async () => {
-        const payload = { name: 'Escuela Sierra', isManaged: true };
+        const payload = { name: 'Escuela Sierra', taxConfig: {}, isManaged: true };
         (mockedApi.post as any).mockResolvedValue({ data: { id: 'c-1', ...payload } });
 
         const result = await createCompany(payload);

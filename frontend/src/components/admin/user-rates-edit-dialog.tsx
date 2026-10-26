@@ -32,14 +32,13 @@ import { useToast } from "@/hooks/use-toast";
 import { updateMemberRates } from "@/lib/api/companies";
 import { CompanyMember, Company } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
-import { formatPercentage } from "@/lib/utils";
+import { TaxOverridesFields, compactTaxOverrides } from "@/components/admin/tax-overrides-fields";
 
 const rateFormSchema = z.object({
     rates: z.record(z.coerce.number().min(0)),
-    isGross: z.boolean().default(true),
-    deductionSs: z.coerce.number().min(0).max(100).optional().nullable(),
-    deductionIrpf: z.coerce.number().min(0).max(100).default(0),
-    deductionExtra: z.coerce.number().min(0).max(100).default(0),
+    isGross: z.boolean().default(false),
+    // Fracciones 0..1 o null (sin override); NaN = entrada invalida en pantalla
+    taxOverrides: z.record(z.number().min(0).max(1).nullable()).default({}),
 });
 
 type RateFormValues = z.infer<typeof rateFormSchema>;
@@ -69,10 +68,8 @@ export function UserRatesEditDialog({ userId, company, member, userName, open: e
         resolver: zodResolver(rateFormSchema),
         defaultValues: {
             rates: {},
-            isGross: true,
-            deductionSs: null,
-            deductionIrpf: 0,
-            deductionExtra: 0,
+            isGross: false,
+            taxOverrides: {},
         },
     });
 
@@ -90,22 +87,12 @@ export function UserRatesEditDialog({ userId, company, member, userName, open: e
             
             // Find the first rate that has these values defined
             const entryWithIsGross = allRateEntries.find(r => r.is_gross !== undefined);
-            const entryWithSs = allRateEntries.find(r => r.tax_overrides?.ss !== undefined && r.tax_overrides?.ss !== null);
-            const entryWithIrpf = allRateEntries.find(r => r.tax_overrides?.irpf !== undefined && r.tax_overrides?.irpf !== null);
-            const entryWithExtra = allRateEntries.find(r => r.tax_overrides?.extra !== undefined && r.tax_overrides?.extra !== null);
+            const entryWithOverrides = allRateEntries.find(r => r.tax_overrides && Object.keys(r.tax_overrides).length > 0);
 
             form.reset({
                 rates: initialRates,
                 isGross: entryWithIsGross?.is_gross !== undefined ? entryWithIsGross.is_gross : false,
-                deductionSs: (entryWithSs?.tax_overrides?.ss !== undefined && entryWithSs?.tax_overrides?.ss !== null) 
-                    ? parseFloat((entryWithSs.tax_overrides.ss * 100).toFixed(4)) 
-                    : null,
-                deductionIrpf: entryWithIrpf?.tax_overrides?.irpf 
-                    ? parseFloat((entryWithIrpf.tax_overrides.irpf * 100).toFixed(4)) 
-                    : 0,
-                deductionExtra: entryWithExtra?.tax_overrides?.extra 
-                    ? parseFloat((entryWithExtra.tax_overrides.extra * 100).toFixed(4)) 
-                    : 0,
+                taxOverrides: { ...(entryWithOverrides?.tax_overrides || {}) },
             });
         }
     }, [member, open, form, JSON.stringify(worklogKeys)]);
@@ -133,11 +120,7 @@ export function UserRatesEditDialog({ userId, company, member, userName, open: e
             ratesConfig[key] = {
                 base_rate: data.rates[key] || 0,
                 is_gross: data.isGross,
-                tax_overrides: {
-                    ss: data.deductionSs == null ? null : data.deductionSs / 100,
-                    irpf: data.deductionIrpf / 100,
-                    extra: data.deductionExtra / 100,
-                }
+                tax_overrides: compactTaxOverrides(data.taxOverrides ?? {})
             };
         });
 
@@ -229,7 +212,7 @@ export function UserRatesEditDialog({ userId, company, member, userName, open: e
                                         name="isGross"
                                         render={({ field }) => (
                                             <FormItem className="flex flex-row items-center gap-3 space-y-0 bg-white dark:bg-slate-950 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-800 shadow-sm">
-                                                <FormLabel className="text-xs font-semibold cursor-pointer">Cálculo sobre Bruto</FormLabel>
+                                                <FormLabel className="text-xs font-semibold cursor-pointer">{field.value ? "Tarifa bruta (se descuentan los impuestos)" : "Tarifa neta (sin deduccion)"}</FormLabel>
                                                 <FormControl>
                                                     <Switch
                                                         checked={field.value}
@@ -243,67 +226,20 @@ export function UserRatesEditDialog({ userId, company, member, userName, open: e
                                 </div>
 
                                 {form.watch("isGross") ? (
-                                    <div className="grid gap-6 md:grid-cols-3">
-                                        <FormField
-                                            control={form.control}
-                                            name="deductionSs"
-                                            render={({ field }) => (
-                                                <FormItem className="space-y-1.5">
-                                                    <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">S. Social (SS)</FormLabel>
-                                                    <FormControl>
-                                                        <div className="relative group">
-                                                            <span className="absolute right-3 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors"><Percent className="h-3 w-3" /></span>
-                                                            <Input
-                                                                type="number"
-                                                                step="0.0001"
-                                                                placeholder="Global"
-                                                                {...field}
-                                                                value={field.value === null ? "" : field.value}
-                                                                onChange={e => field.onChange(e.target.value === "" ? null : Number(e.target.value))}
-                                                                className="pr-8 h-10 bg-white dark:bg-slate-900 border-slate-200"
-                                                            />
-                                                        </div>
-                                                    </FormControl>
-                                                    <FormDescription className="text-[9px] leading-tight">
-                                                        Vacío para usar defecto: <b className="text-indigo-600">{formatPercentage(company.taxConfig?.social_security)}</b>
-                                                    </FormDescription>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="deductionIrpf"
-                                            render={({ field }) => (
-                                                <FormItem className="space-y-1.5">
-                                                    <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Retención IRPF</FormLabel>
-                                                    <FormControl>
-                                                        <div className="relative group">
-                                                            <span className="absolute right-3 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors"><Percent className="h-3 w-3" /></span>
-                                                            <Input type="number" step="0.0001" {...field} className="pr-8 h-10 bg-white dark:bg-slate-900 border-slate-200" />
-                                                        </div>
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="deductionExtra"
-                                            render={({ field }) => (
-                                                <FormItem className="space-y-1.5">
-                                                    <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Deducción Extra</FormLabel>
-                                                    <FormControl>
-                                                        <div className="relative group">
-                                                            <span className="absolute right-3 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors"><Percent className="h-3 w-3" /></span>
-                                                            <Input type="number" step="0.0001" {...field} className="pr-8 h-10 bg-white dark:bg-slate-900 border-slate-200" />
-                                                        </div>
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </div>
+                                    <FormField
+                                        control={form.control}
+                                        name="taxOverrides"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <TaxOverridesFields
+                                                    companyTaxConfig={company.taxConfig || {}}
+                                                    value={field.value || {}}
+                                                    onChange={field.onChange}
+                                                />
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
                                 ) : (
                                     <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 rounded-lg text-xs flex items-start gap-2">
                                         <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />

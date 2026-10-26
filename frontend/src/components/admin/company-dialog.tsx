@@ -23,6 +23,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { TaxConfigBuilder } from "@/components/admin/tax-config-builder";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createCompany } from "@/lib/api/companies";
@@ -41,6 +44,10 @@ export function CompanyDialog() {
     const [open, setOpen] = useState(false);
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    // null = aun sin definir; {} solo es valido con la confirmacion "sin retenciones"
+    const [taxConfig, setTaxConfig] = useState<Record<string, number> | null>(null);
+    const [noWithholdings, setNoWithholdings] = useState(false);
+    const [taxError, setTaxError] = useState<string | null>(null);
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -57,6 +64,9 @@ export function CompanyDialog() {
             queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
             setOpen(false);
             form.reset();
+            setTaxConfig(null);
+            setNoWithholdings(false);
+            setTaxError(null);
             toast({
                 title: "Company created",
                 description: "The new company has been successfully created.",
@@ -72,9 +82,15 @@ export function CompanyDialog() {
     });
 
     function onSubmit(values: z.infer<typeof formSchema>) {
+        // El alta exige taxConfig: o impuestos confirmados, o "sin retenciones" explicito
+        if (taxConfig === null || (Object.keys(taxConfig).length === 0 && !noWithholdings)) {
+            setTaxError("Define los impuestos y pulsa Guardar, o confirma que la empresa no tiene retenciones.");
+            return;
+        }
+        setTaxError(null);
         mutation.mutate({
             ...values,
-            taxConfig: { social_security: 0.0, irpf_base: 0.0 },
+            taxConfig,
             worklogDefinitions: {
                 particular: { unit: "hours", label: "Particular" },
                 tutorial: { unit: "hours", label: "Tutorial" }
@@ -90,7 +106,7 @@ export function CompanyDialog() {
                     Nueva Empresa
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Nueva Empresa</DialogTitle>
                     <DialogDescription>
@@ -152,6 +168,47 @@ export function CompanyDialog() {
                                 </FormItem>
                             )}
                         />
+                        <div className="space-y-3 rounded-lg border p-3">
+                            <div className="space-y-0.5">
+                                <p className="text-sm font-medium">Impuestos de la empresa</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Anade cada retencion con su nombre y porcentaje. Pulsa Guardar para confirmar la lista.
+                                </p>
+                            </div>
+                            <TaxConfigBuilder
+                                initialValue={taxConfig ?? {}}
+                                onSave={(val) => {
+                                    setTaxConfig(val);
+                                    setTaxError(null);
+                                    if (Object.keys(val).length > 0) setNoWithholdings(false);
+                                }}
+                            />
+                            {taxConfig !== null && Object.keys(taxConfig).length > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                    Confirmados: {Object.entries(taxConfig).map(([k, v]) => `${k} ${parseFloat((v * 100).toFixed(4))}%`).join(", ")}
+                                </p>
+                            )}
+                            {(taxConfig === null || Object.keys(taxConfig).length === 0) && (
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        id="no-withholdings"
+                                        checked={noWithholdings}
+                                        onCheckedChange={(c) => {
+                                            const on = c === true;
+                                            setNoWithholdings(on);
+                                            if (on) {
+                                                setTaxConfig({});
+                                                setTaxError(null);
+                                            }
+                                        }}
+                                    />
+                                    <Label htmlFor="no-withholdings" className="text-sm font-normal">
+                                        Confirmo que la empresa no tiene retenciones (sin retenciones)
+                                    </Label>
+                                </div>
+                            )}
+                            {taxError && <p className="text-sm text-destructive">{taxError}</p>}
+                        </div>
                         <DialogFooter>
                             <Button type="submit" disabled={mutation.isPending}>
                                 {mutation.isPending ? "Creando..." : "Crear Empresa"}

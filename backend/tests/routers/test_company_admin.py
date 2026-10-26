@@ -152,7 +152,7 @@ def test_create_company_is_platform_admin_only(client, db, world, actor_name, ex
     as_user(client, user, company)
     before = _company_count(db)
 
-    resp = client.post("/companies", json={"name": "Nueva Escuela"})
+    resp = client.post("/companies", json={"name": "Nueva Escuela", "taxConfig": {}})
 
     assert resp.status_code == expected, resp.text
     assert _company_count(db) == before + (1 if expected == 200 else 0)
@@ -198,7 +198,7 @@ def test_manager_cannot_change_name_tax_definitions_or_settings(client, db, worl
 
 
 VIEW_AS_WRITES = [
-    pytest.param(lambda c, cid: c.post("/companies", json={"name": "Nueva"}), id="create"),
+    pytest.param(lambda c, cid: c.post("/companies", json={"name": "Nueva", "taxConfig": {}}), id="create"),
     pytest.param(lambda c, cid: c.put(f"/companies/{cid}", json={"name": "Otra"}), id="update"),
     pytest.param(lambda c, cid: c.delete(f"/companies/{cid}"), id="delete"),
 ]
@@ -242,7 +242,7 @@ def test_create_company_rejects_invalid_name(client, db, world, name):
 def test_create_company_accepts_name_of_exactly_120_chars(client, db, world):
     as_user(client, world.pa)
 
-    resp = client.post("/companies", json={"name": MAX_NAME})
+    resp = client.post("/companies", json={"name": MAX_NAME, "taxConfig": {}})
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["name"] == MAX_NAME
@@ -251,7 +251,7 @@ def test_create_company_accepts_name_of_exactly_120_chars(client, db, world):
 def test_create_company_strips_surrounding_spaces_from_name(client, db, world):
     as_user(client, world.pa)
 
-    resp = client.post("/companies", json={"name": " Nueva  "})
+    resp = client.post("/companies", json={"name": " Nueva  ", "taxConfig": {}})
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["name"] == "Nueva"
@@ -426,7 +426,7 @@ def test_pa_update_emits_event_with_only_the_changed_field(client, db, world, pa
 def test_create_company_emits_company_created(client, db, world):
     as_user(client, world.pa)
 
-    resp = client.post("/companies", json={"name": "Nueva"})
+    resp = client.post("/companies", json={"name": "Nueva", "taxConfig": {}})
 
     assert resp.status_code == 200, resp.text
     rows = _audit(db, "company.created", uuid.UUID(resp.json()["id"]))
@@ -506,7 +506,7 @@ def test_company_responses_never_expose_fiscal_id(client, db, world):
 def test_create_company_ignores_fiscal_id(client, db, world):
     as_user(client, world.pa)
 
-    resp = client.post("/companies", json={"name": "Nueva", "fiscalId": "B99999999"})
+    resp = client.post("/companies", json={"name": "Nueva", "taxConfig": {}, "fiscalId": "B99999999"})
 
     assert resp.status_code == 200, resp.text
     assert not any("fiscal" in key.lower() for key in _keys(resp.json())), resp.text

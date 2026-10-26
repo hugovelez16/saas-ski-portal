@@ -39,6 +39,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { TaxOverridesFields, compactTaxOverrides } from "@/components/admin/tax-overrides-fields";
 
 const numericSchema = z.preprocess(
     (val) => (val === "" || val === undefined || val === null ? 0 : val),
@@ -50,20 +51,8 @@ const memberConfigSchema = z.object({
     isActive: z.boolean(),
     isGross: z.boolean(),
     rates: z.record(numericSchema),
-    taxOverrides: z.object({
-        ss: z.preprocess(
-            (val) => (val === "" || val === undefined ? null : val),
-            z.coerce.number().min(0).max(100).optional().nullable()
-        ),
-        irpf: z.preprocess(
-            (val) => (val === "" || val === undefined || val === null ? 0 : val),
-            z.coerce.number().min(0).max(100)
-        ),
-        extra: z.preprocess(
-            (val) => (val === "" || val === undefined || val === null ? 0 : val),
-            z.coerce.number().min(0).max(100)
-        ),
-    })
+    // Fracciones 0..1 o null (sin override); NaN = entrada invalida en pantalla
+    taxOverrides: z.record(z.number().min(0).max(1).nullable())
 });
 
 type MemberConfigValues = z.infer<typeof memberConfigSchema>;
@@ -85,11 +74,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
             isActive: company.isActiveMember ?? true,
             isGross: false,
             rates: {},
-            taxOverrides: {
-                ss: null,
-                irpf: 0,
-                extra: 0,
-            }
+            taxOverrides: {}
         }
     });
 
@@ -99,7 +84,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
         const shiftKeys = Object.keys(definitions);
         const initialRates: Record<string, number> = {};
         let isGross = false;
-        let taxOverrides: { ss: number | null, irpf: number, extra: number } = { ss: null, irpf: 0, extra: 0 };
+        let taxOverrides: Record<string, number | null> = {};
 
         let foundTaxes = false;
         for (const key of shiftKeys) {
@@ -109,11 +94,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                 if (!foundTaxes) {
                     isGross = shiftData.is_gross !== undefined ? shiftData.is_gross : false;
                     if (shiftData.tax_overrides) {
-                        taxOverrides = {
-                            ss: (shiftData.tax_overrides.ss !== undefined && shiftData.tax_overrides.ss !== null) ? parseFloat((shiftData.tax_overrides.ss * 100).toFixed(4)) : null,
-                            irpf: parseFloat(((shiftData.tax_overrides.irpf || 0) * 100).toFixed(4)),
-                            extra: parseFloat(((shiftData.tax_overrides.extra || 0) * 100).toFixed(4)),
-                        };
+                        taxOverrides = { ...shiftData.tax_overrides };
                         foundTaxes = true;
                     }
                 }
@@ -150,16 +131,10 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
         const shiftKeys = Object.keys(worklogDefinitions);
 
         for (const key of shiftKeys) {
-            const ssVal = values.taxOverrides.ss;
-            const validSS = ssVal !== null && ssVal !== undefined && !isNaN(Number(ssVal)) ? Number(ssVal) / 100 : null;
             newRatesConfig[key] = {
                 base_rate: Number(values.rates[key]) || 0,
                 is_gross: values.isGross,
-                tax_overrides: {
-                    ss: validSS,
-                    irpf: !isNaN(Number(values.taxOverrides.irpf)) ? Number(values.taxOverrides.irpf) / 100 : 0,
-                    extra: !isNaN(Number(values.taxOverrides.extra)) ? Number(values.taxOverrides.extra) / 100 : 0
-                }
+                tax_overrides: compactTaxOverrides(values.taxOverrides)
             };
         }
 
@@ -278,7 +253,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                     name="isGross"
                                     render={({ field }) => (
                                         <FormItem className="flex flex-row items-center gap-2 space-y-0">
-                                            <FormLabel className="text-xs font-bold text-muted-foreground uppercase">Sobre Bruto</FormLabel>
+                                            <FormLabel className="text-xs font-bold text-muted-foreground">{field.value ? "Tarifa bruta (se descuentan los impuestos)" : "Tarifa neta (sin deduccion)"}</FormLabel>
                                             <FormControl>
                                                 <Switch checked={field.value} onCheckedChange={field.onChange} />
                                             </FormControl>
@@ -291,61 +266,14 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                     <FormField
                                         control={form.control}
-                                        name="taxOverrides.ss"
+                                        name="taxOverrides"
                                         render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-xs font-bold text-muted-foreground">SS (%)</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="number"
-                                                        step="0.0001"
-                                                        placeholder="Defecto"
-                                                        value={field.value ?? ""}
-                                                        onChange={e => field.onChange(e.target.value === "" ? null : Number(e.target.value))}
-                                                        className="h-9"
-                                                    />
-                                                </FormControl>
-                                                <FormDescription className="text-[10px]">Vacío para usar global</FormDescription>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="taxOverrides.irpf"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-xs font-bold text-muted-foreground">IRPF (%)</FormLabel>
-                                                <FormControl>
-                                                    <Input 
-                                                        type="number" 
-                                                        step="0.0001" 
-                                                        {...field} 
-                                                        value={field.value ?? ""} 
-                                                        onChange={field.onChange}
-                                                        className="h-9" 
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="taxOverrides.extra"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-xs font-bold text-muted-foreground">EXTRA (%)</FormLabel>
-                                                <FormControl>
-                                                    <Input 
-                                                        type="number" 
-                                                        step="0.0001" 
-                                                        {...field} 
-                                                        value={field.value ?? ""} 
-                                                        onChange={e => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
-                                                        className="h-9" 
-                                                    />
-                                                </FormControl>
+                                            <FormItem className="sm:col-span-3">
+                                                <TaxOverridesFields
+                                                    companyTaxConfig={company.taxConfig || {}}
+                                                    value={field.value || {}}
+                                                    onChange={field.onChange}
+                                                />
                                                 <FormMessage />
                                             </FormItem>
                                         )}

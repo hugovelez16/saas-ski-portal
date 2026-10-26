@@ -19,6 +19,31 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.15.0] - 2026-10-26
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Impuestos con claves libres (PR-10 del plan de empresa). Con migracion de datos: antes de desplegar hay que ejecutar `backend/scripts/repair_tax_values.py` (seccion 10 de `docs/empresa/plan-implementacion-empresa.md`).
+
+### Anadido
+
+- **`backend/contracts.py`**: `TaxConfig` (nombre libre de 1 a 50 caracteres, tasa numerica de 0 a 1 con 0 permitido, maximo 20 entradas, sin duplicados tras `strip`), `validate_tax_overrides` y `resolve_taxes`.
+- **`frontend/`**: `tax-overrides-fields.tsx` y editor de pares nombre/tasa en `tax-config-builder.tsx`.
+
+### Cambiado
+
+- **`POST /companies`**: `taxConfig` es obligatorio (`{}` es valido); `null` o ausente responde 422. `PUT /companies/{id}` y `PUT .../members/{userId}/rates` validan impuestos y `tax_overrides` (422 si no son validos).
+- **Calculo de importes (`crud.calculate_dynamic_work_log`)**: los impuestos son las claves libres de la empresa mas los overrides del miembro. Con `is_gross=true` se descuentan todos del bruto; con `is_gross=false` (por defecto) la tarifa es neta y no se deduce ninguno (el bruto devuelto es informativo). El snapshot incluye `tax_applied` y su version pasa a `2.3-free-taxes`. Los turnos ya guardados no cambian.
+- **Migracion `b7e1a0d10004`**: renombra `ss` a `social_security` e `irpf` a `irpf_base` en los `tax_overrides` de las tarifas y elimina los `extra` a 0 que la empresa no define. Aborta sin cambios si hay valores no validos.
+- **`frontend/`**: los formularios de tarifas y de empresa usan impuestos libres; el control `is_gross` se rotula "Tarifa bruta (se descuentan los impuestos)" / "Tarifa neta (sin deduccion)".
+
+### Cambios Internos
+
+- **`backend/scripts/repair_tax_values.py`**: script de reparacion previo a la migracion (`--dry-run` por defecto, `--apply` explicito).
+- **Divergencia temporal**: `backend/src` conserva las tres tasas fijas hasta PR-18.
+
+---
+
 ## [0.14.0] - 2026-10-25
 
 ### Tipo de Cambio SemVer

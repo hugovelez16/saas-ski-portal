@@ -38,6 +38,7 @@ import { getMyCompanies } from "@/lib/api/companies";
 import { updateMe, changePassword } from "@/lib/api/users";
 import { useAuth } from "@/context/AuthContext";
 import { Company, CompanyMember } from "@/lib/types";
+import { TaxOverridesFields, compactTaxOverrides } from "@/components/admin/tax-overrides-fields";
 
 // User Info Form
 const userFormSchema = z.object({
@@ -57,9 +58,8 @@ const passwordSchema = z.object({
 const rateFormSchema = z.object({
   rates: z.record(z.coerce.number().min(0)).default({}),
   isGross: z.boolean().default(true),
-  deductionSs: z.coerce.number().min(0).max(100).optional(),
-  deductionIrpf: z.coerce.number().min(0).max(100).default(0),
-  deductionExtra: z.coerce.number().min(0).max(100).default(0),
+  // Fracciones 0..1 o null (sin override); NaN = entrada invalida en pantalla
+  taxOverrides: z.record(z.number().min(0).max(1).nullable()).default({}),
 });
 
 type RateFormValues = z.infer<typeof rateFormSchema>;
@@ -109,9 +109,7 @@ export default function ProfilePage() {
     defaultValues: {
       rates: {},
       isGross: false,
-      deductionSs: undefined,
-      deductionIrpf: 0,
-      deductionExtra: 0,
+      taxOverrides: {},
     }
   });
 
@@ -141,9 +139,7 @@ export default function ProfilePage() {
       const ratesConfig = member.ratesConfig || {};
       
       let isGross = false;
-      let deductionSs: number | undefined = undefined;
-      let deductionIrpf: number | undefined = undefined;
-      let deductionExtra: number | undefined = undefined;
+      let taxOverrides: Record<string, number | null> = {};
       
       const shiftKeys = Object.keys(worklogDefinitions || {});
       const shiftRates: Record<string, number> = {};
@@ -157,9 +153,7 @@ export default function ProfilePage() {
              if (!foundTaxes) {
                  isGross = shiftData.is_gross !== undefined ? shiftData.is_gross : false;
                  if (shiftData.tax_overrides) {
-                     deductionSs = (shiftData.tax_overrides.ss !== undefined && shiftData.tax_overrides.ss !== null) ? shiftData.tax_overrides.ss * 100 : undefined;
-                     deductionIrpf = (shiftData.tax_overrides.irpf !== undefined && shiftData.tax_overrides.irpf !== null) ? shiftData.tax_overrides.irpf * 100 : undefined;
-                     deductionExtra = (shiftData.tax_overrides.extra !== undefined && shiftData.tax_overrides.extra !== null) ? shiftData.tax_overrides.extra * 100 : undefined;
+                     taxOverrides = { ...shiftData.tax_overrides };
                      foundTaxes = true;
                  }
              }
@@ -171,17 +165,13 @@ export default function ProfilePage() {
       rateForm.reset({
         rates: shiftRates,
         isGross,
-        deductionSs,
-        deductionIrpf,
-        deductionExtra,
+        taxOverrides,
       });
     } else {
       rateForm.reset({
         rates: {},
         isGross: false,
-        deductionSs: undefined,
-        deductionIrpf: undefined,
-        deductionExtra: undefined,
+        taxOverrides: {},
       });
     }
   }, [rates, rateForm, JSON.stringify(worklogDefinitions)]);
@@ -259,11 +249,7 @@ export default function ProfilePage() {
         ratesConfig[key] = {
             base_rate: data.rates[key] || 0,
             is_gross: data.isGross,
-            tax_overrides: {
-                ss: (data.deductionSs !== undefined && data.deductionSs !== null && !isNaN(data.deductionSs)) ? data.deductionSs / 100 : undefined,
-                irpf: (data.deductionIrpf !== undefined && data.deductionIrpf !== null && !isNaN(data.deductionIrpf)) ? data.deductionIrpf / 100 : undefined,
-                extra: (data.deductionExtra !== undefined && data.deductionExtra !== null && !isNaN(data.deductionExtra)) ? data.deductionExtra / 100 : undefined
-            }
+            tax_overrides: compactTaxOverrides(data.taxOverrides ?? {})
         };
     }
 
@@ -513,7 +499,7 @@ export default function ProfilePage() {
                                 name="isGross"
                                 render={({ field }) => (
                                   <FormItem className="flex flex-row items-center gap-2 space-y-0">
-                                    <FormLabel className="text-base">Precios en Bruto</FormLabel>
+                                    <FormLabel className="text-base">{field.value ? "Tarifa bruta (se descuentan los impuestos)" : "Tarifa neta (sin deduccion)"}</FormLabel>
                                     <FormControl>
                                       <Switch
                                         disabled={!canEditRates}
@@ -527,72 +513,22 @@ export default function ProfilePage() {
                             </div>
 
                             {rateForm.watch("isGross") && (
-                              <div className="grid gap-4 md:grid-cols-3">
-                                <FormField
-                                  control={rateForm.control}
-                                  name="deductionSs"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Seguridad Social (SS) (%)</FormLabel>
-                                      <FormControl>
-                                        <Input
-                                          type="number"
-                                          step="0.0001"
-                                          disabled={!canEditRates}
-                                          placeholder={(currentCompany as any)?.taxConfig?.social_security ? `Por Defecto: ${((currentCompany as any).taxConfig.social_security * 100).toFixed(2)}` : "0"}
-                                          {...field}
-                                          value={field.value ?? ""}
-                                          onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-                                        />
-                                      </FormControl>
-                                      <FormDescription>
-                                        Déjalo en blanco para valor por defecto ({(currentCompany as any)?.taxConfig?.social_security ? ((currentCompany as any).taxConfig.social_security * 100).toFixed(2) : 0}%)
-                                      </FormDescription>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                                <FormField
-                                  control={rateForm.control}
-                                  name="deductionIrpf"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>IRPF (%)</FormLabel>
-                                      <FormControl>
-                                        <Input 
-                                          type="number" 
-                                          step="0.01" 
-                                          disabled={!canEditRates}
-                                          {...field} 
-                                          value={field.value ?? ""} 
-                                          onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} 
-                                        />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                                <FormField
-                                  control={rateForm.control}
-                                  name="deductionExtra"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Extra (%)</FormLabel>
-                                      <FormControl>
-                                        <Input 
-                                          type="number" 
-                                          step="0.01" 
-                                          disabled={!canEditRates}
-                                          {...field} 
-                                          value={field.value ?? ""} 
-                                          onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} 
-                                        />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                              </div>
+                              <FormField
+                                control={rateForm.control}
+                                name="taxOverrides"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <TaxOverridesFields
+                                      companyTaxConfig={currentCompany?.taxConfig || {}}
+                                      value={field.value || {}}
+                                      onChange={field.onChange}
+                                      disabled={!canEditRates}
+                                    />
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+
                             )}
                           </div>
                         </fieldset>
