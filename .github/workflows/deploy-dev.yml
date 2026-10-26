@@ -131,7 +131,8 @@ jobs:
             exit 1
           fi
 
-          BODY="{}"
+          # Komodo valida la rama a partir de "ref"; sin ese campo descarta el webhook en silencio.
+          BODY="{\"ref\":\"${GITHUB_REF}\"}"
           if [ -n "$KOMODO_SECRET" ]; then
             SIGNATURE="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$KOMODO_SECRET" | sed 's/^.* //')"
             curl -f -s -X POST "$KOMODO_WEBHOOK" \
