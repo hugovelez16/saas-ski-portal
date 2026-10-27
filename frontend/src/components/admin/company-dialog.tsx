@@ -68,14 +68,14 @@ export function CompanyDialog() {
             setNoWithholdings(false);
             setTaxError(null);
             toast({
-                title: "Company created",
-                description: "The new company has been successfully created.",
+                title: "Empresa creada",
+                description: "La nueva empresa se ha creado correctamente.",
             });
         },
         onError: () => {
             toast({
                 title: "Error",
-                description: "Failed to create company.",
+                description: "No se pudo crear la empresa.",
                 variant: "destructive",
             });
         },

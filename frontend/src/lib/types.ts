@@ -64,6 +64,16 @@ export interface CompanyFull extends Company {
 export type CompanyResponse = Company;
 
 /**
+ * Payload de PUT /companies/:id (solo platform admin).
+ * Reutiliza los campos de Company. `reason` es opcional y solo se registra en auditoria.
+ */
+export type CompanyUpdatePayload = Partial<
+    Pick<Company, 'name' | 'isActive' | 'isManaged' | 'taxConfig' | 'worklogDefinitions' | 'settings'>
+> & {
+    reason?: string;
+};
+
+/**
  * Settings de empresa (catalogo CompanySettings del backend).
  * El backend entrega los valores por defecto aplicados.
  */
