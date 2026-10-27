@@ -176,7 +176,7 @@ export default function AdminCompaniesPage() {
                         const activeWorkers = (company.members || []).filter((m) => m.isActive && m.role !== 'manager').length;
                         const activeManagers = (company.members || []).filter((m) => m.isActive && m.role === 'manager').length;
                         const ss = formatPercentage(company.taxConfig?.social_security);
-                        const isManaged = Boolean(company.isManaged || company.settings?.is_managed);
+                        const isManaged = Boolean(company.isManaged);
                         const isActive = company.isActive !== false;
 
                         return (
@@ -291,7 +291,7 @@ export default function AdminCompaniesPage() {
                                     const activeWorkers = (company.members || []).filter((m) => m.isActive && m.role !== 'manager').length;
                                     const activeManagers = (company.members || []).filter((m) => m.isActive && m.role === 'manager').length;
                                     const ss = formatPercentage(company.taxConfig?.social_security);
-                                    const isManaged = Boolean(company.isManaged || company.settings?.is_managed);
+                                    const isManaged = Boolean(company.isManaged);
                                     const isActive = company.isActive !== false;
 
                                     return (

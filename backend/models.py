@@ -85,13 +85,13 @@ class Company(Base):
     # Structure example: { "IRPF": 0.15, "Seguridad Social": 0.0648 } (nombre libre -> tasa 0..1; {} o NULL = sin impuestos)
 
     # SaaS Evolution: Dynamic shift definitions
-    worklog_definitions = Column(JSONB, default={})
+    worklog_definitions = Column(JSONB, default=dict)
     # Structure example: { "particular": { "unit": "hours", "label": "Particular", "fields": [...] } }
 
     is_active = Column(Boolean, default=True, server_default="true", nullable=False)
     is_managed = Column(Boolean, default=False, server_default="false", nullable=False)
 
-    settings = Column(JSONB, default={})  # Global company settings
+    settings = Column(JSONB, default=dict)  # Global company settings
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -114,10 +114,10 @@ class CompanyMember(Base):
     sort_order = Column(Integer, default=1000, server_default="1000")
 
     # SaaS Evolution: The "Contract" - user rates for THIS specific company
-    rates_config = Column(JSONB, default={})
+    rates_config = Column(JSONB, default=dict)
     # Structure example: { "particular": { "base_rate": 25.0, "is_gross": true, "tax_overrides": {...} } }
 
-    settings = Column(JSONB, default={})  # User-specific UI/Feature overrides
+    settings = Column(JSONB, default=dict)  # User-specific UI/Feature overrides
     joined_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -148,7 +148,7 @@ class WorkLog(Base):
     net_amount = Column(Numeric(10, 2), nullable=True)
     gross_amount = Column(Numeric(10, 2), default=0.0)
 
-    extra_data = Column(JSONB, default={})  # Stores dynamic extras: {"has_night": true, etc.}
+    extra_data = Column(JSONB, default=dict)  # Stores dynamic extras: {"has_night": true, etc.}
 
     description = Column(Text, nullable=True)
 
@@ -199,7 +199,7 @@ class AuditLog(Base):
     old_value = Column(JSONB, nullable=True)
     new_value = Column(JSONB, nullable=True)
     reason = Column(Text, nullable=True)
-    extra_data = Column(JSONB, default={})
+    extra_data = Column(JSONB, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

@@ -2,10 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Button } from "@/components/ui/button";
-import { Percent, Banknote } from "lucide-react";
 
 interface BusinessLogicBuilderProps {
     initialValue: any;
@@ -14,16 +12,14 @@ interface BusinessLogicBuilderProps {
 
 export function BusinessLogicBuilder({ initialValue, onSave }: BusinessLogicBuilderProps) {
     const [logic, setLogic] = useState({
-        price_type: initialValue?.business_logic?.price_type || initialValue?.billing?.price_type || "net",
-        cost_markup: initialValue?.business_logic?.cost_markup || 0,
+        price_type: initialValue?.business_logic?.price_type,
     });
 
     useEffect(() => {
         setLogic({
-            price_type: initialValue?.business_logic?.price_type || initialValue?.billing?.price_type || "net",
-            cost_markup: initialValue?.business_logic?.cost_markup || 0,
+            price_type: initialValue?.business_logic?.price_type,
         });
-    }, [JSON.stringify(initialValue?.business_logic || initialValue?.billing || {})]);
+    }, [JSON.stringify(initialValue?.business_logic || {})]);
 
     const handleSave = () => {
         onSave({
@@ -69,23 +65,6 @@ export function BusinessLogicBuilder({ initialValue, onSave }: BusinessLogicBuil
                     </RadioGroup>
                 </div>
 
-                {/* Markup */}
-                <div className="space-y-3">
-                    <Label className="text-sm font-bold">Margen de Beneficio (Markup %)</Label>
-                    <p className="text-xs text-muted-foreground mb-3">
-                        Porcentaje extra que se añade al coste del trabajador para calcular el precio al cliente.
-                    </p>
-                    <div className="relative">
-                        <Percent className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                        <Input
-                            type="number"
-                            value={logic.cost_markup}
-                            onChange={(e) => setLogic({ ...logic, cost_markup: parseFloat(e.target.value) || 0 })}
-                            className="pl-9"
-                            placeholder="Ej: 32"
-                        />
-                    </div>
-                </div>
             </div>
 
             <div className="flex justify-end">

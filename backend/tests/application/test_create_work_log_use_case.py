@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 from application.use_cases.work_logs.create_work_log_use_case import CreateWorkLogUseCase
+from contracts import MissingWorklogUnitError
 from domain.entities.company import Company
 from domain.entities.company_member import CompanyMember, CompanyRole
 from domain.entities.work_log import WorkLog
@@ -90,7 +91,7 @@ async def test_create_work_log_success():
         id="comp-1",
         name="Sierra Nevada Ski School",
         tax_config={"irpf_base": 0.15, "social_security": 0.05},
-        worklog_definitions={"clase_particular": {"unit": "hours", "is_range": False}},
+        worklog_definitions={"clase_particular": {"unit": "hours", "label": "Clase particular", "fields": []}},
     )
     await company_repo.save(company)
 
@@ -127,6 +128,46 @@ async def test_create_work_log_success():
     # Bruto = 60 / (1 - 0.20) = 75.00
     assert result.gross_amount.amount == Decimal("75.00")
     assert result.duration_hours == 2.0
+
+
+@pytest.mark.anyio
+async def test_create_work_log_without_unit_raises_missing_unit_error():
+    company_repo = InMemoryCompanyRepo()
+    member_repo = InMemoryCompanyMemberRepo()
+    work_log_repo = InMemoryWorkLogRepo()
+
+    company = Company(
+        id="comp-1",
+        name="Escuela",
+        worklog_definitions={"clase_particular": {"label": "Clase particular", "fields": []}},
+    )
+    await company_repo.save(company)
+
+    member = CompanyMember(
+        user_id="user-1",
+        company_id="comp-1",
+        role=CompanyRole.WORKER,
+        is_active=True,
+        rates_config={"clase_particular": {"base_rate": 30.0, "is_gross": False}},
+    )
+    await member_repo.save(member)
+
+    use_case = CreateWorkLogUseCase(
+        work_log_repo=work_log_repo,
+        company_repo=company_repo,
+        member_repo=member_repo,
+    )
+
+    with pytest.raises(MissingWorklogUnitError, match="no tiene unidad definida"):
+        await use_case.execute(
+            user_id="user-1",
+            company_id="comp-1",
+            log_type="clase_particular",
+            start_date=date(2026, 1, 15),
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            duration_hours=2.0,
+        )
 
 
 @pytest.mark.anyio

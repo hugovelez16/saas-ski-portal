@@ -19,6 +19,35 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.16.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Contratos de `settings`, tipos de turno y tarifas (PR-11 del plan de empresa). Con migracion de datos: antes de desplegar hay que hacer backup y ejecutar `backend/scripts/repair_settings_definitions.py` en `--dry-run` y despues con `--apply` (seccion 10 de `docs/empresa/plan-implementacion-empresa.md`).
+
+### Funcionalidades y Mejoras
+
+- **Rollback**: el `downgrade` de la migracion `b7e1a0d10005` es incompleto (solo restaura `is_range` a partir de `unit == "days"`; no recrea las claves retiradas ni los `settings` antiguos). El rollback de esta version requiere RESTAURAR EL BACKUP previo al despliegue (seccion 10, paso d). Los ficheros `settings_definitions_before_<ts>.json` del script permiten recuperar solo esos datos.
+- **`settings` de empresa**: contrato estricto (`CompanySettings`) con `business_logic.price_type` (por defecto `net`), `worker_experience`, `ui_customization`, `modules` y `allowed_rates`. `PUT /companies/{id}` con claves desconocidas o tipos incorrectos responde 422. Las respuestas devuelven los `settings` con los valores por defecto aplicados y la lectura de empresas existentes es tolerante (descarta claves desconocidas con aviso).
+- **Tipos de turno**: `unit` (`hours`, `days` o `fixed`) es obligatorio y `label` tiene de 1 a 60 caracteres. Un turno cuyo tipo no tiene `unit` responde 422 ("El tipo de turno no tiene unidad definida (unit)").
+- **Tarifas**: `PUT .../members/{userId}/rates` valida `base_rate`, `extras` e impuestos (finitos y mayores o iguales que 0), limita a 50 tipos y 64 KiB, y rechaza con 422 los tipos de turno nuevos que la empresa no define.
+- **`settings` de miembro**: solo admiten una lista blanca de claves (`notifications`, `ui_preferences`) con tope de 8 KiB.
+- **Valores por defecto en el frontend**: se retiran los valores propios del cliente; ahora los entrega el backend. `price_type` pasa de `gross` a `net` y `modules` queda vacio por defecto.
+
+### Cambiado
+
+- **Migracion `b7e1a0d10005`**: solo actualiza datos JSONB de `companies.settings` y `companies.worklog_definitions`, sin alterar columnas. Mapea `features` a `modules`, `billing.price_type` a `business_logic.price_type` e `input_mode` a `worker_experience.input_mode`; retira `allow_tutorial`, `allow_coordination`, `is_managed`, `business_logic.cost_markup` y `billing.cost_markup_percent`; fija `unit` a partir de `is_range` y borra `is_range`. Valida antes de escribir y aborta con `RuntimeError` si hay claves o tipos que no puede normalizar.
+- **`frontend/`**: los constructores de `settings` y tipos de turno escriben solo `unit`; se retiran `settings.is_managed`, `cost_markup` y los respaldos a claves antiguas. Se elimina `company-settings-dialog.tsx` (sin uso).
+- **`backend/seed.py`**: siembra `modules.worker_daily_report` en lugar de `features`.
+
+### Cambios Internos
+
+- **`backend/scripts/repair_settings_definitions.py`**: script de reparacion previo a la migracion (`--dry-run` por defecto, `--apply` escribe la copia de seguridad, `--apply --drop-unknown CLAVE[,CLAVE]` elimina claves desconocidas).
+- **Defaults JSONB mutables**: los `default={}` de `models.py` pasan a `default=dict`.
+- **Pendiente (O10)**: `allow_tutorial` y `allow_coordination` siguen en la lista blanca de `settings` de miembro (`MEMBER_SETTINGS_ALLOWED_KEYS` en `backend/contracts.py`) solo porque `member-settings-dialog.tsx` aun los guarda. Hay que eliminarlas de la lista cuando se retire ese dialogo.
+
+---
+
 ## [0.15.1] - 2026-10-27
 
 ### Tipo de Cambio SemVer

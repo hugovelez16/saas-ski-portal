@@ -501,7 +501,7 @@ export default function ListPage() {
                         const definition = logCompany?.worklogDefinitions?.[log.type];
                         
                         if (definition) {
-                          const unit = definition.unit || (definition.is_range ? 'days' : 'hours');
+                          const unit = definition.unit;
                           if (unit === 'hours') {
                             const hours = log.duration ?? log.durationHours ?? 0;
                             return `${Number(hours).toFixed(2)} h`;

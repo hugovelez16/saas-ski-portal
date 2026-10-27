@@ -14,14 +14,14 @@ interface WorkerUXBuilderProps {
 
 export function WorkerUXBuilder({ initialValue, onSave }: WorkerUXBuilderProps) {
     const [ux, setUx] = useState({
-        input_mode: initialValue?.worker_experience?.input_mode || initialValue?.input_mode || "manual_single",
-        allow_manual_amount: initialValue?.worker_experience?.allow_manual_amount || false,
+        input_mode: initialValue?.worker_experience?.input_mode,
+        allow_manual_amount: initialValue?.worker_experience?.allow_manual_amount,
     });
 
     useEffect(() => {
         setUx({
-            input_mode: initialValue?.worker_experience?.input_mode || initialValue?.input_mode || "manual_single",
-            allow_manual_amount: initialValue?.worker_experience?.allow_manual_amount || false,
+            input_mode: initialValue?.worker_experience?.input_mode,
+            allow_manual_amount: initialValue?.worker_experience?.allow_manual_amount,
         });
     }, [JSON.stringify(initialValue?.worker_experience || {})]);
 

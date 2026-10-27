@@ -45,31 +45,27 @@ export interface Company {
 
 export type CompanyResponse = Company;
 
+/**
+ * Settings de empresa (catalogo CompanySettings del backend).
+ * El backend entrega los valores por defecto aplicados.
+ */
 export interface CompanySettings {
-    modules?: Record<string, boolean>;
-    business_logic?: {
-        price_type?: 'net' | 'gross';
-        cost_markup?: number;
+    business_logic: {
+        /** Solo afecta a la vista del dashboard. net = un unico precio. */
+        price_type: 'net' | 'gross';
     };
-    worker_experience?: {
-        input_mode?: 'manual_single' | 'timer' | 'bulk';
-        allow_manual_amount?: boolean;
+    worker_experience: {
+        input_mode: 'manual_single' | 'timer' | 'bulk';
+        allow_manual_amount: boolean;
     };
-    ui_customization?: {
-        labels?: {
+    ui_customization: {
+        labels: {
             worklog?: string;
             client?: string;
         };
     };
-    // Legacy support (to be removed after complete migration)
-    /** @deprecated Use modules instead */
-    features?: Record<string, boolean>;
-    /** @deprecated Use business_logic.price_type instead */
-    billing?: {
-        price_type?: 'net' | 'gross';
-    };
-    /** @deprecated Use worker_experience.input_mode instead */
-    input_mode?: 'manual_single' | 'timer' | 'bulk';
+    modules: Record<string, boolean>;
+    allowed_rates?: string[];
 }
 
 export interface DynamicRateEntry {
@@ -136,7 +132,6 @@ export interface DailyReportLog {
 export interface DailyReportWorkType {
     label: string;
     unit: string;
-    is_range?: boolean;
     fields?: string[];
     icon?: string;
     [key: string]: unknown;

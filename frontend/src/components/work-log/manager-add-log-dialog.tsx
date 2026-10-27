@@ -129,7 +129,7 @@ export function ManagerAddWorkLogDialog({
         setIsLoading(true);
 
         const currentDef = (worklogDefinitions || {})[logType] || null;
-        const isRange = currentDef?.is_range === true;
+        const isRange = currentDef?.unit === "days";
         const isFixed = currentDef?.unit === "fixed";
 
         if (isRange) {

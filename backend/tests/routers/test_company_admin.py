@@ -46,7 +46,7 @@ MANAGER_FORBIDDEN_UPDATES = [
 # payload del PUT del PA -> (accion de auditoria, campo del modelo que cambia)
 EVENT_CASES = [
     pytest.param({"taxConfig": {"social_security": 0.1}}, "company.tax_config_changed", "tax_config", id="tax_config"),
-    pytest.param({"settings": {"notify": True}}, "company.settings_changed", "settings", id="settings"),
+    pytest.param({"settings": {"modules": {"coordination": True}}}, "company.settings_changed", "settings", id="settings"),
     pytest.param(
         {"worklogDefinitions": {"guardia": {"unit": "hours", "label": "Guardia", "fields": []}}},
         "company.worklog_definitions_changed",
