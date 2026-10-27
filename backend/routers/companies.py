@@ -297,7 +297,19 @@ def update_member_rates(
     access_policy.can_edit_member_rates(
         role=ctx.role, is_managed=ctx.is_managed, is_self=user_id == current_user.id
     )
-    member = crud.set_member_rates(db, company_id, user_id, rates_data.rates_config, actor_id=current_user.id)
+    if ctx.company is None:
+        raise HTTPException(status_code=404, detail=MSG_COMPANY_NOT_FOUND)
+    definitions = ctx.company.worklog_definitions or {}
+    # Solo se exige definicion a los tipos nuevos: los ya presentes en la tarifa del miembro se conservan
+    # aunque el tipo se haya retirado de la empresa.
+    member = crud.get_company_member(db, user_id, company_id)
+    existing = set((member.rates_config or {}).keys()) if member is not None else set()
+    new_shift_types = [shift_type for shift_type in rates_data.rates_config.root if shift_type not in existing]
+    if any(shift_type not in definitions for shift_type in new_shift_types):
+        raise HTTPException(status_code=422, detail="Tipo de turno desconocido")
+    # Se guarda lo que envio el cliente, ya validado y en JSON plano; las lecturas aplican los defaults.
+    rates_config = rates_data.rates_config.model_dump(mode="json", exclude_unset=True)
+    member = crud.set_member_rates(db, company_id, user_id, rates_config, actor_id=current_user.id)
     if member is None:
         raise HTTPException(status_code=404, detail=MSG_MEMBER_NOT_FOUND)
     return member

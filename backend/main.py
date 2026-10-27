@@ -6,12 +6,16 @@ It serves as the entry point for the backend service.
 """
 
 import asyncio
+import math
 import os
 from contextlib import asynccontextmanager
 
 from access_policy import PolicyError
+from contracts import MissingWorklogUnitError
 from database import SessionLocal
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -130,6 +134,29 @@ app = FastAPI(
 @app.exception_handler(PolicyError)
 async def policy_error_handler(request: Request, exc: PolicyError):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.exception_handler(MissingWorklogUnitError)
+async def missing_worklog_unit_error_handler(request: Request, exc: MissingWorklogUnitError):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+def _replace_non_finite(value):
+    """Sustituye NaN e infinitos por texto: JSONResponse no admite floats no finitos."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _replace_non_finite(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_replace_non_finite(item) for item in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_error_handler(request: Request, exc: RequestValidationError):
+    # Cada error incluye el valor de entrada (`input`), que puede ser NaN: se sanea para poder serializar el 422.
+    content = _replace_non_finite(jsonable_encoder(exc.errors()))
+    return JSONResponse(status_code=422, content={"detail": content})
 
 
 @app.get("/health", tags=["system"])

@@ -92,7 +92,7 @@ def _call_member_endpoint(client, name, company, member, outsider):
         return client.put(f"/companies/{cid}/members/{member.id}/rates", json={"ratesConfig": NEW_RATES})
     if name == "settings":
         return client.put(
-            f"/companies/{cid}/members/{member.id}/settings", json={"settings": {"theme": "dark"}}
+            f"/companies/{cid}/members/{member.id}/settings", json={"settings": {"ui_preferences": {"theme": "dark"}}}
         )
     raise ValueError(f"endpoint desconocido: {name}")
 
@@ -464,7 +464,7 @@ def test_worker_edits_own_settings_in_managed_and_autonomous_company(client, db,
     make_member(db, worker, company, role="worker")
     as_user(client, worker, company, claims={"role": "worker"})
 
-    resp = client.put(f"/companies/{company.id}/members/{worker.id}/settings", json={"settings": {"theme": "dark"}})
+    resp = client.put(f"/companies/{company.id}/members/{worker.id}/settings", json={"settings": {"ui_preferences": {"theme": "dark"}}})
 
     assert resp.status_code == 200, resp.text
 
@@ -477,7 +477,7 @@ def test_worker_cannot_edit_settings_of_another_member(client, db):
     make_member(db, other, company, role="worker")
     as_user(client, worker, company, claims={"role": "worker"})
 
-    resp = client.put(f"/companies/{company.id}/members/{other.id}/settings", json={"settings": {"theme": "dark"}})
+    resp = client.put(f"/companies/{company.id}/members/{other.id}/settings", json={"settings": {"ui_preferences": {"theme": "dark"}}})
 
     assert resp.status_code == 403, resp.text
 
@@ -495,7 +495,7 @@ def test_manager_and_pa_can_edit_settings_of_another_member(client, db, actor_ki
         actor = make_user(db, role="admin")
         as_user(client, actor, company, claims=PA_CLAIMS)
 
-    resp = client.put(f"/companies/{company.id}/members/{worker.id}/settings", json={"settings": {"theme": "dark"}})
+    resp = client.put(f"/companies/{company.id}/members/{worker.id}/settings", json={"settings": {"ui_preferences": {"theme": "dark"}}})
 
     assert resp.status_code == 200, resp.text
 

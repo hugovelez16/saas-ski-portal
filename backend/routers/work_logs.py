@@ -7,6 +7,7 @@ import crud
 import models
 import schemas
 from access_policy import PolicyError
+from contracts import MissingWorklogUnitError
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
@@ -65,6 +66,8 @@ def create_work_log(
             extra_data={"work_log_id": str(new_log.id), "user_id": str(work_log.user_id)},
         )
         return new_log
+    except MissingWorklogUnitError:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -98,6 +101,8 @@ def create_work_log_bulk(
                 },
             )
         return logs  # Returns the first one created as a representative
+    except MissingWorklogUnitError:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -341,6 +346,8 @@ def update_work_log(
         updated_log = crud.update_work_log(
             db, str(work_log_id), work_log, company_id=log.company_id, apply_to_group=apply_to_group
         )
+    except MissingWorklogUnitError:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     if updated_log is None:

@@ -64,7 +64,11 @@ def _seed(db):
 
     managed_company = models.Company(id=uuid.uuid4(), name="Managed Corp", is_active=True, is_managed=True)
     autonomous_company = models.Company(
-        id=uuid.uuid4(), name="Autonomous Freelancers", is_active=True, is_managed=False
+        id=uuid.uuid4(),
+        name="Autonomous Freelancers",
+        is_active=True,
+        is_managed=False,
+        worklog_definitions={"particular": {"unit": "hours", "label": "Particular", "fields": []}},
     )
     inactive_company = models.Company(id=uuid.uuid4(), name="Suspended Company", is_active=False, is_managed=False)
 

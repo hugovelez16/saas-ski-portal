@@ -54,7 +54,7 @@ def seed_initial_data(db: Session = None) -> bool:
                     "particular": {"unit": "hours", "label": "Clase Particular", "fields": []},
                     "colectiva": {"unit": "hours", "label": "Clase Colectiva", "fields": []},
                 },
-                settings={"features": {"worker_daily_report": True}},
+                settings={"modules": {"worker_daily_report": True}},
             )
             db.add(company)
             db.commit()

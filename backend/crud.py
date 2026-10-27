@@ -17,7 +17,7 @@ import models
 import schemas
 from access_policy import PolicyError
 from audit import AuditAction, record_audit
-from contracts import resolve_taxes
+from contracts import MissingWorklogUnitError, resolve_taxes
 from pydantic import TypeAdapter
 from redis_config import logger, redis_manager
 from sqlalchemy import distinct, func, or_
@@ -99,7 +99,7 @@ def get_company_member(db: Session, user_id: Any, company_id: Any, *, only_activ
 def get_worklog_unit(type_def: dict) -> str:
     unit = type_def.get("unit")
     if not unit:
-        unit = "days" if type_def.get("is_range") else "hours"
+        raise MissingWorklogUnitError("El tipo de turno no tiene unidad definida (unit)")
     return unit
 
 
@@ -909,11 +909,11 @@ def get_user_companies(db: Session, user_id: str, include_inactive: bool = False
         if not company:
             continue
 
-        c_settings = company.settings if isinstance(company.settings, dict) else {}
+        # Settings de empresa con defaults aplicados; los del miembro solo admiten la lista blanca.
+        c_settings = schemas.read_company_settings(company.settings)
         m_settings = m.settings if isinstance(m.settings, dict) else {}
 
-        effective = c_settings.copy()
-        effective.update(m_settings)
+        effective = {**c_settings, **m_settings}
 
         # Construct response object (dict compatible with Pydantic)
         results.append(
@@ -1268,7 +1268,7 @@ def get_company_for_actor(db: Session, company_id: Any, actor: Any):
 
 
 def create_company(db: Session, company: schemas.CompanyCreate, *, actor_id: Any):
-    db_company = models.Company(**company.model_dump())
+    db_company = models.Company(**company.model_dump(mode="json"))
     db.add(db_company)
     db.flush()  # Asigna el id antes de auditar; el commit lo confirma todo junto.
     record_audit(
@@ -1298,7 +1298,8 @@ def update_company(
         return None
 
     # by_alias=False: nombres snake_case del modelo. `reason` es solo para auditoria.
-    update_data = data.model_dump(exclude_unset=True, by_alias=False, exclude={"reason"})
+    # mode="json": valores JSON-compatibles para la columna JSONB.
+    update_data = data.model_dump(exclude_unset=True, by_alias=False, mode="json", exclude={"reason"})
     changes = []
     for field in _COMPANY_EVENT_ACTIONS:
         if field not in update_data:

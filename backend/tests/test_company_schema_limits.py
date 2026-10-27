@@ -23,4 +23,5 @@ def test_create_rechaza_json_demasiado_grande(field):
 
 def test_json_normal_se_acepta():
     update = schemas.CompanyUpdate(settings={"modules": {"coordination": True}})
-    assert update.settings == {"modules": {"coordination": True}}
+    assert update.settings is not None
+    assert update.settings.modules == {"coordination": True}

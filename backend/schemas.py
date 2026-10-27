@@ -6,13 +6,19 @@ It ensures that data sent to and received from the API conforms to the expected 
 """
 
 import json
-import math
 from datetime import date as dt_date
 from datetime import datetime, time, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from contracts import TaxConfig, validate_tax_overrides
+from contracts import (
+    MEMBER_SETTINGS_ALLOWED_KEYS,
+    CompanySettings,
+    RatesConfig,
+    TaxConfig,
+    WorklogDefinitions,
+    validate_member_settings,
+)
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
@@ -265,36 +271,36 @@ class CompanyBase(CamelModel):
     # Obligatorio y estricto en escritura ({} es valido). Las respuestas lo relajan en `Company`.
     tax_config: TaxConfig = Field(alias="taxConfig")
 
-    # SaaS Evolution: Dynamic shift definitions
-    worklog_definitions: dict[str, Any] | None = Field(default={}, alias="worklogDefinitions")
+    # SaaS Evolution: Dynamic shift definitions. Las respuestas lo leen de forma tolerante en `Company`.
+    worklog_definitions: WorklogDefinitions = Field(
+        default_factory=lambda: WorklogDefinitions({}), alias="worklogDefinitions"
+    )
 
     is_active: bool = Field(default=True, alias="isActive")
     is_managed: bool = Field(default=False, alias="isManaged")
 
-    settings: dict[str, Any] | None = None
+    settings: CompanySettings | None = None
 
     @field_validator("name")
     @classmethod
     def _validate_name(cls, v: str) -> str:
         return normalize_company_name(v)
 
-    @field_validator("settings", "worklog_definitions")
-    @classmethod
-    def _limit_json(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
-        return limit_company_json(v)
-
 
 class CompanyCreate(CompanyBase):
-    pass
+    @field_validator("settings", "worklog_definitions", mode="before")
+    @classmethod
+    def _limit_json(cls, v: Any) -> Any:
+        return limit_company_json(v)
 
 
 class CompanyUpdate(CamelModel):
     name: str | None = None
     tax_config: TaxConfig | None = Field(None, alias="taxConfig")
-    worklog_definitions: dict[str, Any] | None = Field(None, alias="worklogDefinitions")
+    worklog_definitions: WorklogDefinitions | None = Field(None, alias="worklogDefinitions")
     is_active: bool | None = Field(None, alias="isActive")
     is_managed: bool | None = Field(None, alias="isManaged")
-    settings: dict[str, Any] | None = None
+    settings: CompanySettings | None = None
     # Solo para auditoria (motivo de suspension, etc.). No se persiste en la empresa.
     reason: str | None = Field(None, max_length=500)
 
@@ -303,9 +309,9 @@ class CompanyUpdate(CamelModel):
     def _validate_name(cls, v: str | None) -> str:
         return normalize_company_name(v)
 
-    @field_validator("settings", "worklog_definitions")
+    @field_validator("settings", "worklog_definitions", mode="before")
     @classmethod
-    def _limit_json(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+    def _limit_json(cls, v: Any) -> Any:
         return limit_company_json(v)
 
     @field_validator("is_active", "is_managed")
@@ -317,12 +323,31 @@ class CompanyUpdate(CamelModel):
         return v
 
 
+def read_company_settings(raw: Any) -> dict[str, Any]:
+    """
+    Settings para respuestas de empresa: lectura tolerante con defaults aplicados.
+    Las claves de miembro (lista blanca) se conservan porque `crud.get_user_companies` las fusiona aqui.
+    """
+    source = raw if isinstance(raw, dict) else {}
+    member_part = {key: value for key, value in source.items() if key in MEMBER_SETTINGS_ALLOWED_KEYS}
+    company_part = {key: value for key, value in source.items() if key not in MEMBER_SETTINGS_ALLOWED_KEYS}
+    return {**CompanySettings.from_db(company_part).model_dump(mode="json"), **member_part}
+
+
 class Company(CompanyBase):
     # Lectura tolerante: filas existentes con tax_config NULL o cualquier dict.
     tax_config: dict[str, float] | None = Field(None, alias="taxConfig")
+    # Lectura tolerante: settings con defaults aplicados; worklog_definitions tal cual esta en BD.
+    settings: dict[str, Any] | None = None
+    worklog_definitions: dict[str, Any] | None = Field(default={}, alias="worklogDefinitions")
     id: UUID
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("settings", mode="before")
+    @classmethod
+    def _read_settings(cls, v: Any) -> dict[str, Any]:
+        return read_company_settings(v)
 
     class Config:
         from_attributes = True
@@ -365,36 +390,16 @@ class MemberRoleUpdate(CamelModel):
 
 
 class MemberRatesUpdate(CamelModel):
-    rates_config: dict[str, dict[str, Any]]
-
-    @field_validator("rates_config")
-    @classmethod
-    def _base_rates_are_non_negative(cls, value: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-        for shift_key, shift in value.items():
-            if "base_rate" not in shift:
-                continue
-            base_rate = shift["base_rate"]
-            if isinstance(base_rate, bool) or not isinstance(base_rate, (int, float)):
-                raise ValueError(f"base_rate de '{shift_key}' debe ser un numero")
-            if not math.isfinite(base_rate) or base_rate < 0:
-                raise ValueError(f"base_rate de '{shift_key}' debe ser un numero mayor o igual que 0")
-        return value
-
-    @field_validator("rates_config")
-    @classmethod
-    def _tax_overrides_are_valid(cls, value: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-        for shift_key, shift in value.items():
-            if not isinstance(shift, dict) or "tax_overrides" not in shift:
-                continue
-            try:
-                validate_tax_overrides(shift["tax_overrides"])
-            except ValueError as exc:
-                raise ValueError(f"tax_overrides de '{shift_key}' no es valido: {exc}") from exc
-        return value
+    rates_config: RatesConfig
 
 
 class MemberSettingsUpdate(CamelModel):
     settings: dict[str, Any]
+
+    @field_validator("settings")
+    @classmethod
+    def _validate_settings(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return validate_member_settings(value)
 
 
 class MemberDeleteResponse(CamelModel):
