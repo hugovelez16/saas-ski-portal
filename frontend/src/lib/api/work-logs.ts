@@ -123,8 +123,22 @@ export const createWorkLog = async (data: WorkLogCreate): Promise<WorkLog> => {
     return response.data;
 };
 
-export const updateWorkLog = async (id: string, data: Partial<WorkLogCreate>, applyToGroup: boolean = false): Promise<WorkLog> => {
-    const response = await api.put(`/work-logs/${id}?apply_to_group=${applyToGroup}`, data);
+export interface UpdateWorkLogOptions {
+    /** Recalcula el importe con las tarifas actuales (solo manager y platform admin). */
+    recalculateWithCurrentRates?: boolean;
+    /** Cada turno manual conserva su propio importe (cualquier rol, tambien en apply_to_group). */
+    keepManualAmount?: boolean;
+}
+
+export const updateWorkLog = async (
+    id: string,
+    data: Partial<WorkLogCreate>,
+    applyToGroup: boolean = false,
+    options?: UpdateWorkLogOptions
+): Promise<WorkLog> => {
+    const rateQuery = options?.recalculateWithCurrentRates ? '&recalculate_with_current_rates=true' : '';
+    const manualQuery = options?.keepManualAmount ? '&keep_manual_amount=true' : '';
+    const response = await api.put(`/work-logs/${id}?apply_to_group=${applyToGroup}${rateQuery}${manualQuery}`, data);
     return response.data;
 };
 

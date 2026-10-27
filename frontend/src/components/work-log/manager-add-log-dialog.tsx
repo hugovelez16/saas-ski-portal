@@ -18,12 +18,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PlusCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { WorkLog, WorkLogCreate, WorkLogBulkCreate } from "@/lib/types";
+import { notifyWorkLogWarnings } from "@/lib/work-log-warnings";
 import { WorkLogForm } from "./work-log-form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/ui/input";
+import { getManualAmountChoice } from "@/lib/manual-amount-choice";
+import { ManualAmountChoiceDialog } from "./manual-amount-choice-dialog";
 
 interface ManagerAddWorkLogDialogProps {
     companyId: string;
@@ -70,6 +73,10 @@ export function ManagerAddWorkLogDialog({
     const { user } = useAuth(); // Need auth context for some user lookups or safety
 
     const { toast } = useToast();
+
+    // Edicion con importe manual pendiente de decision (409 manual_amount_choice).
+    // Este dialogo es siempre de manager: puede recalcular por tarifa.
+    const [manualChoice, setManualChoice] = useState<{ message: string; body: any } | null>(null);
 
     // Reset or Initialize when opening
     useEffect(() => {
@@ -182,51 +189,85 @@ export function ManagerAddWorkLogDialog({
 
         try {
             if (initialData?.id) {
-                await api.put(`/work-logs/${initialData.id}`, { ...sharedData, userId: selectedUserIds[0] });
+                const response = await api.put(`/work-logs/${initialData.id}`, { ...sharedData, userId: selectedUserIds[0] });
                 toast({ title: "Éxito", description: "Registro actualizado correctamente." });
+                notifyWorkLogWarnings(toast, response?.data);
             } else if (selectedUserIds.length === 1) {
-                await api.post("/work-logs", { ...sharedData, userId: selectedUserIds[0] });
+                const response = await api.post("/work-logs", { ...sharedData, userId: selectedUserIds[0] });
                 toast({ title: "Éxito", description: "Registro añadido correctamente." });
+                notifyWorkLogWarnings(toast, response?.data);
             } else {
                 const bulkData: WorkLogBulkCreate = {
                     ...sharedData,
                     userIds: selectedUserIds,
                 } as any;
-                await api.post("/work-logs/bulk", bulkData);
+                const response = await api.post("/work-logs/bulk", bulkData);
                 toast({ title: "Éxito", description: `${selectedUserIds.length} registros añadidos correctamente.` });
+                notifyWorkLogWarnings(toast, response?.data);
             }
 
             setOpen(false);
             onSuccess?.();
 
         } catch (error: any) {
-            console.error("Error saving work log:", error);
-            let msg = "No se pudo guardar el registro.";
-            
-            if (error.response?.data?.detail) {
-                const detail = error.response.data.detail;
-                if (typeof detail === 'string') {
-                    msg = detail;
-                } else if (Array.isArray(detail)) {
-                    msg = detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
-                } else if (typeof detail === 'object') {
-                    msg = detail.message || JSON.stringify(detail);
-                }
-            } else if (error.message) {
-                msg = error.message;
+            const manualChoiceError = initialData?.id ? getManualAmountChoice(error) : null;
+            if (manualChoiceError) {
+                // Sin toast: el usuario decide como resolver el importe manual
+                setManualChoice({ message: manualChoiceError.message, body: { ...sharedData, userId: selectedUserIds[0] } });
+                return;
             }
-
-            // Check if it's a rate/pricing related validation error and make it friendly
-            const lowercaseMsg = msg.toLowerCase();
-            if (lowercaseMsg.includes("precio") || lowercaseMsg.includes("rate") || lowercaseMsg.includes("tarifa")) {
-                msg = "No se puede guardar: El usuario no tiene tarifas configuradas para este tipo de turno. Por favor, configura sus tarifas primero.";
-            }
-
-            toast({ title: "Error al guardar", description: msg, variant: "destructive" });
+            showSaveError(error);
         } finally {
             setIsLoading(false);
         }
     }
+
+    const showSaveError = (error: any) => {
+        console.error("Error saving work log:", error);
+        let msg = "No se pudo guardar el registro.";
+
+        if (error.response?.data?.detail) {
+            const detail = error.response.data.detail;
+            if (typeof detail === 'string') {
+                msg = detail;
+            } else if (Array.isArray(detail)) {
+                msg = detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
+            } else if (typeof detail === 'object') {
+                msg = detail.message || JSON.stringify(detail);
+            }
+        } else if (error.message) {
+            msg = error.message;
+        }
+
+        // Check if it's a rate/pricing related validation error and make it friendly
+        const lowercaseMsg = msg.toLowerCase();
+        if (lowercaseMsg.includes("precio") || lowercaseMsg.includes("rate") || lowercaseMsg.includes("tarifa")) {
+            msg = "No se puede guardar: El usuario no tiene tarifas configuradas para este tipo de turno. Por favor, configura sus tarifas primero.";
+        }
+
+        toast({ title: "Error al guardar", description: msg, variant: "destructive" });
+    };
+
+    // Reenvia el mismo PUT resolviendo el importe manual: conservar (keep_manual_amount) o recalcular por tarifa
+    const resolveManualChoice = async (mode: 'keep' | 'recalculate') => {
+        const pending = manualChoice;
+        if (!pending || !initialData?.id) return;
+
+        setManualChoice(null);
+        setIsLoading(true);
+        try {
+            const flag = mode === 'keep' ? 'keep_manual_amount=true' : 'recalculate_with_current_rates=true';
+            const response = await api.put(`/work-logs/${initialData.id}?${flag}`, pending.body);
+            toast({ title: "Éxito", description: "Registro actualizado correctamente." });
+            notifyWorkLogWarnings(toast, response?.data);
+            setOpen(false);
+            onSuccess?.();
+        } catch (error: any) {
+            showSaveError(error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
 
     const toggleUser = (userId: string) => {
@@ -248,6 +289,7 @@ export function ManagerAddWorkLogDialog({
     }, [users, searchQuery]);
 
     return (
+        <>
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 {children ?? (
@@ -344,5 +386,14 @@ export function ManagerAddWorkLogDialog({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        <ManualAmountChoiceDialog
+            open={manualChoice !== null}
+            message={manualChoice?.message ?? ""}
+            canRecalculate={true}
+            onKeep={() => resolveManualChoice('keep')}
+            onRecalculate={() => resolveManualChoice('recalculate')}
+            onCancel={() => setManualChoice(null)}
+        />
+        </>
     )
 }

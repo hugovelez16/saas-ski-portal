@@ -260,6 +260,48 @@ describe('Work Logs API Client', () => {
             expect(mockedApi.put).toHaveBeenCalledWith('/work-logs/wl-1?apply_to_group=false', update);
             expect(result).toEqual(mockResponse);
         });
+
+        it('should add recalculate_with_current_rates=true when requested', async () => {
+            const update: Partial<WorkLogCreate> = { description: 'Updated' };
+            (mockedApi.put as any).mockResolvedValue({ data: { id: 'wl-1' } });
+
+            await updateWorkLog('wl-1', update, true, { recalculateWithCurrentRates: true });
+
+            expect(mockedApi.put).toHaveBeenCalledWith(
+                '/work-logs/wl-1?apply_to_group=true&recalculate_with_current_rates=true',
+                update
+            );
+        });
+
+        it('should add keep_manual_amount=true when requested, also with apply_to_group', async () => {
+            const update: Partial<WorkLogCreate> = { description: 'Updated' };
+            (mockedApi.put as any).mockResolvedValue({ data: { id: 'wl-1' } });
+
+            await updateWorkLog('wl-1', update, true, { keepManualAmount: true });
+
+            expect(mockedApi.put).toHaveBeenCalledWith(
+                '/work-logs/wl-1?apply_to_group=true&keep_manual_amount=true',
+                update
+            );
+        });
+
+        it('should not add keep_manual_amount when the flag is false', async () => {
+            const update: Partial<WorkLogCreate> = { description: 'Updated' };
+            (mockedApi.put as any).mockResolvedValue({ data: { id: 'wl-1' } });
+
+            await updateWorkLog('wl-1', update, false, { keepManualAmount: false });
+
+            expect(mockedApi.put).toHaveBeenCalledWith('/work-logs/wl-1?apply_to_group=false', update);
+        });
+
+        it('should not add recalculate_with_current_rates when the flag is false', async () => {
+            const update: Partial<WorkLogCreate> = { description: 'Updated' };
+            (mockedApi.put as any).mockResolvedValue({ data: { id: 'wl-1' } });
+
+            await updateWorkLog('wl-1', update, false, { recalculateWithCurrentRates: false });
+
+            expect(mockedApi.put).toHaveBeenCalledWith('/work-logs/wl-1?apply_to_group=false', update);
+        });
     });
 
     describe('deleteWorkLog', () => {
