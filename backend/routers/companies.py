@@ -363,21 +363,23 @@ def get_company_dashboard_summary(
 
     # Redis Cache Key
     cache_key = f"dashboard_summary:{cid}:{start_date or ''}:{end_date or ''}"
-    cached_data = redis_manager.get(cache_key)
-    if cached_data:
-        try:
-            return json.loads(cached_data)
-        except Exception:
-            pass
+    # T11: un fallo de Redis o una cache ilegible nunca rompen el dashboard
+    try:
+        cached_data = redis_manager.get(cache_key)
+        if cached_data:
+            return schemas.DashboardSummaryResponse(**json.loads(cached_data))
+    except Exception:
+        pass
 
     try:
-        summary_data = crud.get_dashboard_summary(db=db, company_id=cid, start_date=start_date, end_date=end_date)
+        summary = schemas.DashboardSummaryResponse(
+            **crud.get_dashboard_summary(db=db, company_id=cid, start_date=start_date, end_date=end_date)
+        )
         try:
-            serialized = schemas.DashboardSummaryResponse(**summary_data).model_dump(mode="json", by_alias=True)
-            redis_manager.set(cache_key, json.dumps(serialized), ex=300)
+            redis_manager.set(cache_key, json.dumps(summary.model_dump(mode="json", by_alias=True)), ex=300)
         except Exception:
             pass
 
-        return summary_data
+        return summary
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
