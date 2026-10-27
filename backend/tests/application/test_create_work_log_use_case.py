@@ -12,11 +12,8 @@ from domain.entities.company import Company
 from domain.entities.company_member import CompanyMember, CompanyRole
 from domain.entities.work_log import WorkLog
 from domain.exceptions.domain_exceptions import InactiveMembershipException
-from domain.ports.repositories.work_log_repository_port import (
-    CompanyMemberRepositoryPort,
-    CompanyRepositoryPort,
-    WorkLogRepositoryPort,
-)
+from domain.ports.repositories.company_repository_port import CompanyMemberRepositoryPort, CompanyRepositoryPort
+from domain.ports.repositories.work_log_repository_port import WorkLogRepositoryPort
 
 
 class InMemoryCompanyRepo(CompanyRepositoryPort):
@@ -29,12 +26,21 @@ class InMemoryCompanyRepo(CompanyRepositoryPort):
     async def get_by_name(self, name: str):
         return next((c for c in self.companies.values() if c.name == name), None)
 
-    async def list_companies(self):
-        return list(self.companies.values())
+    async def list_companies(self, *, skip: int = 0, limit: int = 100):
+        return list(self.companies.values())[skip : skip + limit]
+
+    async def count_companies(self):
+        return len(self.companies)
 
     async def save(self, company: Company):
         self.companies[company.id] = company
         return company
+
+    async def delete(self, company_id: str):
+        self.companies.pop(company_id, None)
+
+    async def count_dependencies(self, company_id: str):
+        return {"members": 0, "work_logs": 0, "subscriptions": 0}
 
 
 class InMemoryCompanyMemberRepo(CompanyMemberRepositoryPort):
@@ -44,8 +50,12 @@ class InMemoryCompanyMemberRepo(CompanyMemberRepositoryPort):
     async def get_membership(self, user_id: str, company_id: str):
         return self.members.get((user_id, company_id))
 
-    async def list_members_by_company(self, company_id: str):
-        return [m for (u, c), m in self.members.items() if c == company_id]
+    async def list_members_by_company(self, company_id: str, is_active=None):
+        return [
+            m
+            for (u, c), m in self.members.items()
+            if c == company_id and (is_active is None or m.is_active == is_active)
+        ]
 
     async def list_companies_by_user(self, user_id: str):
         return [m for (u, c), m in self.members.items() if u == user_id]
@@ -53,6 +63,12 @@ class InMemoryCompanyMemberRepo(CompanyMemberRepositoryPort):
     async def save(self, member: CompanyMember):
         self.members[(member.user_id, member.company_id)] = member
         return member
+
+    async def delete(self, user_id: str, company_id: str):
+        self.members.pop((user_id, company_id), None)
+
+    async def count_work_logs(self, user_id: str, company_id: str):
+        return 0
 
 
 class InMemoryWorkLogRepo(WorkLogRepositoryPort):

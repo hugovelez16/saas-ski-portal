@@ -29,3 +29,7 @@ class UserRepositoryPort(ABC):
     @abstractmethod
     async def update_status(self, user_id: str, is_active: bool) -> Optional[User]:
         pass
+
+    @abstractmethod
+    async def count_active_platform_admins(self) -> int:
+        pass

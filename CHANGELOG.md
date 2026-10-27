@@ -19,6 +19,26 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.19.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: API v2: cimientos y alineacion del dominio (PR-16 del plan de empresa; X1 parte 1, arnes de paridad de Q3). Sin migracion. v1 no cambia de comportamiento.
+
+### Funcionalidades y Mejoras
+
+- **API v2**: se monta el router `/api/v2/` (`backend/routers/v2/`) con `GET /v2/ping` (unica ruta publica), `deps.py` con fabricas de repositorios y `schemas.py` con `V2Model` (snake_case, sin alias). Los endpoints del area empresa llegan en PR-17 y PR-18.
+- **Manejador de `DomainException`**: `EntityNotFoundException` responde 404, `ConflictException` 409, `ValidationDomainException` 422 y `UnauthorizedDomainActionException` 403.
+- **Dominio y persistencia de `backend/src/`**: `Company` con `is_active`, `is_managed` y `updated_at` y sin `fiscal_id`; `CompanyMember` con `settings` y `updated_at`; nuevos puertos `CompanyRepositoryPort`, `CompanyMemberRepositoryPort` y `AuditLogPort` con sus implementaciones SQLAlchemy; `UserRepositoryPort.count_active_platform_admins`.
+- **Arnes de paridad v1/v2** en `backend/tests/parity/` (`to_snake`, `assert_parity`, `call_both`, fixture `parity_world`).
+
+### Cambiado
+
+- **`backend/Dockerfile`**: `PYTHONPATH=/app:/app/src`, para que el codigo de produccion pueda importar `backend/src/`.
+- **Repositorio de empresa**: antes no se podia importar por un puerto inexistente.
+
+---
+
 ## [0.18.0] - 2026-10-27
 
 ### Tipo de Cambio SemVer

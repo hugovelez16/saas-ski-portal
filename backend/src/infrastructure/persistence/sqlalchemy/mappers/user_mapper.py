@@ -56,4 +56,24 @@ class SqlAlchemyCompanyMemberMapper:
             sort_order=int(orm_member.sort_order or 0),
             rates_config=orm_member.rates_config or {},
             joined_at=orm_member.joined_at,
+            settings=orm_member.settings or {},
+            updated_at=orm_member.updated_at,
         )
+
+    @staticmethod
+    def to_orm(domain_member: CompanyMember) -> models.CompanyMember:
+        kwargs = {
+            "user_id": domain_member.user_id,
+            "company_id": domain_member.company_id,
+            "role": models.CompanyRole(domain_member.role.value),
+            "is_active": domain_member.is_active,
+            "sort_order": domain_member.sort_order,
+            "rates_config": domain_member.rates_config,
+            "settings": domain_member.settings,
+        }
+        # Un None explicito sobrescribiria el default de la columna en el INSERT.
+        if domain_member.joined_at is not None:
+            kwargs["joined_at"] = domain_member.joined_at
+        if domain_member.updated_at is not None:
+            kwargs["updated_at"] = domain_member.updated_at
+        return models.CompanyMember(**kwargs)
