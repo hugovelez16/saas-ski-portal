@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import { Building2, LayoutDashboard } from "lucide-react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { CompanyResponse } from "@/lib/types";
+import { useAuth } from "@/context/AuthContext";
 import {
     Select,
     SelectContent,
@@ -21,16 +22,22 @@ interface CompanySwitcherProps {
 
 export function CompanySwitcher({ companies }: CompanySwitcherProps) {
     const router = useRouter();
-    const searchParams = useSearchParams();
     const pathname = usePathname();
+    const { user, switchScope } = useAuth();
 
-    // Get current company from URL props
-    const currentCompanyId = searchParams.get("companyId");
+    // La empresa activa viene del token (user.activeCompanyId), no de la URL.
+    const currentCompanyId = user?.activeCompanyId ?? null;
+    const isPlatformAdmin = Boolean(user?.isPlatformAdmin || user?.role === "admin");
 
-    // Find selected company object
+    // Worker y manager no pueden operar en empresas suspendidas; el PA si las ve.
+    const availableCompanies = React.useMemo(
+        () => (isPlatformAdmin ? companies : companies.filter((c) => c.isActive !== false)),
+        [companies, isPlatformAdmin]
+    );
+
     const selectedCompany = React.useMemo(() =>
-        companies.find((c) => c.id === currentCompanyId),
-        [companies, currentCompanyId]
+        availableCompanies.find((c) => c.id === currentCompanyId),
+        [availableCompanies, currentCompanyId]
     );
 
     const onSelectCompany = (value: string) => {
@@ -40,22 +47,14 @@ export function CompanySwitcher({ companies }: CompanySwitcherProps) {
             return;
         }
 
-        const company = companies.find((c) => c.id === value);
-        if (!company) return;
+        const company = availableCompanies.find((c) => c.id === value);
+        if (!company || company.id === currentCompanyId) return;
 
-        // Construct new URL
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("companyId", company.id);
-
-        if (pathname === '/' || pathname === '/login') {
-            router.push(`/dashboard?companyId=${company.id}`);
-        } else {
-            // Stay on current page, just update the companyId
-            router.push(`${pathname}?${params.toString()}`);
-        }
+        // switchScope cambia la empresa activa en el backend y recarga la app.
+        void switchScope(company.id);
     };
 
-    if (companies.length === 0) {
+    if (availableCompanies.length === 0) {
         return null;
     }
 
@@ -88,7 +87,7 @@ export function CompanySwitcher({ companies }: CompanySwitcherProps) {
             <SelectContent className="bg-slate-900 border-slate-700 text-slate-200">
                 <SelectGroup>
                     <SelectLabel className="text-slate-500">My Companies</SelectLabel>
-                    {companies.map((company) => (
+                    {availableCompanies.map((company) => (
                         <SelectItem key={company.id} value={company.id} className="focus:bg-slate-800 focus:text-white cursor-pointer">
                             <div className="flex flex-col items-start py-0.5">
                                 <span className="text-sm font-medium">{company.name}</span>

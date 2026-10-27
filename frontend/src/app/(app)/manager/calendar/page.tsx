@@ -3,7 +3,6 @@ export const dynamic = "force-dynamic";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { type CalendarEvent, EventCalendar } from "@/components/event-calendar";
 import { Button } from "@/components/ui/button";
@@ -19,8 +18,6 @@ import { mapMemberToLegacyRate } from "@/lib/utils/rates";
 import { Calendar as CalendarIcon, Users, Building2, Loader2 } from "lucide-react";
 
 export default function ManagerCalendarPage() {
-    const router = useRouter();
-    const searchParams = useSearchParams();
     const queryClient = useQueryClient();
     const { user: currentUser } = useAuth();
     const { toast } = useToast();
@@ -33,13 +30,12 @@ export default function ManagerCalendarPage() {
     const [selectedUserIdFilter, setSelectedUserIdFilter] = useState<string>("all");
 
     // 1. Fetch My Managed Companies
-    const { data: myCompanies = [], isLoading: loadingMyCompanies } = useQuery({
+    const { isLoading: loadingMyCompanies } = useQuery({
         queryFn: getMyCompanies,
         queryKey: ["myCompanies"],
     });
 
-    const companyIdFromUrl = searchParams.get("companyId");
-    const selectedCompanyId = companyIdFromUrl || (myCompanies.length > 0 ? myCompanies[0].id : null);
+    const selectedCompanyId = currentUser?.activeCompanyId || null;
 
     // Fetch detailed companies to get members list and definitions
     const { data: companiesDetailed = [], isLoading: loadingDetailed } = useQuery({
@@ -253,9 +249,7 @@ export default function ManagerCalendarPage() {
                             refetchWorkLogs();
                             queryClient.invalidateQueries({ queryKey: ["work-logs-daily-manager"] });
                         } catch (error) {
-                            console.error("Error deleting work log:", error);
-                            toast({ title: "Error", description: "No se pudo eliminar el registro.", variant: "destructive" });
-                        }
+                            console.error("Error deleting work log:", error);                        }
                     }
                 }}
             />

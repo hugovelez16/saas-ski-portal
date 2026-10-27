@@ -21,7 +21,6 @@ interface DashboardTodayCardProps {
 }
 
 export function DashboardTodayCard({
-    companyId,
     todayLogs,
     members,
     worklogDefinitions,
@@ -108,7 +107,7 @@ export function DashboardTodayCard({
                     </div>
 
                     <Button asChild variant="outline" size="sm" className="h-8 text-xs font-medium self-start sm:self-auto">
-                        <Link href={`/manager/daily-reports?companyId=${companyId}`}>
+                        <Link href="/manager/daily-reports">
                             Planning Diario
                             <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                         </Link>

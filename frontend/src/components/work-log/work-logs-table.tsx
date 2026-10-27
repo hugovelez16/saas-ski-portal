@@ -20,6 +20,8 @@ interface WorkLogsTableProps {
     companies: Company[];
     onUpdate: () => void;
     isLoading?: boolean;
+    /** Si la carga fallo: se muestra este texto en vez de una lista vacia. */
+    error?: string | null;
     user?: { id: string; firstName?: string | null; lastName?: string | null; activeCompanyId?: string | null };
     showUserColumn?: boolean;
     readOnly?: boolean;
@@ -34,6 +36,7 @@ export function WorkLogsTable({
     companies,
     onUpdate,
     isLoading,
+    error,
     user,
     showUserColumn = false,
     readOnly = false,
@@ -133,7 +136,7 @@ export function WorkLogsTable({
             toast({ title: "Parte eliminado" });
             onUpdate();
         } catch (error) {
-            toast({ title: "Error al eliminar", variant: "destructive" });
+            console.error("Error deleting work log:", error);
         }
     };
 
@@ -308,14 +311,20 @@ export function WorkLogsTable({
             )}
 
             {/* Standard Data Table */}
-            <DataTable
-                columns={logColumns}
-                data={filteredData}
-                searchKey="type"
-                searchPlaceholder="Buscar por tipo..."
-                isLoading={isLoading}
-                onRowClick={(log) => setViewLog(log)}
-            />
+            {error ? (
+                <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-6 text-center text-sm text-destructive">
+                    {error}
+                </p>
+            ) : (
+                <DataTable
+                    columns={logColumns}
+                    data={filteredData}
+                    searchKey="type"
+                    searchPlaceholder="Buscar por tipo..."
+                    isLoading={isLoading}
+                    onRowClick={(log) => setViewLog(log)}
+                />
+            )}
 
             {/* View Details Dialog */}
             <WorkLogDetailsDialog

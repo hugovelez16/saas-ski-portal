@@ -1,7 +1,6 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { CompanyConfigurationTab } from "@/components/admin/company-configuration-tab";
@@ -11,8 +10,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 
 export default function ManagerSettingsPage() {
     const { user, loading: authLoading } = useAuth();
-    const searchParams = useSearchParams();
-    const selectedCompanyId = searchParams.get("companyId") || user?.activeCompanyId;
+    const selectedCompanyId = user?.activeCompanyId;
 
     const { data: company, isLoading: isLoadingCompany } = useQuery({
         queryKey: ["company", selectedCompanyId],

@@ -15,6 +15,7 @@ vi.mock("@/context/AuthContext", () => ({
 
 vi.mock("@/lib/api", () => ({
   default: { get: apiGet },
+  SUSPENDED_COMPANY_MESSAGE: "Tu empresa esta suspendida. Contacta con el administrador",
 }));
 
 vi.mock("@/lib/api/companies", () => ({
@@ -99,5 +100,46 @@ describe("ScopeSelectionDialog", () => {
 
     fireEvent.click(entrar[0]);
     expect(switchScope).toHaveBeenCalledWith("c1", undefined);
+  });
+
+  it("no ofrece empresas suspendidas a un manager y muestra el aviso si no queda ninguna", async () => {
+    authState.user = {
+      id: "u1",
+      email: "m@b.c",
+      role: "user",
+      isManager: true,
+      isPlatformAdmin: false,
+      isActive: true,
+      activeCompanyId: null,
+      activeRole: null,
+      createdAt: "2026-01-01T00:00:00",
+    };
+    getMyCompanies.mockResolvedValue([
+      { id: "c1", name: "Suspendida SL", role: "manager", isActive: false },
+    ]);
+
+    renderDialog();
+
+    await waitFor(() => expect(screen.getByText(/Tu empresa esta suspendida/)).toBeTruthy());
+    expect(screen.queryByText("Suspendida SL")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Entrar" })).toBeNull();
+  });
+
+  it("el PA si ve las empresas suspendidas", async () => {
+    authState.user = {
+      id: "admin1",
+      email: "admin@b.c",
+      role: "admin",
+      isPlatformAdmin: true,
+      isActive: true,
+      activeCompanyId: null,
+      activeRole: null,
+      createdAt: "2026-01-01T00:00:00",
+    };
+    apiGet.mockResolvedValue({ data: [{ id: "c1", name: "Suspendida SL", isActive: false }] });
+
+    renderDialog();
+
+    await waitFor(() => expect(screen.getByText("Suspendida SL")).toBeTruthy());
   });
 });

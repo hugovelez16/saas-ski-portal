@@ -12,12 +12,12 @@ import { BillingSummaryItem, DynamicBillingRow } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Download, Coins, Wallet, FileText } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { mkConfig, generateCsv, download } from "export-to-csv";
 
 export default function ManagerBillingPage() {
-    const searchParams = useSearchParams();
-    const selectedCompanyId = searchParams.get("companyId");
+    const { user } = useAuth();
+    const selectedCompanyId = user?.activeCompanyId;
 
     // Default to current month
     const [date, setDate] = useState<DateRange | undefined>({

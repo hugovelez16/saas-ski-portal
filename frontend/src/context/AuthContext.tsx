@@ -249,9 +249,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             } else if (isPlatformAdminUser(userData) && !viewAs) {
                 window.location.href = `/admin/companies/${companyId}`;
             } else if (userData?.activeRole === 'manager') {
-                window.location.href = `/manager/dashboard?companyId=${companyId}`;
+                window.location.href = '/manager/dashboard';
             } else {
-                window.location.href = `/dashboard?companyId=${companyId}`;
+                window.location.href = '/dashboard';
             }
         } catch (error) {
             console.error("Failed to switch scope:", error);

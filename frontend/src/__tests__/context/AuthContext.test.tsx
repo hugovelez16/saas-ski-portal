@@ -710,7 +710,7 @@ describe("AuthContext", () => {
       });
       try {
         const href = await switchAndGetHref(ref, "c2", workerUser({ activeCompanyId: "c2" }));
-        expect(href).toBe("/dashboard?companyId=c2");
+        expect(href).toBe("/dashboard");
       } finally {
         spy.mockRestore();
       }
@@ -721,7 +721,7 @@ describe("AuthContext", () => {
 
       const href = await switchAndGetHref(ref, "c2", workerUser({ activeCompanyId: "c2", activeRole: "worker" }));
 
-      expect(href).toBe("/dashboard?companyId=c2");
+      expect(href).toBe("/dashboard");
     });
 
     it("redirige a /manager/dashboard cuando el usuario devuelto es manager", async () => {
@@ -729,7 +729,7 @@ describe("AuthContext", () => {
 
       const href = await switchAndGetHref(ref, "c2", workerUser({ activeCompanyId: "c2", activeRole: "manager" }));
 
-      expect(href).toBe("/manager/dashboard?companyId=c2");
+      expect(href).toBe("/manager/dashboard");
     });
 
     it("un PA sin viewAs va a /admin/companies/{id}", async () => {
@@ -750,7 +750,7 @@ describe("AuthContext", () => {
         "worker"
       );
 
-      expect(href).toBe("/dashboard?companyId=c2");
+      expect(href).toBe("/dashboard");
     });
 
     it("switchScope(null) vuelve a /admin/companies", async () => {
