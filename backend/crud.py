@@ -17,7 +17,7 @@ import models
 import schemas
 from access_policy import PolicyError
 from audit import AuditAction, record_audit
-from contracts import MissingWorklogUnitError, resolve_taxes
+from contracts import MEMBER_SETTINGS_ALLOWED_KEYS, CompanySettings, MissingWorklogUnitError, resolve_taxes
 from pydantic import TypeAdapter
 from redis_config import logger, redis_manager
 from sqlalchemy import distinct, func, or_
@@ -895,44 +895,79 @@ def join_company(db: Session, user_id: str, company_id: str):
     return member
 
 
+def company_view_dict(company: models.Company, member: models.CompanyMember | None, *, role: str | None = None) -> dict:
+    """Diccionario completo de empresa con los datos de la membresia (si la hay) fusionados."""
+    # Settings de empresa con defaults aplicados; los del miembro solo admiten la lista blanca.
+    c_settings = schemas.read_company_settings(company.settings)
+    raw_member = member.settings if member is not None and isinstance(member.settings, dict) else {}
+    m_settings = {key: value for key, value in raw_member.items() if key in MEMBER_SETTINGS_ALLOWED_KEYS}
+    return {
+        "id": company.id,
+        "name": company.name,
+        "tax_config": company.tax_config,
+        "worklog_definitions": company.worklog_definitions,
+        "is_active": company.is_active,
+        "is_managed": company.is_managed,
+        "created_at": company.created_at,
+        "updated_at": company.updated_at,
+        "settings": {**c_settings, **m_settings},
+        "role": (member.role.value if hasattr(member.role, "value") else member.role) if member is not None else role,
+        "is_active_member": member.is_active if member is not None else True,
+        "rates_config": member.rates_config if member is not None else None,
+    }
+
+
 def get_user_companies(db: Session, user_id: str, include_inactive: bool = False):
     """Get companies the user is a member of (joined), merging member-specific settings."""
     query = db.query(models.CompanyMember).join(models.Company).filter(models.CompanyMember.user_id == user_id)
     if not include_inactive:
         query = query.filter(models.CompanyMember.is_active == True, models.Company.is_active == True)
 
-    members = query.all()
+    return [company_view_dict(m.company, m) for m in query.all() if m.company]
 
-    results = []
-    for m in members:
-        company = m.company
-        if not company:
-            continue
 
-        # Settings de empresa con defaults aplicados; los del miembro solo admiten la lista blanca.
-        c_settings = schemas.read_company_settings(company.settings)
-        m_settings = m.settings if isinstance(m.settings, dict) else {}
+def to_reduced_company(d: dict) -> dict:
+    """Vista reducida (PR-13) a partir del diccionario completo: solo claves de interfaz, sin campos de gestion."""
+    raw = d.get("settings") if isinstance(d.get("settings"), dict) else {}
+    member_part = {key: value for key, value in raw.items() if key in MEMBER_SETTINGS_ALLOWED_KEYS}
+    company_part = {key: value for key, value in raw.items() if key not in MEMBER_SETTINGS_ALLOWED_KEYS}
+    return {
+        "id": d["id"],
+        "name": d["name"],
+        "is_managed": bool(d.get("is_managed")),
+        "role": d.get("role"),
+        "is_active_member": bool(d.get("is_active_member", True)),
+        "rates_config": d.get("rates_config"),
+        "worklog_definitions": d.get("worklog_definitions") or {},
+        "tax_config": d.get("tax_config") or {},
+        "settings": {**CompanySettings.from_db(company_part).ui_view(), **member_part},
+    }
 
-        effective = {**c_settings, **m_settings}
 
-        # Construct response object (dict compatible with Pydantic)
-        results.append(
-            {
-                "id": company.id,
-                "name": company.name,
-                "tax_config": company.tax_config,
-                "worklog_definitions": company.worklog_definitions,
-                "is_active": company.is_active,
-                "is_managed": company.is_managed,
-                "created_at": company.created_at,
-                "updated_at": company.updated_at,
-                "settings": effective,
-                "role": m.role.value if hasattr(m.role, "value") else m.role,
-                "is_active_member": m.is_active,
-                "rates_config": m.rates_config,
-            }
+def serialize_company_view(d: dict, *, full: bool) -> dict:
+    """Serializa una empresa con el esquema de su rol: completo (PA actuando) o reducido (resto)."""
+    if full:
+        return schemas.CompanyFullResponse.model_validate(d).model_dump(mode="json", by_alias=True)
+    return schemas.CompanyReducedResponse.model_validate(to_reduced_company(d)).model_dump(mode="json", by_alias=True)
+
+
+def get_manager_company_ids(db: Session, user_id: Any) -> set[str]:
+    """Ids de las empresas activas donde el usuario tiene membresia activa de manager."""
+    rows = (
+        db.query(models.CompanyMember.company_id, models.CompanyMember.role)
+        .join(models.Company)
+        .filter(
+            models.CompanyMember.user_id == user_id,
+            models.CompanyMember.is_active == True,  # noqa: E712
+            models.Company.is_active == True,  # noqa: E712
         )
-    return results
+        .all()
+    )
+    return {
+        str(company_id)
+        for company_id, role in rows
+        if access_policy.normalize_member_role(getattr(role, "value", role)) == access_policy.ROLE_MANAGER
+    }
 
 
 def get_company_members(db: Session, company_id: str, is_active: bool = None):

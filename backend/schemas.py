@@ -359,6 +359,28 @@ class CompanyResponse(Company):
     rates_config: dict[str, Any] | None = Field(None, alias="ratesConfig")
 
 
+class CompanyFullResponse(CompanyResponse):
+    """Vista completa de empresa (PR-13): solo platform admin actuando. Nunca incluye `fiscal_id`."""
+
+
+class CompanyReducedResponse(CamelModel):
+    """Vista reducida de empresa (PR-13): worker, manager y platform admin en 'ver como'.
+
+    `settings` es el resultado de `CompanySettings.ui_view()` mas las claves del propio miembro.
+    No expone `is_active`, `allowed_rates`, `cost_markup` ni `fiscal_id`.
+    """
+
+    id: UUID
+    name: str
+    is_managed: bool
+    role: str | None = None
+    is_active_member: bool
+    rates_config: dict[str, Any] | None = None
+    worklog_definitions: dict[str, Any] = {}
+    tax_config: dict[str, float] = {}
+    settings: dict[str, Any]
+
+
 def default_role(v: Any) -> str:
     return v or "worker"
 
@@ -409,6 +431,12 @@ class MemberDeleteResponse(CamelModel):
 
 
 class CompanyWithMembers(CompanyResponse):
+    members: list[CompanyMemberResponse] = []
+
+
+class CompanyReducedWithMembers(CompanyReducedResponse):
+    """Vista reducida con miembros (`GET /companies/detailed` para el manager)."""
+
     members: list[CompanyMemberResponse] = []
 
 
@@ -557,6 +585,17 @@ class ModuleSubscriptionResponse(CamelModel):
     module: AppModuleResponse | None = None
     company: CompanyResponse | None = None
     user: UserResponse | None = None
+
+
+class CompanyBriefResponse(CamelModel):
+    id: UUID
+    name: str
+
+
+class ModuleSubscriptionManagerResponse(ModuleSubscriptionResponse):
+    """Suscripcion para no-PA (PR-13): la empresa embebida solo lleva `id` y `name`."""
+
+    company: CompanyBriefResponse | None = None
 
 
 # ─── Parte diario (PR-14) ──────────────────────────────────────────────────

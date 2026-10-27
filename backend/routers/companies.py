@@ -72,11 +72,14 @@ def delete_company(
     return Response(status_code=204)
 
 
-@router.get("/detailed", response_model=list[schemas.CompanyWithMembers])
+@router.get("/detailed", response_model=None)
 def read_companies_detailed(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
-    # If platform admin (actuando), return all
+    # If platform admin (actuando), return all (vista completa)
     if deps.acting_platform_admin(current_user):
-        return db.query(models.Company).options(joinedload(models.Company.members)).all()
+        all_companies = db.query(models.Company).options(joinedload(models.Company.members)).all()
+        return JSONResponse(
+            [schemas.CompanyWithMembers.model_validate(c).model_dump(mode="json", by_alias=True) for c in all_companies]
+        )
 
     # If not admin, check for permissions
     # 1. Supervisor permissions: manager of the company the token points to
@@ -102,7 +105,13 @@ def read_companies_detailed(db: Session = Depends(get_db), current_user: models.
             .filter(models.Company.id.in_(allowed_company_ids), models.Company.is_active == True)
             .all()
         )
-        return companies
+        own = {m.company_id: m for m in supervisor_memberships}
+        payload = []
+        for company in companies:
+            view = crud.to_reduced_company(crud.company_view_dict(company, own[company.id]))
+            view["members"] = company.members
+            payload.append(schemas.CompanyReducedWithMembers.model_validate(view).model_dump(mode="json", by_alias=True))
+        return JSONResponse(payload)
 
     raise PolicyError(403, access_policy.MSG_FORBIDDEN)
 
@@ -262,14 +271,18 @@ def read_daily_report(
     return JSONResponse(content=body.model_dump(mode="json", by_alias=True))
 
 
-@router.get("/{company_id}", response_model=schemas.CompanyResponse)
+@router.get("/{company_id}", response_model=None)
 def read_company(
     company_id: UUID,
     ctx: deps.AccessContext = Depends(deps.require_company("worker")),
+    db: Session = Depends(get_db),
 ):
+    """Vista completa para el PA actuando; reducida para manager, worker y PA en 'ver como'."""
     if ctx.company is None:
         raise PolicyError(403, access_policy.MSG_NO_ACCESS)
-    return ctx.company
+    member = crud.get_company_member(db, ctx.user.id, company_id)
+    view = crud.company_view_dict(ctx.company, member, role=ctx.role)
+    return JSONResponse(crud.serialize_company_view(view, full=ctx.is_platform_admin))
 
 
 @router.get("/{company_id}/rates-v2", response_model=list[schemas.CompanyMemberResponse])
