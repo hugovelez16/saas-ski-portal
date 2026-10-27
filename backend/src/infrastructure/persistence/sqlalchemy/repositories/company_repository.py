@@ -8,6 +8,7 @@ que la operacion auditada.
 
 from typing import Dict, List, Optional
 
+import access_cache
 import models
 from domain.entities.company import Company
 from domain.entities.company_member import CompanyMember
@@ -122,6 +123,8 @@ class SqlAlchemyCompanyRepository(CompanyRepositoryPort):
             existing.is_managed = company.is_managed
             _commit_or_rollback(self.db)
             self.db.refresh(existing)
+            # Suspension, gestion o nombre cambian los hechos de acceso cacheados (igual que crud.update_company).
+            access_cache.invalidate_company(existing.id)
             return SqlAlchemyCompanyMapper.to_domain(existing)
         else:
             orm_c = SqlAlchemyCompanyMapper.to_orm(company)
@@ -144,6 +147,7 @@ class SqlAlchemyCompanyRepository(CompanyRepositoryPort):
         except SQLAlchemyError:
             self.db.rollback()
             raise
+        access_cache.invalidate_company(company_id)
 
     async def count_dependencies(self, company_id: str) -> Dict[str, int]:
         members = self.db.query(models.CompanyMember).filter(models.CompanyMember.company_id == company_id).count()
