@@ -10,11 +10,8 @@ from typing import Any, Dict, Optional
 from contracts import MissingWorklogUnitError
 from domain.entities.work_log import WorkLog
 from domain.exceptions.domain_exceptions import EntityNotFoundException, InactiveMembershipException
-from domain.ports.repositories.work_log_repository_port import (
-    CompanyMemberRepositoryPort,
-    CompanyRepositoryPort,
-    WorkLogRepositoryPort,
-)
+from domain.ports.repositories.company_repository_port import CompanyMemberRepositoryPort, CompanyRepositoryPort
+from domain.ports.repositories.work_log_repository_port import WorkLogRepositoryPort
 from domain.services.work_log_calculation_service import WorkLogCalculationService
 from domain.value_objects.money import Money
 from domain.value_objects.rate_definition import RateDefinition

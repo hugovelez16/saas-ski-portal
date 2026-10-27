@@ -39,3 +39,15 @@ class ModuleAccessDeniedException(DomainException):
     """Lanzada cuando no se cuenta con una suscripcion activa para el modulo."""
 
     pass
+
+
+class ConflictException(DomainException):
+    """Lanzada cuando la operacion choca con el estado actual (p. ej. duplicados o dependencias)."""
+
+    pass
+
+
+class ValidationDomainException(DomainException):
+    """Lanzada cuando los datos de entrada no cumplen las reglas de dominio."""
+
+    pass

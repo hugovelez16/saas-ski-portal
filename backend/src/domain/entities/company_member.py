@@ -23,6 +23,8 @@ class CompanyMember:
     sort_order: int = 0
     rates_config: Dict[str, Any] = field(default_factory=dict)
     joined_at: Optional[datetime] = None
+    settings: Dict[str, Any] = field(default_factory=dict)
+    updated_at: Optional[datetime] = None
 
     @property
     def is_manager(self) -> bool:

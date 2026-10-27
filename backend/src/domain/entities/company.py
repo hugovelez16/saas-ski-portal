@@ -14,7 +14,10 @@ class Company:
     tax_config: Dict[str, Any] = field(default_factory=dict)
     worklog_definitions: Dict[str, Any] = field(default_factory=dict)
     settings: Dict[str, Any] = field(default_factory=dict)
+    is_active: bool = True
+    is_managed: bool = False
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     @property
     def is_personal(self) -> bool:
