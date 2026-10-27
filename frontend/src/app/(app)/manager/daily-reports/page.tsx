@@ -13,7 +13,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { WorkLogDetailsDialog } from "@/components/work-log/details-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -61,23 +61,22 @@ function TimeRangeSelector() {
 function ManagerDailyReportInner() {
     const { user: currentUser } = useAuth();
     const router = useRouter();
-    const searchParams = useSearchParams();
-    // Allow pre-selection via URL, similar to Dashboard
-    const initialCompanyId = searchParams.get("companyId");
+    // Preseleccion con la empresa activa del usuario
+    const activeCompanyId = currentUser?.activeCompanyId;
 
     const queryClient = useQueryClient();
     const { toast } = useToast();
     const [date, setDate] = useState<Date>(new Date());
     const [selectedLog, setSelectedLog] = useState<any>(null);
-    const [selectedCompanyId, setSelectedCompanyId] = useState<string>(initialCompanyId || "");
+    const [selectedCompanyId, setSelectedCompanyId] = useState<string>(activeCompanyId || "");
     const [applyToGroup, setApplyToGroup] = useState(false);
 
-    // Sync state with URL if it changes (e.g. sidebar navigation)
+    // Sincroniza el estado local si cambia la empresa activa
     useEffect(() => {
-        if (initialCompanyId) {
-            setSelectedCompanyId(initialCompanyId);
+        if (activeCompanyId) {
+            setSelectedCompanyId(activeCompanyId);
         }
-    }, [initialCompanyId]);
+    }, [activeCompanyId]);
 
     // 1. Fetch My Managed Companies
     const { data: myCompanies = [], isLoading: loadingCompanies } = useQuery({
@@ -366,9 +365,7 @@ function ManagerDailyReportInner() {
                             setSelectedLog(null);
                             queryClient.invalidateQueries({ queryKey: ["daily-report"] });
                         } catch (error) {
-                            console.error("Error deleting work log:", error);
-                            toast({ title: "Error", description: "No se pudo eliminar el registro.", variant: "destructive" });
-                        }
+                            console.error("Error deleting work log:", error);                        }
                     }
                 }}
             />

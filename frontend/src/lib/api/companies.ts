@@ -1,5 +1,5 @@
 import api from "@/lib/api";
-import { CompanyFull, CompanyResponse, CompanyWithMembers, CompanyMemberResponse, DailyReportResponse, DashboardSummaryResponse } from "@/lib/types";
+import { CompanyFull, CompanyResponse, CompanyUpdatePayload, CompanyWithMembers, CompanyMemberResponse, DailyReportResponse, DashboardSummaryResponse } from "@/lib/types";
 
 export const createCompany = async (data: {
     name: string;
@@ -12,20 +12,9 @@ export const createCompany = async (data: {
     return response.data;
 };
 
-/**
- * Payload de PUT /companies/:id (solo platform admin).
- * `reason` es opcional y solo se registra en auditoria.
- */
-export type CompanyUpdatePayload = {
-    name?: string;
-    isActive?: boolean;
-    isManaged?: boolean;
-    taxConfig?: Record<string, number>;
-    settings?: Record<string, any>;
-    worklogDefinitions?: Record<string, any>;
-    reason?: string;
-};
+export type { CompanyUpdatePayload };
 
+/** PUT /companies/:id (solo platform admin). Tipo en lib/types.ts. */
 export const updateCompany = async (companyId: string, data: CompanyUpdatePayload): Promise<CompanyFull> => {
     const response = await api.put<CompanyFull>(`/companies/${companyId}`, data);
     return response.data;

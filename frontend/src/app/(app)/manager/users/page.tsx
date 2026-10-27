@@ -9,8 +9,9 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Badge } from "@/components/ui/badge";
 import { Users, GripVertical } from "lucide-react";
-import { useMemo, useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 
@@ -64,8 +65,7 @@ function SortableUserItem({ user }: { user: any }) {
 
 export default function ManagerUsersPage() {
     const router = useRouter();
-    const searchParams = useSearchParams();
-    const companyIdParam = searchParams.get("companyId");
+    const { user: currentUser } = useAuth();
 
     const { toast } = useToast();
     const queryClient = useQueryClient();
@@ -79,13 +79,7 @@ export default function ManagerUsersPage() {
         queryKey: ["companiesDetailed"],
     });
 
-    const activeCompanyId = companyIdParam || (companies.length > 0 ? companies[0].id : null);
-
-    useEffect(() => {
-        if (!companyIdParam && companies.length > 0) {
-            router.replace(`/manager/users?companyId=${companies[0].id}`);
-        }
-    }, [companyIdParam, companies, router]);
+    const activeCompanyId = currentUser?.activeCompanyId ?? null;
 
     const memberStatusMutation = useMutation({
         mutationFn: ({ companyId, userId, status }: { companyId: string; userId: string; status: string }) =>
@@ -93,9 +87,7 @@ export default function ManagerUsersPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
             toast({ title: "Estado membresía actualizado" });
-        },
-        onError: () => toast({ title: "Error al actualizar estado", variant: "destructive" })
-    });
+        },    });
 
     const usersWithMeta = useMemo(() => {
         const map = new Map<string, any>();
@@ -169,7 +161,6 @@ export default function ManagerUsersPage() {
                     queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
                 } catch (err) {
                     console.error(err);
-                    toast({ title: "Error al guardar el orden", variant: "destructive" });
                 }
             }
             setIsEditingOrder(false);
@@ -286,8 +277,7 @@ export default function ManagerUsersPage() {
                     searchKey="email"
                     searchPlaceholder="Buscar por email..."
                     onRowClick={(user) => {
-                        const query = activeCompanyId ? `?companyId=${activeCompanyId}` : "";
-                        router.push(`/manager/users/${user.id}${query}`);
+                        router.push(`/manager/users/${user.id}`);
                     }}
                 />
             )}

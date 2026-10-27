@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import type { AxiosError } from "axios";
 import { Check, X, Shield, Loader2, Settings, Database, Pencil, FileJson, FileCode } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
@@ -50,9 +49,7 @@ export default function CompanyDetailsPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
             toast({ title: "Configuración guardada" });
-        },
-        onError: () => toast({ title: "Error al guardar", variant: "destructive" })
-    });
+        },    });
 
     const statusMutation = useMutation({
         mutationFn: ({ userId, status }: { userId: string, status: string }) =>
@@ -60,9 +57,7 @@ export default function CompanyDetailsPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
             toast({ title: "Estado membresía actualizado" });
-        },
-        onError: () => toast({ title: "Error al actualizar estado", variant: "destructive" })
-    });
+        },    });
 
     const roleMutation = useMutation({
         mutationFn: ({ userId, role }: { userId: string, role: MemberRole }) =>
@@ -70,9 +65,7 @@ export default function CompanyDetailsPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
             toast({ title: "Rol actualizado" });
-        },
-        onError: () => toast({ title: "Error al actualizar rol", variant: "destructive" })
-    });
+        },    });
 
 
     if (isLoading) return <div className="p-8"><Loader2 className="animate-spin" /></div>;
@@ -282,11 +275,7 @@ function CompanyNameHeading({ companyId, name, canEdit }: { companyId: string, n
             setValidationError(null);
             toast({ title: "Nombre de la empresa actualizado" });
         },
-        onError: (error: AxiosError<{ detail?: string }>) => toast({
-            title: "Error al guardar el nombre",
-            description: error.response?.data?.detail || "No se pudo actualizar el nombre.",
-            variant: "destructive",
-        }),
+        // El error HTTP lo muestra el interceptor de lib/api.ts.
     });
 
     if (!canEdit) {

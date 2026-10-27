@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { getUserRates, updateUserRates } from "@/lib/api/settings";
 import { getMyCompanies } from "@/lib/api/companies";
 import { updateMe, changePassword } from "@/lib/api/users";
@@ -83,8 +84,14 @@ export default function ProfilePage() {
   const worklogDefinitions = currentCompany?.worklogDefinitions || {};
 
   const isCompanyManaged = Boolean(currentCompany?.isManaged);
-  const isWorker = !user?.isPlatformAdmin && currentCompany?.role !== "manager" && currentCompany?.role !== "admin";
-  const canEditRates = !isCompanyManaged || !isWorker;
+  const permissions = usePermissions(currentCompany ?? null);
+  const canEditRatesFor = permissions.canEditRates;
+  // Manager/PA editan siempre; el worker solo si la empresa es autonoma confirmada (isManaged === false).
+  // Sin empresa cargada (currentCompany undefined) el formulario es de solo lectura.
+  const canEditRates =
+    currentCompany !== undefined &&
+    (user ? canEditRatesFor(user.id) : false) &&
+    (permissions.role !== "worker" || currentCompany.isManaged === false);
 
   const { data: rates, isLoading: isLoadingRates } = useQuery({
     queryKey: ["rates", activeCompanyId],

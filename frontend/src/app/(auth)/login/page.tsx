@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { Loader2, Terminal } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { CONTACT_EMAIL } from "@/lib/config"
 
 // Mensaje de error segun el estado devuelto por /verify-2fa
 function twoFactorErrorMessage(err: unknown): string {
@@ -247,8 +248,12 @@ export default function LoginPage() {
                   <DialogTitle>Request Access</DialogTitle>
                   <DialogDescription>
                     Please contact the administrator to request access to the platform.
-                    <br /><br />
-                    Email: hugo@vesotel.com
+                    {CONTACT_EMAIL && (
+                      <>
+                        <br /><br />
+                        Email: {CONTACT_EMAIL}
+                      </>
+                    )}
                   </DialogDescription>
                 </DialogHeader>
               </DialogContent>

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 
 import { useAuth } from "@/context/AuthContext";
-import api from "@/lib/api";
+import api, { describeLoadError } from "@/lib/api";
 import { getUserRates } from "@/lib/api/settings";
 import { getMyCompanies } from "@/lib/api/companies";
 import type { WorkLog, UserCompanyRate, Company, CompanyMember } from "@/lib/types";
@@ -44,10 +44,13 @@ export default function ListPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
 
-  const currentCompanyId = searchParams.get('companyId');
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const currentCompanyId = user?.activeCompanyId ?? null;
 
   const fetchLogs = async () => {
     try {
+      setLoadError(null);
       let url = "/work-logs";
       let queryParams = new URLSearchParams();
 
@@ -66,6 +69,8 @@ export default function ListPage() {
       setWorkLogs(res.data);
     } catch (error) {
       console.error("Error fetching logs", error);
+      setWorkLogs([]);
+      setLoadError(describeLoadError(error, "No se pudieron cargar los turnos."));
     } finally {
       setIsLoadingLogs(false);
     }
@@ -384,6 +389,12 @@ export default function ListPage() {
               <TableRow>
                 <TableCell colSpan={totalCols} className="text-center py-12">
                   <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                </TableCell>
+              </TableRow>
+            ) : loadError ? (
+              <TableRow>
+                <TableCell colSpan={totalCols} className="text-center py-12 text-destructive" role="alert">
+                  {loadError}
                 </TableCell>
               </TableRow>
             ) : sortedWorkLogs.length > 0 ? (

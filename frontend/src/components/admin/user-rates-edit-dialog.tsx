@@ -104,13 +104,7 @@ export function UserRatesEditDialog({ userId, company, member, userName, open: e
             queryClient.invalidateQueries({ queryKey: ["companyRates", company.id] });
             setOpen(false);
         },
-        onError: (error: any) => {
-            toast({
-                title: "Error al actualizar tarifas",
-                description: error.response?.data?.detail || "Ha ocurrido un error",
-                variant: "destructive",
-            });
-        },
+        // El error HTTP lo muestra el interceptor de lib/api.ts.
     });
 
     function onSubmit(data: RateFormValues) {

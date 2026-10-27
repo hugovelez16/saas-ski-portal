@@ -39,7 +39,6 @@ interface DashboardTeamTableProps {
 }
 
 export function DashboardTeamTable({
-    companyId,
     members,
     orderedMemberIds = [],
     workersSummary,
@@ -210,7 +209,7 @@ export function DashboardTeamTable({
                                     </TableCell>
                                     <TableCell className="text-right pr-3">
                                         <Button asChild variant="ghost" size="icon" className="h-7 w-7">
-                                            <Link href={`/manager/users/${row.userId}?companyId=${companyId}`}>
+                                            <Link href={`/manager/users/${row.userId}`}>
                                                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
                                             </Link>
                                         </Button>

@@ -83,14 +83,7 @@ export function AddMemberDialog({ companyId, companyName, existingMembers = [] }
                 description: `User added to ${companyName} successfully.`,
             });
         },
-        onError: (error: any) => {
-            const detail = error.response?.data?.detail || error.message || "Ensure the user is selected correctly.";
-            toast({
-                title: "Error adding user",
-                description: Array.isArray(detail) ? JSON.stringify(detail) : String(detail),
-                variant: "destructive",
-            });
-        },
+        // El error HTTP lo muestra el interceptor de lib/api.ts.
     });
 
     function onSubmit(values: z.infer<typeof formSchema>) {

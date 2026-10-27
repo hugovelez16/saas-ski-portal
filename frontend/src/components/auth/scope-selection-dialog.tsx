@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import api from "@/lib/api";
+import api, { SUSPENDED_COMPANY_MESSAGE } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { getMyCompanies } from "@/lib/api/companies";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -18,7 +18,7 @@ export function ScopeSelectionDialog({ open, onOpenChange }: ScopeSelectionDialo
     const { user, switchScope } = useAuth();
     const isPlatformAdmin = Boolean(user?.isPlatformAdmin || user?.role === 'admin');
 
-    const { data: companies = [], isLoading } = useQuery({
+    const { data: allCompanies = [], isLoading } = useQuery({
         queryFn: async () => {
             if (isPlatformAdmin) {
                 const response = await api.get('/companies');
@@ -29,6 +29,11 @@ export function ScopeSelectionDialog({ open, onOpenChange }: ScopeSelectionDialo
         queryKey: ['scopeCompanies', isPlatformAdmin],
         enabled: open && !!user
     });
+
+    // Worker y manager no pueden operar en empresas suspendidas; el PA si las ve.
+    const companies = isPlatformAdmin
+        ? allCompanies
+        : allCompanies.filter((company: { isActive?: boolean }) => company.isActive !== false);
 
     const handleSelect = async (companyId: string | null, viewAs?: 'manager' | 'worker') => {
         await switchScope(companyId, viewAs);
@@ -76,7 +81,9 @@ export function ScopeSelectionDialog({ open, onOpenChange }: ScopeSelectionDialo
                     {isLoading ? (
                         <div className="text-center py-4">Cargando empresas...</div>
                     ) : companies.length === 0 ? (
-                        <div className="text-center py-4 text-muted-foreground">No hay empresas disponibles.</div>
+                        <div className="text-center py-4 text-muted-foreground">
+                            {allCompanies.length > 0 ? SUSPENDED_COMPANY_MESSAGE : "No hay empresas disponibles."}
+                        </div>
                     ) : (
                         companies.map((company: any) => {
                             const isCurrentCompany = user?.activeCompanyId === company.id;

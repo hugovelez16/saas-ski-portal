@@ -93,13 +93,6 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
                 description: "User details have been updated.",
             });
         },
-        onError: (error: any) => {
-            toast({
-                title: "Error",
-                description: error.response?.data?.detail || "Failed to update user.",
-                variant: "destructive",
-            });
-        },
     });
 
     function onSubmit(values: z.infer<typeof formSchema>) {
@@ -183,7 +176,7 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
                                         await resetPasswordEmail(user.id);
                                         toast({ title: "Email Sent", description: "New password sent to user's email." });
                                     } catch (e) {
-                                        toast({ title: "Error", description: "Failed to send email.", variant: "destructive" });
+                                        console.error("Error sending password reset email:", e);
                                     }
                                 }}
                             >
@@ -206,7 +199,7 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
                                             queryClient.invalidateQueries({ queryKey: ["users"] });
                                             toast({ title: "2FA reset", description: "The user can enable 2FA again from their profile." });
                                         } catch (e) {
-                                            toast({ title: "Error", description: "Failed to reset 2FA.", variant: "destructive" });
+                                            console.error("Error resetting 2FA:", e);
                                         }
                                     }}
                                 >

@@ -17,7 +17,8 @@ export default function PrintReportPage() {
     const startStr = searchParams.get('start');
     const endStr = searchParams.get('end');
     const title = searchParams.get('title') || "Informe de Trabajo";
-    const companyId = searchParams.get('companyId') || searchParams.get('company_id') || "";
+    // El informe se genera sobre la empresa activa; un PA sin empresa activa ve todas.
+    const companyId = user?.activeCompanyId ?? "";
     const userId = searchParams.get('userId') || searchParams.get('user_id') || "";
 
     const isAdmin = user?.role === 'admin' || user?.isPlatformAdmin;

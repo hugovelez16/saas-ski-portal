@@ -1382,7 +1382,8 @@ El incremento SemVer (regla 8) edita `package.json`, `frontend/package.json` y `
 1. Cuando el agente termina o para a preguntar, el usuario avisa con "revisa PR-nn". La sesion principal lee el terminal del agente, ejecuta `git diff`, `ruff` y `pytest` y da un veredicto corto.
 2. Si hay fallos, se devuelven al agente del worktree (en su terminal) hasta que pasen.
 3. El usuario ordena `/smart-flow` (commit atomico en espanol, push y PR a `develop`) y el merge cuando pasan los tres checks de CI (Backend QA, Frontend QA, GitGuardian). GitHub no permite aprobar el propio PR; `develop` no exige review.
-4. Tras el merge: actualizar `develop` en el checkout principal, cerrar el worktree con la skill `workspace-clean` (baja el stack Docker y borra volumenes) y lanzar el siguiente bloque cuyas dependencias queden cumplidas.
+4. Si el bloque exige algo fuera del repositorio (variable de entorno o secreto, ajuste manual en produccion), se apunta en `docs/empresa/tareas-manuales-release.md` en el mismo PR.
+5. Tras el merge: actualizar `develop` en el checkout principal, cerrar el worktree con la skill `workspace-clean` (baja el stack Docker y borra volumenes) y lanzar el siguiente bloque cuyas dependencias queden cumplidas.
 
 ### 11.8 Bloques lanzables en paralelo
 
