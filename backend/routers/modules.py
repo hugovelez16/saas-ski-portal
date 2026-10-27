@@ -16,6 +16,7 @@ import schemas
 from access_policy import PolicyError
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
 
 from routers import deps
@@ -83,7 +84,7 @@ def update_module(
 # ─── Suscripciones ──────────────────────────────────────────────────────────
 
 
-@router.get("/subscriptions", response_model=list[schemas.ModuleSubscriptionResponse])
+@router.get("/subscriptions", response_model=None)
 def list_subscriptions(
     company_id: str | None = None,
     user_id: str | None = None,
@@ -94,9 +95,10 @@ def list_subscriptions(
     """
     Lista suscripciones.
     Platform Admin puede ver todas.
-    Manager puede ver las de su empresa activa.
+    Manager puede ver las de su empresa activa, con la empresa embebida reducida a `id` y `name`.
     """
-    if not deps.acting_platform_admin(current_user):
+    acting_pa = deps.acting_platform_admin(current_user)
+    if not acting_pa:
         # Non-admin can only see subscriptions for their own active company
         active_cid = getattr(current_user, "active_company_id", None)
         if not active_cid:
@@ -121,7 +123,8 @@ def list_subscriptions(
         .all()
     )
 
-    return subs
+    schema = schemas.ModuleSubscriptionResponse if acting_pa else schemas.ModuleSubscriptionManagerResponse
+    return JSONResponse([schema.model_validate(sub).model_dump(mode="json", by_alias=True) for sub in subs])
 
 
 @router.post("/subscriptions", response_model=schemas.ModuleSubscriptionResponse)

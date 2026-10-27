@@ -46,7 +46,7 @@ export default function ReportsPage() {
     const accessibleCompanies = useMemo(() => {
         if (isAdmin) return companies;
         return companies.filter(c => {
-            const modules = c.settings?.modules || {};
+            const modules: Record<string, any> = c.settings?.modules || {};
             const reportsConfig = modules.reports;
 
             // 1. Basic check

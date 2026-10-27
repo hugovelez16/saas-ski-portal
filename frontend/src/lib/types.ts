@@ -25,22 +25,40 @@ export type User = UserProfile;
 export type UserSettings = any; // Placeholder for legacy references
 
 /**
+ * Settings de empresa en la vista reducida (worker, manager, PA en "ver como").
+ * El backend no entrega allowed_rates y puede omitir cualquier clave.
+ * Ademas puede traer claves propias del miembro (notifications, ui_preferences...).
+ */
+export type CompanySettingsReduced = Partial<Omit<CompanySettings, 'allowed_rates'>> & Record<string, any>;
+
+/**
  * Company Interface
+ * Vista reducida por defecto. isActive, createdAt y updatedAt solo llegan en la vista completa (PA actuando).
  */
 export interface Company {
     id: string;
     name: string;
     taxConfig: Record<string, number>;
     worklogDefinitions?: Record<string, any>;
-    settings?: Record<string, any>;
-    createdAt: string;
-    updatedAt: string;
+    settings?: CompanySettingsReduced;
+    createdAt?: string;
+    updatedAt?: string;
 
     // UI specific
     role?: string;
     isActiveMember?: boolean;
     isManaged?: boolean;
     isActive?: boolean;
+}
+
+/**
+ * Vista completa de empresa (solo PA actuando): incluye isActive, fechas y settings completo.
+ */
+export interface CompanyFull extends Company {
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+    settings?: CompanySettings & Record<string, any>;
 }
 
 export type CompanyResponse = Company;

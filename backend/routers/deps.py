@@ -194,6 +194,22 @@ def manages_user(db: Session, actor: models.User, target_user_id: Any) -> bool:
     return membership is not None
 
 
+def manager_company_ids(db: Session, actor: models.User) -> set[str]:
+    """Empresas sobre las que el actor puede ver las membresias de otros usuarios (P8).
+
+    Solo la empresa del token (aislamiento por tenant), y solo si el actor es manager de ella con
+    membresia activa y empresa activa. PA en "ver como" manager: la empresa del token; en "ver como"
+    worker, ninguna. El PA actuando no pasa por aqui.
+    """
+    cid = canonical_id(getattr(actor, "active_company_id", None))
+    if not cid:
+        return set()
+    view_as = getattr(actor, "view_as", None)
+    if view_as:
+        return {cid} if view_as == access_policy.ROLE_MANAGER else set()
+    return {cid} & crud.get_manager_company_ids(db, actor.id)
+
+
 def require_active_member(db: Session, user_id: Any, company_id: Any) -> models.CompanyMember:
     uid, cid = canonical_id(user_id), canonical_id(company_id)
     member = None
