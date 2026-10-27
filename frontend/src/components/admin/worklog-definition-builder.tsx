@@ -34,12 +34,9 @@ export function WorklogDefinitionBuilder({ initialValue, onSave }: WorklogDefini
         const newObj: Record<string, any> = {};
         types.forEach(t => {
             if (t.key.trim() !== "") {
-                const finalData = { ...t.data };
-                if (!finalData.unit) {
-                    finalData.unit = finalData.is_range ? "days" : "hours";
-                }
-                finalData.is_range = finalData.unit === "days";
-                newObj[t.key] = finalData;
+                // Se descarta cualquier is_range heredado: el contrato solo usa unit.
+                const { is_range: _legacyIsRange, ...rest } = t.data;
+                newObj[t.key] = { ...rest, unit: rest.unit || "hours" };
             }
         });
         onSave(newObj);
@@ -48,7 +45,7 @@ export function WorklogDefinitionBuilder({ initialValue, onSave }: WorklogDefini
     const handleAddType = () => {
         setTypes(prev => [...prev, {
             key: `nuevo_turno_${prev.length + 1}`,
-            data: { label: "Nuevo Turno", is_range: false, fields: [], options: [] }
+            data: { label: "Nuevo Turno", unit: "hours", fields: [], options: [] }
         }]);
     };
 
@@ -134,11 +131,8 @@ export function WorklogDefinitionBuilder({ initialValue, onSave }: WorklogDefini
                             <div className="space-y-2">
                                 <Label className="text-sm font-semibold">Modo de Cálculo / Unidad</Label>
                                 <Select 
-                                    value={typeObj.data.unit || (typeObj.data.is_range ? "days" : "hours")} 
-                                    onValueChange={(val) => {
-                                        handleDataChange(index, 'unit', val);
-                                        handleDataChange(index, 'is_range', val === "days");
-                                    }}
+                                    value={typeObj.data.unit || "hours"}
+                                    onValueChange={(val) => handleDataChange(index, 'unit', val)}
                                 >
                                     <SelectTrigger className="h-9 bg-white dark:bg-slate-950">
                                         <SelectValue placeholder="Seleccionar modo" />
@@ -154,8 +148,8 @@ export function WorklogDefinitionBuilder({ initialValue, onSave }: WorklogDefini
                                 <p className="text-[11px] text-muted-foreground pb-1">
                                     {typeObj.data.unit === 'fixed' 
                                         ? 'El trabajador solo elige el día. Se cobra la tarifa base directamente.' 
-                                        : typeObj.data.is_range 
-                                            ? 'Ideal para cursillos o viajes de varios días.' 
+                                        : typeObj.data.unit === 'days'
+                                            ? 'Ideal para cursillos o viajes de varios días.'
                                             : 'Ideal para clases particulares o turnos sueltos.'}
                                 </p>
                             </div>

@@ -89,9 +89,7 @@ function ManagerDailyReportInner() {
         return myCompanies.filter((c: any) => {
             const role = (c.role || c.pivot?.role || '').toLowerCase();
             const isManager = ['manager', 'admin', 'owner'].includes(role);
-            const settings = c.settings || {};
-            // Support both new 'modules' and legacy 'features'
-            const isModuleActive = Boolean(settings.modules?.worker_daily_report ?? settings.features?.worker_daily_report ?? false);
+            const isModuleActive = Boolean(c.settings?.modules?.worker_daily_report ?? false);
             return isManager && isModuleActive;
         });
     }, [myCompanies]);

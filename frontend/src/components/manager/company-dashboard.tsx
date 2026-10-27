@@ -141,9 +141,7 @@ export function CompanyDashboard({ companyId, companyName }: CompanyDashboardPro
         const totalGross = periodMetrics?.totalGross ?? 0;
         const totalNet = periodMetrics?.totalNet ?? 0;
 
-        const isSinglePrice = company?.settings?.business_logic?.price_type === 'net' ||
-            company?.settings?.billing?.price_type === 'net' ||
-            Math.abs(totalGross - totalNet) < 0.01;
+        const isSinglePrice = company?.settings?.business_logic?.price_type === 'net';
 
         return {
             totalHours: periodMetrics?.totalHours ?? 0,

@@ -127,7 +127,7 @@ export function WorkLogForm({ formData, setFormData, logType, setLogType, compan
         return currentDefinition?.options?.includes(opt) || false;
     };
 
-    const isRange = currentDefinition?.is_range === true; // If JSON denotes it's a date range, e.g. tutorial
+    const isRange = currentDefinition?.unit === "days"; // unidad en dias: el turno es un rango de fechas
     const isFixed = currentDefinition?.unit === "fixed";
 
     return (

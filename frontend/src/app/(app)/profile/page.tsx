@@ -82,10 +82,7 @@ export default function ProfilePage() {
   const currentCompany = myCompanies.find((c: Company) => c.id === activeCompanyId);
   const worklogDefinitions = currentCompany?.worklogDefinitions || {};
 
-  const isCompanyManaged = Boolean(
-    currentCompany?.settings?.is_managed || 
-    (currentCompany as any)?.is_managed
-  );
+  const isCompanyManaged = Boolean(currentCompany?.isManaged);
   const isWorker = !user?.isPlatformAdmin && currentCompany?.role !== "manager" && currentCompany?.role !== "admin";
   const canEditRates = !isCompanyManaged || !isWorker;
 
@@ -469,7 +466,7 @@ export default function ProfilePage() {
                                         onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} 
                                       />
                                     </FormControl>
-                                    {def.is_range ? (
+                                    {def.unit === "days" ? (
                                       <FormDescription>Se calculará por día</FormDescription>
                                     ) : def.unit === "fixed" ? (
                                       <FormDescription>Se calculará por evento fijo</FormDescription>
