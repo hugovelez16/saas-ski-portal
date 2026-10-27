@@ -19,6 +19,26 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.21.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: API v2: empresa y vistas (PR-17 del plan de empresa; X1 parte 2, X3, X7, Q3). Sin migracion. v1 no cambia de comportamiento.
+
+### Funcionalidades y Mejoras
+
+- **Endpoints de empresa en `/api/v2/`** (JSON en `snake_case`, politica identica a v1): `GET /v2/companies?include=members&skip&limit` (PA, respuesta `{items, total}`), `POST /v2/companies` (PA, 201), `GET /v2/companies/{id}` (vista completa para el PA actuando, reducida para el resto), `PUT /v2/companies/{id}` (PA), `DELETE /v2/companies/{id}` (PA, 204), `GET /v2/me/companies` y `GET /v2/users/{id}/companies`.
+- **Casos de uso de empresa** en `backend/src/application/use_cases/company/` (alta, edicion con un evento de auditoria por campo, borrado con motivos de bloqueo, lectura y tres listados) sobre los puertos del dominio.
+- **X3**: `include=members` unifica el listado y el detalle con miembros.
+- **Pruebas de paridad v1/v2 de empresa** (`backend/tests/parity/test_company_parity.py`) con la tabla `KNOWN_DIFFERENCES`, y matriz de permisos, validaciones, auditoria y aislamiento de v2 (`backend/tests/routers/v2/test_v2_companies.py`).
+
+### Cambiado
+
+- **Repositorio de empresa (SQLAlchemy)**: `save` y `delete` invalidan la cache de acceso (`access_cache`), igual que v1.
+- v2 rechaza `null` explicito en `tax_config`, `worklog_definitions` y `settings` en `PUT` (422), en lugar de fallar al persistir.
+
+---
+
 ## [0.20.0] - 2026-10-27
 
 ### Tipo de Cambio SemVer
