@@ -3,7 +3,7 @@
 Plataforma SaaS de gestion de escuelas de esqui: reservas y jornadas laborales (saas_ski_vesotel). Multiempresa. Este fichero es la unica fuente de reglas para agentes (Claude Code y Orca); no existe AGENTS.md.
 
 ## Stack
-- `backend/`: FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16, Redis 7. Capas en `backend/src/{domain,application,infrastructure}`, routers en `backend/routers`. Auth OAuth2 password flow con JWT firmado con RSA.
+- `backend/`: FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16, Redis 7. Capas en `backend/src/{domain,application,infrastructure}`, routers en `backend/routers`. Auth OAuth2 password flow con JWT firmado con RSA. API v2 del area empresa en `/api/v2/` (`backend/routers/v2/`, `backend/src/`).
 - `frontend/`: Next.js (App Router), React, TypeScript, shadcn, Tailwind. Tests con vitest.
 - `gateway/`: Nginx. Frontend en `/`, backend en `/api/`.
 - CI/CD: `.github/workflows/` (`ci.yml`, `deploy-dev.yml`, `deploy-prod.yml`). Cada merge a `develop` o `main` publica imagenes en GHCR con tag SemVer (`dev-vX.Y.Z` o `vX.Y.Z`); despliegue y rollback con Komodo.
