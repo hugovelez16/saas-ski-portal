@@ -19,6 +19,28 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.20.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Frontend transversal (PR-19 del plan de empresa; U1, U4, U7, U8, U10 y banner "ver como"). Sin migracion. No toca el backend.
+
+### Funcionalidades y Mejoras
+
+- **Errores de la API (U1)**: interceptor de respuesta en `lib/api.ts` que muestra un toast con el `detail` del backend en 403, 404, 409, 422 y 5xx (el `detail` en lista del 422 se une de forma legible). El 401 no notifica (lo gestiona `AuthContext`). Las peticiones con `meta: { silent: true }` no notifican.
+- **Banner "ver como"**: `components/view-as-banner.tsx` en el layout de la app; avisa del modo de solo lectura del administrador de plataforma y permite salir del modo.
+- **Empresa suspendida (U4)**: el selector de empresa y el dialogo de ambito no ofrecen empresas inactivas a worker y manager; un 403 al listar turnos se muestra como error y no como lista vacia.
+- **Tarifas del perfil (U7)**: solo son editables si la empresa es autonoma (`isManaged === false`); sin empresa cargada, solo lectura.
+- **Contacto y tipado (U10)**: toasts del alta de empresa en espanol, `updateCompany` y `tax_config` tipados sin `any`, y `json-editor` rechaza valores no finitos antes de guardar.
+
+### Cambiado
+
+- **Empresa activa (U8)**: desaparece `?companyId=` de la URL; la empresa activa sale solo de `user.activeCompanyId` y se cambia con `switchScope`. Al estar en una cookie compartida, cambiar de empresa en una pestana la cambia en todas las pestanas abiertas. `reports/print` tambien usa la empresa activa (un administrador de plataforma sin empresa activa ve todas).
+- **Correo de contacto (U10)**: el correo fijo de la pantalla sin empresa y del dialogo "Request Access" del login pasa a `CONTACT_EMAIL`, leido de `NEXT_PUBLIC_CONTACT_EMAIL`. Sin valor por defecto: si la variable no esta definida, no se muestra. Se anade como `ARG` en `frontend/Dockerfile` y como `build-arg` en `deploy-dev.yml` y `deploy-prod.yml`; requiere la variable de GitHub Actions del mismo nombre (ver `docs/empresa/tareas-manuales-release.md`).
+- **Toasts de error**: se eliminan los toasts locales que duplicaban el del interceptor.
+
+---
+
 ## [0.19.0] - 2026-10-27
 
 ### Tipo de Cambio SemVer
