@@ -13,6 +13,16 @@ from contextlib import asynccontextmanager
 from access_policy import PolicyError
 from contracts import MissingWorklogUnitError
 from database import SessionLocal
+from domain.exceptions.domain_exceptions import (
+    ConflictException,
+    DomainException,
+    EntityNotFoundException,
+    InactiveMembershipException,
+    InvalidRateConfigurationException,
+    ModuleAccessDeniedException,
+    UnauthorizedDomainActionException,
+    ValidationDomainException,
+)
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -20,7 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 # Import modular routers
-from routers import audit_logs, auth, companies, modules, users, work_logs
+from routers import audit_logs, auth, companies, modules, users, v2, work_logs
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -136,6 +146,24 @@ async def policy_error_handler(request: Request, exc: PolicyError):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
+DOMAIN_EXCEPTION_STATUS = (
+    (EntityNotFoundException, 404),
+    (ConflictException, 409),
+    (ValidationDomainException, 422),
+    (UnauthorizedDomainActionException, 403),
+    (InactiveMembershipException, 403),
+    (ModuleAccessDeniedException, 403),
+    (InvalidRateConfigurationException, 422),
+)
+
+
+@app.exception_handler(DomainException)
+async def domain_exception_handler(request: Request, exc: DomainException):
+    """Traduce las excepciones de dominio (v2) a HTTP; una DomainException sin mapear sale como 400."""
+    status_code = next((code for cls, code in DOMAIN_EXCEPTION_STATUS if isinstance(exc, cls)), 400)
+    return JSONResponse(status_code=status_code, content={"detail": exc.message})
+
+
 @app.exception_handler(MissingWorklogUnitError)
 async def missing_worklog_unit_error_handler(request: Request, exc: MissingWorklogUnitError):
     return JSONResponse(status_code=422, content={"detail": str(exc)})
@@ -196,6 +224,7 @@ app.include_router(work_logs.router)
 app.include_router(companies.router)
 app.include_router(modules.router)
 app.include_router(audit_logs.router)
+app.include_router(v2.router)
 
 if __name__ == "__main__":
     import uvicorn
