@@ -19,6 +19,26 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.17.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Vista reducida y completa de empresa en v1 (PR-13 del plan de empresa; P7, P8, U11). Sin migracion. CAMBIA LA FORMA DE LAS RESPUESTAS de empresa: backend y frontend se despliegan juntos (P-1).
+
+### Funcionalidades y Mejoras
+
+- **Vista reducida**: `GET /users/me/companies`, `GET /companies/{id}`, `GET /companies/detailed` (con `members`) y `GET /users/{id}/companies` devuelven a worker, manager y platform admin en "ver como" solo `id`, `name`, `isManaged`, `role`, `isActiveMember`, `ratesConfig`, `worklogDefinitions`, `taxConfig` y `settings` de interfaz (`worker_experience`, `ui_customization`, `modules`, `business_logic.price_type`). Ya no llegan `isActive`, `createdAt`, `updatedAt` ni `allowed_rates`.
+- **Vista completa**: solo el platform admin actuando recibe la empresa completa.
+- **`GET /users/{id}/companies` (P8)**: el platform admin ve todas las empresas del usuario (incluidas inactivas); el manager solo la empresa del token, si es manager de ella y el usuario es miembro activo; el resto recibe 403. En "ver como", worker recibe 403 y manager queda limitado a la empresa del token.
+- **`GET /modules/subscriptions`**: para quien no es platform admin, la empresa embebida solo lleva `id` y `name`.
+- **`settings` de miembro**: al leer, solo se fusionan las claves de la lista blanca.
+
+### Cambiado
+
+- **`frontend/`**: `Company` pasa a vista reducida con `isActive`, `createdAt` y `updatedAt` opcionales; nuevo tipo `CompanyFull` para los endpoints solo de platform admin.
+
+---
+
 ## [0.16.0] - 2026-10-27
 
 ### Tipo de Cambio SemVer
