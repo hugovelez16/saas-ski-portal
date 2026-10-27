@@ -18,7 +18,7 @@ import stat
 import database
 import models
 import pytest
-from scripts.repair_common import BACKEND_DIR
+from scripts.repair_common import BACKEND_DIR, _repo_scope
 
 from tests.factories import make_company
 
@@ -268,8 +268,7 @@ def test_apply_sin_drop_unknown_no_cambia_bd_y_escribe_backup_completo_fuera_del
     assert str(first.id) in text
     assert str(second.id) in text
     assert _values_of_key(_load(files[0]), "clave_inventada") == [1]
-    repo_root = BACKEND_DIR.parent.resolve()
-    assert repo_root not in files[0].resolve().parents
+    assert _repo_scope() not in files[0].resolve().parents
 
 
 # (6) --drop-unknown elimina solo la clave indicada y la guarda en el backup
