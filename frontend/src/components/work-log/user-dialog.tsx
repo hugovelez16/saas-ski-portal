@@ -19,6 +19,10 @@ import { getMyCompanies } from "@/lib/api/companies";
 import type { WorkLog, WorkLogCreate } from "@/lib/types";
 import { WorkLogForm } from "./work-log-form";
 import { createWorkLog, updateWorkLog } from "@/lib/api/work-logs";
+import { notifyWorkLogWarnings } from "@/lib/work-log-warnings";
+import { getManualAmountChoice } from "@/lib/manual-amount-choice";
+import { ManualAmountChoiceDialog } from "./manual-amount-choice-dialog";
+import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
 
 /**
@@ -77,6 +81,7 @@ export function UserCreateWorkLogDialog({
     const [lastSelectedCompanyId, setLastSelectedCompanyId] = useState<string | null>(null);
 
     const { toast } = useToast();
+    const { user: authUser } = useAuth();
 
     // Fetch companies
     // Fetch companies if not provided
@@ -87,6 +92,21 @@ export function UserCreateWorkLogDialog({
     });
 
     const companies = providedCompanies || fetchedCompanies;
+
+    // Rol del usuario que opera en la empresa del turno. No se usa `companies` (en la ficha de
+    // usuario contiene los roles del titular). Sin dato, no se ofrece recalcular.
+    const { data: myCompanies = [] } = useQuery({
+        queryFn: getMyCompanies,
+        queryKey: ["myCompanies"],
+        enabled: Boolean(logToEdit),
+    });
+    const turnCompanyRole = myCompanies.find((c) => c.id === logToEdit?.companyId)?.role;
+    const canRecalculate = Boolean(
+        authUser?.isPlatformAdmin || authUser?.role === 'admin' || turnCompanyRole === 'manager'
+    );
+
+    // Edicion con importe manual pendiente de decision (409 manual_amount_choice)
+    const [manualChoice, setManualChoice] = useState<{ message: string; body: any } | null>(null);
 
     // Reset form
     const resetForm = () => {
@@ -142,6 +162,49 @@ export function UserCreateWorkLogDialog({
         }
     }, [open, logToEdit, isControlled, initialDate]);
 
+    const showSaveError = (error: any) => {
+        console.error("Error saving work log:", error);
+        let msg = "No se pudo guardar el turno.";
+        const detailMsg = extractDetailMessage(error.response?.data?.detail);
+
+        if (detailMsg) {
+            msg = detailMsg;
+        } else if (error.message) {
+            msg = error.message;
+        }
+
+        // Check if it's a rate/pricing related validation error and make it friendly
+        const lowercaseMsg = msg.toLowerCase();
+        if (lowercaseMsg.includes("precio") || lowercaseMsg.includes("rate") || lowercaseMsg.includes("tarifa")) {
+            msg = "No se puede guardar: El usuario no tiene tarifas configuradas para este tipo de turno. Por favor, configura sus tarifas primero.";
+        }
+
+        toast({ title: "Error", description: String(msg), variant: "destructive" });
+    };
+
+    // Reenvia el mismo PUT resolviendo el importe manual: conservar (keep_manual_amount) o recalcular por tarifa
+    const resolveManualChoice = async (mode: 'keep' | 'recalculate') => {
+        const pending = manualChoice;
+        if (!pending || !logToEdit) return;
+
+        setManualChoice(null);
+        setIsLoading(true);
+        try {
+            const savedLog = await updateWorkLog(logToEdit.id, pending.body, initialApplyToGroup, {
+                keepManualAmount: mode === 'keep',
+                recalculateWithCurrentRates: mode === 'recalculate',
+            });
+            toast({ title: "Success", description: "Work log updated successfully." });
+            notifyWorkLogWarnings(toast, savedLog);
+            setOpen(false);
+            onLogUpdate?.();
+        } catch (error: any) {
+            showSaveError(error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleSubmit = async () => {
         setIsLoading(true);
 
@@ -195,11 +258,13 @@ export function UserCreateWorkLogDialog({
 
         try {
             if (logToEdit) {
-                await updateWorkLog(logToEdit.id, logData, initialApplyToGroup);
+                const savedLog = await updateWorkLog(logToEdit.id, logData, initialApplyToGroup);
                 toast({ title: "Success", description: "Work log updated successfully." });
+                notifyWorkLogWarnings(toast, savedLog);
             } else {
-                await createWorkLog(logData);
+                const savedLog = await createWorkLog(logData);
                 toast({ title: "Success", description: "Work log created successfully." });
+                notifyWorkLogWarnings(toast, savedLog);
             }
 
             setOpen(false);
@@ -211,29 +276,20 @@ export function UserCreateWorkLogDialog({
             onLogUpdate?.();
 
         } catch (error: any) {
-            console.error("Error saving work log:", error);
-            let msg = "No se pudo guardar el turno.";
-            const detailMsg = extractDetailMessage(error.response?.data?.detail);
-
-            if (detailMsg) {
-                msg = detailMsg;
-            } else if (error.message) {
-                msg = error.message;
+            const manualChoiceError = logToEdit ? getManualAmountChoice(error) : null;
+            if (manualChoiceError) {
+                // Sin toast: el usuario decide como resolver el importe manual
+                setManualChoice({ message: manualChoiceError.message, body: logData });
+                return;
             }
-
-            // Check if it's a rate/pricing related validation error and make it friendly
-            const lowercaseMsg = msg.toLowerCase();
-            if (lowercaseMsg.includes("precio") || lowercaseMsg.includes("rate") || lowercaseMsg.includes("tarifa")) {
-                msg = "No se puede guardar: El usuario no tiene tarifas configuradas para este tipo de turno. Por favor, configura sus tarifas primero.";
-            }
-
-            toast({ title: "Error", description: String(msg), variant: "destructive" });
+            showSaveError(error);
         } finally {
             setIsLoading(false);
         }
     }
 
     return (
+        <>
         <Dialog open={open} onOpenChange={(isOpen) => {
             setOpen(isOpen);
             if (!isOpen && !logToEdit) resetForm();
@@ -277,5 +333,14 @@ export function UserCreateWorkLogDialog({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        <ManualAmountChoiceDialog
+            open={manualChoice !== null}
+            message={manualChoice?.message ?? ""}
+            canRecalculate={canRecalculate}
+            onKeep={() => resolveManualChoice('keep')}
+            onRecalculate={() => resolveManualChoice('recalculate')}
+            onCancel={() => setManualChoice(null)}
+        />
+        </>
     )
 }

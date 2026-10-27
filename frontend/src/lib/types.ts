@@ -207,6 +207,14 @@ export interface WorkLog {
     hasNight?: boolean;
     arrivesPrior?: boolean;
     isGrossCalculation?: boolean;
+    warnings?: WorkLogWarning[];
+}
+
+export interface WorkLogWarning {
+    code: string;
+    message: string;
+    conflictingLogIds: string[];
+    userId?: string | null;
 }
 
 export interface UserDevice {

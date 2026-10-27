@@ -126,6 +126,15 @@ class WorkLogUpdate(CamelModel):
         return self
 
 
+class WorkLogWarning(CamelModel):
+    """Aviso no bloqueante sobre un turno guardado (p. ej. solape con otro turno del mismo trabajador)."""
+
+    code: str
+    message: str
+    conflicting_log_ids: list[UUID] = []
+    user_id: UUID | None = None
+
+
 class WorkLogResponse(WorkLogBase):
     """Schema for WorkLog response data."""
 
@@ -134,6 +143,7 @@ class WorkLogResponse(WorkLogBase):
     amount: float | None = None
     gross_amount: float | None = Field(None, alias="grossAmount")
     group_id: UUID | None = Field(None, alias="groupId")
+    warnings: list[WorkLogWarning] = []
 
     # SaaS Evolution: Historical snapshot (includes rate_applied inside snapshot["rate_applied"])
     calculation_snapshot: dict[str, Any] | None = Field(None, alias="calculationSnapshot")

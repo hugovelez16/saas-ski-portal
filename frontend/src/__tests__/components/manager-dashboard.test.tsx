@@ -111,6 +111,31 @@ describe("Manager Dashboard Components", () => {
             expect(rows[2]).toHaveTextContent("5.0 h");
             expect(rows[3]).toHaveTextContent("20.0 h");
         });
+
+        it("shows an 'Inactivo' badge only for members whose summary has isActive false", () => {
+            const summary = [
+                { ...mockWorkersSummary[0], isActive: true }, // Ana (user-2)
+                { ...mockWorkersSummary[1], isActive: false } // Carlos (user-1)
+            ];
+
+            render(
+                <DashboardTeamTable
+                    companyId="comp-1"
+                    members={mockMembers}
+                    orderedMemberIds={["user-1", "user-2", "user-3"]}
+                    workersSummary={summary as any}
+                />
+            );
+
+            const rows = screen.getAllByRole("row");
+            expect(rows[1]).toHaveTextContent("Carlos Director");
+            expect(rows[1]).toHaveTextContent("Inactivo");
+            expect(rows[2]).toHaveTextContent("Ana Monitora");
+            expect(rows[2]).not.toHaveTextContent("Inactivo");
+            // Beatriz (user-3) has no entry in workersSummary: no badge
+            expect(rows[3]).toHaveTextContent("Beatriz Profesora");
+            expect(rows[3]).not.toHaveTextContent("Inactivo");
+        });
     });
 
     describe("DashboardKpis — Adaptive Financial Metrics", () => {

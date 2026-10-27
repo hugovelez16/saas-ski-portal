@@ -125,7 +125,8 @@ def db(_schema):
     if TEST_DATABASE_URL:
         connection = engine.connect()
         transaction = connection.begin()
-        session = TestingSession(bind=connection)
+        # create_savepoint: commit/rollback de la app solo afectan a su savepoint, no a la transaccion del test
+        session = TestingSession(bind=connection, join_transaction_mode="create_savepoint")
         try:
             yield session
         finally:

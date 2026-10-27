@@ -27,6 +27,7 @@ export interface TeamMemberStats {
     uniqueDays: number;
     totalLogs: number;
     totalAmount: number;
+    isActive?: boolean;
 }
 
 interface DashboardTeamTableProps {
@@ -71,7 +72,8 @@ export function DashboardTeamTable({
                 totalHours: worker?.totalHours ?? 0,
                 uniqueDays: worker?.uniqueDays ?? 0,
                 totalLogs: worker?.logsCount ?? 0,
-                totalAmount: worker?.totalNet ?? 0
+                totalAmount: worker?.totalNet ?? 0,
+                isActive: worker?.isActive
             };
         });
 
@@ -183,9 +185,16 @@ export function DashboardTeamTable({
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant="outline" className="capitalize text-[10px] px-1.5 h-5">
-                                            {row.role}
-                                        </Badge>
+                                        <div className="flex items-center gap-1.5">
+                                            <Badge variant="outline" className="capitalize text-[10px] px-1.5 h-5">
+                                                {row.role}
+                                            </Badge>
+                                            {row.isActive === false && (
+                                                <Badge variant="outline" className="text-[10px] px-1.5 h-5 text-muted-foreground">
+                                                    Inactivo
+                                                </Badge>
+                                            )}
+                                        </div>
                                     </TableCell>
                                     <TableCell className="text-right font-medium">
                                         {row.totalHours.toFixed(1)} h
