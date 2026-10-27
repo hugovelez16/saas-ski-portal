@@ -48,6 +48,24 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.15.1] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Las migraciones `b7e1a0d10007` y `b7e1a0d10002` se aplican sobre bases con vistas manuales de PostgreSQL. Antes de desplegar, inventariar las vistas (paso "a bis" de la seccion 10 de `docs/empresa/plan-implementacion-empresa.md`).
+
+### Corregido
+
+- **Migracion `b7e1a0d10007`**: si la vista manual "Usuarios" lee `users.default_company_id`, se recrea sin la columna (sin `default_company_name`) conservando propietario y privilegios; si otra vista depende de la columna, aborta con `RuntimeError` que la nombra. `downgrade` restaura la columna y la definicion original de "Usuarios".
+- **Migracion `b7e1a0d10002`**: elimina y recrea todas las vistas que dependen de `companies.name` (incluidas las que dependen de otras vistas) con su definicion, propietario y privilegios, en lugar de solo "Work Logs".
+
+### Cambios Internos
+
+- **`backend/migration_helpers.py`**: utilidades reutilizables por migraciones para localizar, eliminar y recrear vistas dependientes de una columna.
+- **Pruebas**: `backend/tests/test_migration_manual_views.py` (marcador `postgres`, base desechable por prueba).
+
+---
+
 ## [0.15.0] - 2026-10-26
 
 ### Tipo de Cambio SemVer

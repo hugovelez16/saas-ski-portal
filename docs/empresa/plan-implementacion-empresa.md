@@ -574,6 +574,7 @@ export function usePermissions(company?: CompanyResponse | null): {
 - Limpieza menor: `NotificationsSection` queda como componente vacio y `dashboard/page.tsx` lo sigue importando; eliminarlo junto a su uso en el siguiente bloque que toque el dashboard (PR-12).
 - Trazabilidad A1: `POST /users` (`routers/users.py`, `create_user_admin`) une al usuario a la empresa con `crud.join_company`, que no emite `member.added`. Hacer que `join_company` registre `member.added` con `actor_id` (o que `create_user_admin` use `add_member`). Propuesta: PR-06 (siguiente bloque que toca membresias y usuarios), con un test que compruebe el evento.
 - Tarifas y ajustes en dos peticiones: `frontend/src/lib/api/settings.ts:updateUserRates` hace `PUT rates` y luego `PUT settings` reenviando `existingSettings`. El reenvio ya no hace falta (el endpoint de tarifas no toca `settings`), puede pisar un cambio concurrente de ajustes y un fallo del segundo `PUT` deja el estado a medias. Separar las dos operaciones en los llamadores y dejar `updateUserRates` solo con tarifas. Propuesta: PR-11 (contratos de `settings` y tarifas, PR-11.2).
+- Leccion del primer despliegue en dev (rama `fix/migraciones-vistas-dependientes`): `b7e1a0d10007` y `b7e1a0d10002` fallaban porque vistas manuales ("Usuarios", "Companies Members", "Users Sessions") leen `users.default_company_id` y `companies.name`. Corregido en sitio con `backend/migration_helpers.py` y tests `postgres` en `test_migration_manual_views.py`. Todo bloque que altere o borre una columna (PR-23 con `fiscal_id`) debe usar ese mecanismo y el paso "a bis" de la seccion 10.2.
 - M8 resuelto: sin empresas "Personal" en produccion (confirmado por el usuario); el auto-join de `crud.create_user` se retiro en PR-05.
 
 ---
@@ -1259,6 +1260,23 @@ Aplica a todo PR que contenga una migracion Alembic: PR-02, PR-05, PR-06, PR-09,
    `docker exec <proyecto>-postgres pg_dump -U <usuario> -Fc <base> > "${BACKUP_DIR}/pre_<PR-nn>_$(date +%Y%m%dT%H%M%SZ).dump"`.
 2. Verificar que el fichero existe, tiene un tamano razonable y se puede listar: `pg_restore --list <fichero> | head`. Anotar la ruta y la version de imagen desplegada ahora (tag SemVer anterior, para el rollback del paso d).
 
+**a bis) Inventariar vistas manuales (ACCION DEL USUARIO, solo lectura).** En produccion existen vistas creadas a mano que el repo no conoce ("Companies Members", "Users Sessions", "Usuarios") y que bloquean el `ALTER`/`DROP` de las columnas que leen. Antes de desplegar un PR que altere o borre columnas (PR-05, PR-06, PR-23), ejecutar contra la BD de produccion y guardar la salida junto al backup del paso a:
+1. Vistas del esquema `public` con su propietario y definicion: `SELECT schemaname, viewname, viewowner, definition FROM pg_views WHERE schemaname = 'public' ORDER BY viewname;`
+2. Vistas que dependen de las columnas que cambian los PR con migracion (ajustar la lista de pares tabla/columna al PR):
+```sql
+SELECT v.relname AS vista, t.relname AS tabla, a.attname AS columna
+FROM pg_depend d
+JOIN pg_rewrite r ON r.oid = d.objid
+JOIN pg_class v ON v.oid = r.ev_class
+JOIN pg_class t ON t.oid = d.refobjid
+JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
+WHERE d.classid = 'pg_rewrite'::regclass AND d.refclassid = 'pg_class'::regclass
+  AND v.oid <> t.oid AND v.relnamespace = 'public'::regnamespace
+  AND (t.relname, a.attname) IN (('users','default_company_id'),('companies','name'),('companies','fiscal_id'))
+ORDER BY 1,2,3;
+```
+`DROP VIEW` pierde los `GRANT` de la vista; las migraciones (`backend/migration_helpers.py`) los guardan junto con el propietario y la definicion y los restauran al recrearla, tambien las vistas que dependen de otras vistas. Casos: PR-05 recrea "Usuarios" sin `default_company_name` y aborta con `RuntimeError` si otra vista lee `users.default_company_id` (adaptarla es decision manual: eliminarla o reescribirla antes de migrar); PR-06 recrea sin cambios todas las que leen `companies.name`; PR-23 debe usar el mismo mecanismo para `companies.fiscal_id` y hay que revisar el resultado de esta consulta antes.
+
 **b) Reparar datos con el script, ANTES de fusionar a `main` (ACCION DEL USUARIO).**
 1. Los scripts viajan en la imagen que publica el despliegue de `develop` (`backend:dev-vX.Y.Z`, creada al fusionar el PR a `develop`). Ejecutarlos desde esa imagen contra la BD de produccion, montando el directorio de backups para guardar los ficheros fuera del repo:
    `docker run --rm --network <red-de-la-bd-de-produccion> --env-file <.env de produccion> -v ${BACKUP_DIR}:/backups:z ghcr.io/<repo>/backend:dev-vX.Y.Z python3 -m scripts.<script> --dry-run`
@@ -1299,7 +1317,7 @@ Aplica a todo PR que contenga una migracion Alembic: PR-02, PR-05, PR-06, PR-09,
 Ventana de despliegue (decision del usuario): durante los segundos en que corre `migrate`, el contenedor de la release anterior sigue sirviendo con el esquema ya cambiado y alguna peticion puede fallar. Se ACEPTA ese riesgo. v1 y v2 viven en la misma imagen (prefijos `/api/` y `/api/v2/`): el riesgo es solo el del contenedor de la release anterior durante la ventana y es independiente de v1/v2. No se dividen bloques en dos releases ni se anaden releases previas de compatibilidad. Revision por PR del criterio de 10.1 (anadir antes de quitar):
 - PR-05: `DROP COLUMN users.default_company_id`: el contenedor anterior selecciona esa columna en consultas de `users` (incluido el login) y fallarian durante la ventana. Aceptado, un solo PR con codigo y migracion; despliegue fuera de horas de uso.
 - PR-02: solo anade columnas a `audit_logs`; compatible.
-- PR-06: acota la longitud de `companies.name`; compatible porque los nombres de produccion ya son validos (7.1); el codigo antiguo solo fallaria (`DataError`, 500) si creara o editara una empresa con un nombre de mas de 120 caracteres durante la ventana de `migrate`. La migracion recrea la vista `"Work Logs"` y toma `ACCESS EXCLUSIVE` sobre `companies` con `lock_timeout` de 5 s: si no obtiene el bloqueo, aborta sin cambios y se relanza.
+- PR-06: acota la longitud de `companies.name`; compatible porque los nombres de produccion ya son validos (7.1); el codigo antiguo solo fallaria (`DataError`, 500) si creara o editara una empresa con un nombre de mas de 120 caracteres durante la ventana de `migrate`. La migracion recrea las vistas que leen `companies.name` (`"Work Logs"` y las manuales, con propietario y privilegios) y toma `ACCESS EXCLUSIVE` sobre `companies` con `lock_timeout` de 5 s: si no obtiene el bloqueo, aborta sin cambios y se relanza.
 - PR-09: `company_id` NOT NULL es compatible solo si el codigo en produccion ya nunca inserta turnos sin empresa. PR-09 exige PR-08 ya desplegado antes; el orden de bloques (seccion 3) lo garantiza.
 - PR-10: renombrar `ss`/`irpf` y eliminar `extra` NO es compatible del todo: el backend antiguo lee `ss`/`irpf` en `tax_overrides` y durante la ventana calcularia sin esos overrides. Riesgo acotado: la ventana dura lo que tarda `migrate` y el efecto solo existe con `is_gross=True`. Aceptado por el usuario: un solo PR, sin release previa que lea ambas claves; se despliega fuera de horas de uso.
 - PR-11: borrar claves de `settings` y `is_range` tiene el mismo caracter (el codigo antiguo lee `features`, `input_mode`, `is_range`). Mismo tratamiento que PR-10 (un solo PR, fuera de horas de uso) y, ademas, rollback por restauracion de backup.
