@@ -84,8 +84,14 @@ def write_backup(directory: Path, topic: str, payload: object) -> Path:
     path = directory / f"{topic}_{stamp}.json"
     text = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(text)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        path.unlink(missing_ok=True)  # no dejar un backup parcial que parezca valido
+        raise
     return path
 
 
