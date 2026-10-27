@@ -19,6 +19,28 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.18.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Recalculo y avisos de turnos, dashboard (PR-12 del plan de empresa). Sin migracion.
+
+### Funcionalidades y Mejoras
+
+- **Recalculo al editar un turno**: editar solo campos sin efecto en el importe (por ejemplo la descripcion) ya no modifica `net_amount`, `gross_amount`, `duration` ni `calculation_snapshot`. Si cambian la hora, las fechas o las opciones del turno, se recalcula con la tarifa, la definicion y los impuestos guardados en el snapshot del turno. Si cambia el `type`, se usa la tarifa vigente del miembro (exige membresia activa, si no 422). Un turno sin tarifa ni importe manual responde 400.
+- **Turnos con importe manual**: si una edicion cambia hora, fechas, tipo o extras de un turno manual sin `netAmount` ni `recalculate_with_current_rates=true`, `PUT /work-logs/{id}` responde 409 con `detail.code = "manual_amount_choice"` y no modifica nada. El frontend pregunta: "Conservar importe" (reenvia con `keep_manual_amount=true`, cualquier rol; cada turno manual, tambien en un grupo, conserva su propio importe) o "Calcular por tarifa" (`recalculate_with_current_rates=true`, solo manager y administrador de plataforma). Un worker solo puede conservar el importe.
+- **Edicion de grupo atomica**: `PUT /work-logs/{id}?apply_to_group=true` aplica todos los turnos del grupo o ninguno; ante un error se deshace el grupo entero y el mensaje nombra al trabajador afectado.
+- **`PUT /work-logs/{id}?recalculate_with_current_rates=true`**: recalcula con la tarifa vigente. Solo manager y administrador de plataforma; un worker recibe 403.
+- **Avisos de solape**: `POST /work-logs`, `POST /work-logs/bulk` y `PUT /work-logs/{id}` devuelven `warnings` con `code: "overlap"` y los ids en conflicto cuando el turno se solapa con otro del mismo trabajador y empresa. Solo avisa, nunca rechaza. El frontend lo muestra en un aviso tras guardar.
+- **Dashboard**: `GET /companies/{id}/dashboard-summary` responde aunque Redis falle; `workersSummary` incluye a los miembros inactivos (`isActive: false`) y la tabla del equipo muestra la insignia "Inactivo".
+
+### Cambiado
+
+- **`calculate_dynamic_work_log`** sin cambios; `crud._update_single_work_log` decide cuando recalcular. Un cambio en `extraData.opciones` tambien fuerza el recalculo.
+- **`frontend/`**: se elimina el componente vacio `NotificationsSection` y su uso en el dashboard.
+
+---
+
 ## [0.17.0] - 2026-10-27
 
 ### Tipo de Cambio SemVer
