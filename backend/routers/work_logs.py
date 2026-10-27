@@ -323,6 +323,8 @@ def update_work_log(
     work_log_id: UUID,
     work_log: schemas.WorkLogUpdate,
     apply_to_group: bool = False,
+    recalculate_with_current_rates: bool = False,
+    keep_manual_amount: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user),
 ):
@@ -336,6 +338,10 @@ def update_work_log(
     if apply_to_group and role not in _COMPANY_VIEW_ROLES:
         raise PolicyError(403, access_policy.MSG_FORBIDDEN)
 
+    # T5: recalcular con la tarifa vigente solo lo piden manager y PA
+    if recalculate_with_current_rates and role not in _COMPANY_VIEW_ROLES:
+        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+
     # T3: empresa y usuario de un turno no cambian; se aceptan solo si coinciden con los actuales
     if (work_log.user_id is not None and str(work_log.user_id) != str(log.user_id)) or (
         work_log.company_id is not None and str(work_log.company_id) != str(log.company_id)
@@ -344,10 +350,20 @@ def update_work_log(
 
     try:
         updated_log = crud.update_work_log(
-            db, str(work_log_id), work_log, company_id=log.company_id, apply_to_group=apply_to_group
+            db,
+            str(work_log_id),
+            work_log,
+            company_id=log.company_id,
+            apply_to_group=apply_to_group,
+            recalculate_with_current_rates=recalculate_with_current_rates,
+            keep_manual_amount=keep_manual_amount,
         )
     except MissingWorklogUnitError:
         raise
+    except crud.ManualAmountChoiceError as e:
+        raise HTTPException(status_code=409, detail={"code": "manual_amount_choice", "message": str(e)})
+    except crud.MissingRateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     if updated_log is None:

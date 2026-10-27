@@ -15,6 +15,7 @@ import access_cache
 import access_policy
 import models
 import schemas
+import work_log_rules
 from access_policy import PolicyError
 from audit import AuditAction, record_audit
 from contracts import MEMBER_SETTINGS_ALLOWED_KEYS, CompanySettings, MissingWorklogUnitError, resolve_taxes
@@ -80,6 +81,19 @@ def update_user_status(db: Session, user_id: str, is_active: bool):
 
 
 MSG_NO_ACTIVE_MEMBERSHIP = "El usuario no tiene una membresia activa en esta empresa"
+
+
+class MissingRateError(ValueError):
+    """El turno no tiene tarifa aplicable ni importe manual (el router lo traduce a 400)."""
+
+
+MSG_MANUAL_AMOUNT_CHOICE = (
+    "Este turno tiene un importe manual: indica si se conserva el importe o se calcula por tarifa"
+)
+
+
+class ManualAmountChoiceError(ValueError):
+    """Un turno manual cambia datos de calculo sin importe explicito ni recalculo (el router lo traduce a 409)."""
 
 
 def get_company_member(db: Session, user_id: Any, company_id: Any, *, only_active: bool = False):
@@ -324,6 +338,35 @@ def _invalidate_company_rates(company_id: Any):
     redis_manager.delete(f"company_rates:{company_id}")
 
 
+def _overlap_warnings(db: Session, log: models.WorkLog, *, with_user_id: bool = False) -> list[dict]:
+    """Avisos de solape (T7) de un turno guardado con otros del mismo usuario y empresa. Solo avisa, nunca rechaza."""
+    others = (
+        db.query(models.WorkLog)
+        .filter(
+            models.WorkLog.user_id == log.user_id,
+            models.WorkLog.company_id == log.company_id,
+            models.WorkLog.id != log.id,
+            models.WorkLog.start_date <= log.end_date,
+            models.WorkLog.end_date >= log.start_date,
+        )
+        .all()
+    )
+    fields = ("id", "start_date", "end_date", "start_time", "end_time")
+    conflicting = work_log_rules.find_overlaps(
+        {f: getattr(log, f) for f in fields}, [{f: getattr(o, f) for f in fields} for o in others]
+    )
+    if not conflicting:
+        return []
+    return [
+        {
+            "code": "overlap",
+            "message": work_log_rules.OVERLAP_MESSAGE,
+            "conflicting_log_ids": conflicting,
+            "user_id": log.user_id if with_user_id else None,
+        }
+    ]
+
+
 def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
     """
     Creates a new work log entry using the dynamic calculation engine.
@@ -389,6 +432,7 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
     db.refresh(db_work_log)
     if db_work_log.company_id:
         invalidate_dashboard_summary(db_work_log.company_id)
+    db_work_log.warnings = _overlap_warnings(db, db_work_log)
     return db_work_log
 
 
@@ -480,7 +524,11 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
     if company_id:
         invalidate_dashboard_summary(company_id)
 
-    return created_logs[0] if created_logs else None
+    if not created_logs:
+        return None
+    # La respuesta es el primer turno; lleva los avisos de todo el lote, cada uno con su userId
+    created_logs[0].warnings = [w for log in created_logs for w in _overlap_warnings(db, log, with_user_id=True)]
+    return created_logs[0]
 
 
 def _filter_work_logs(
@@ -746,6 +794,8 @@ def update_work_log(
     *,
     company_id: Any,
     apply_to_group: bool = False,
+    recalculate_with_current_rates: bool = False,
+    keep_manual_amount: bool = False,
 ):
     """
     SaaS Evolution: Updates using the dynamic engine.
@@ -779,15 +829,47 @@ def update_work_log(
         for log in logs_in_group:
             _check_update_dates(log, payload)
 
+        # Todo o nada: ningun turno se confirma hasta que todos se han calculado; un fallo deshace el grupo entero
         primary_updated = None
+        try:
+            for log in logs_in_group:
+                try:
+                    updated = _update_single_work_log(
+                        db,
+                        log,
+                        work_log,
+                        recalculate_with_current_rates=recalculate_with_current_rates,
+                        commit=False,
+                        keep_manual_amount=keep_manual_amount,
+                    )
+                except ValueError as e:
+                    owner = log.user
+                    name = f"{owner.first_name} {owner.last_name}" if owner else str(log.user_id)
+                    e.args = (f"{name}: {e}",)
+                    raise
+                if str(log.id) == work_log_id:
+                    primary_updated = updated
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
+        primary_updated = primary_updated or (logs_in_group[0] if logs_in_group else None)
         for log in logs_in_group:
-            updated = _update_single_work_log(db, log, work_log)
-            if str(log.id) == work_log_id:
-                primary_updated = updated
+            db.refresh(log)
+        if db_work_log.company_id:
+            invalidate_dashboard_summary(db_work_log.company_id)
+        if primary_updated is not None:
+            primary_updated.warnings = _overlap_warnings(db, primary_updated)
+        return primary_updated
 
-        return primary_updated or (logs_in_group[0] if logs_in_group else None)
-
-    return _update_single_work_log(db, db_work_log, work_log)
+    return _update_single_work_log(
+        db,
+        db_work_log,
+        work_log,
+        recalculate_with_current_rates=recalculate_with_current_rates,
+        keep_manual_amount=keep_manual_amount,
+    )
 
 
 def _check_update_dates(db_work_log: models.WorkLog, new_data: dict):
@@ -801,7 +883,15 @@ def _check_update_dates(db_work_log: models.WorkLog, new_data: dict):
         raise ValueError("start_date no puede ser posterior a end_date")
 
 
-def _update_single_work_log(db: Session, db_work_log: models.WorkLog, work_log: schemas.WorkLogUpdate):
+def _update_single_work_log(
+    db: Session,
+    db_work_log: models.WorkLog,
+    work_log: schemas.WorkLogUpdate,
+    *,
+    recalculate_with_current_rates: bool = False,
+    commit: bool = True,
+    keep_manual_amount: bool = False,
+):
     # Merge existing and new data
     current_data = {c.name: getattr(db_work_log, c.name) for c in db_work_log.__table__.columns}
     new_data = work_log.model_dump(exclude_unset=True)
@@ -818,23 +908,65 @@ def _update_single_work_log(db: Session, db_work_log: models.WorkLog, work_log: 
     merged_data = {**current_data, **new_data}
     _check_update_dates(db_work_log, new_data)
 
-    # Recalculate
+    # Los importes los fija el motor de calculo, nunca el cliente (salvo el importe manual explicito)
+    snapshot = db_work_log.calculation_snapshot or {}
+    was_manual = snapshot.get("type") == "manual_override"
+    manual_value = new_data.get("amount") if new_data.get("amount") is not None else new_data.get("net_amount")
+    if keep_manual_amount and was_manual:
+        # "Conservar importe": cada turno manual (tambien en un grupo) mantiene el suyo; los calculados no se ven afectados
+        manual_value = db_work_log.net_amount
+    for key in ("amount", "net_amount", "gross_amount", "duration"):
+        new_data.pop(key, None)
+
+    type_changed = "type" in new_data and new_data["type"] != db_work_log.type
+    # La columna es Numeric (Decimal): se compara redondeado a 2 decimales, no Decimal contra float
+    explicit_manual = manual_value is not None and (
+        was_manual
+        or db_work_log.net_amount is None
+        or round(float(manual_value), 2) != round(float(db_work_log.net_amount), 2)
+    )
+
+    inputs_changed = _recalc_inputs_changed(db_work_log, new_data)
+
+    if was_manual and inputs_changed and not explicit_manual and not recalculate_with_current_rates:
+        # Turno manual con datos de calculo modificados: el cliente debe elegir conservar el importe o calcular
+        raise ManualAmountChoiceError(MSG_MANUAL_AMOUNT_CHOICE)
+
+    if not (recalculate_with_current_rates or explicit_manual or inputs_changed):
+        # T5: solo cambian campos sin efecto en el importe (p. ej. la descripcion): el snapshot no se toca
+        for key, value in new_data.items():
+            setattr(db_work_log, key, value)
+        return _finish_updated_work_log(db, db_work_log, commit)
+
     owner_id = str(db_work_log.user_id)
     company_id = merged_data.get("company_id")
-
     company = db.query(models.Company).filter(models.Company.id == company_id).first()
-    member = get_company_member(db, owner_id, str(company_id))
-
     defs = company.worklog_definitions or {} if company else {}
-    rates = member.rates_config or {} if member else {}
-
     work_type = merged_data.get("type")
-    type_def = defs.get(work_type, {"unit": "hours", "label": str(work_type)})
-    type_rate = rates.get(work_type, {})
 
-    # Force recalculation if net_amount not in NEW data
-    if "net_amount" not in new_data:
-        merged_data.pop("net_amount", None)
+    if type_changed or recalculate_with_current_rates:
+        # Tarifa, definicion e impuestos vigentes: exige membresia activa
+        member = get_company_member(db, owner_id, str(company_id), only_active=True)
+        if member is None:
+            raise ValueError(MSG_NO_ACTIVE_MEMBERSHIP)
+        type_def = defs.get(work_type, {"unit": "hours", "label": str(work_type)})
+        type_rate = (member.rates_config or {}).get(work_type, {})
+        tax_config = company.tax_config if company else None
+    else:
+        # Mismo tipo: se conservan la definicion, la tarifa y los impuestos con los que se guardo el turno.
+        # Un snapshot sin esos datos (turno manual o antiguo) cae a los vigentes.
+        member = get_company_member(db, owner_id, str(company_id))
+        type_def = snapshot.get("definition") or defs.get(work_type, {"unit": "hours", "label": str(work_type)})
+        type_rate = snapshot.get("rate_applied")
+        if not isinstance(type_rate, dict):
+            type_rate = (member.rates_config or {}).get(work_type, {}) if member else {}
+        tax_applied = snapshot.get("tax_applied")
+        tax_config = tax_applied if isinstance(tax_applied, dict) else (company.tax_config if company else None)
+
+    if not explicit_manual and _safe_float(type_rate.get("base_rate", 0)) <= 0:
+        raise MissingRateError(
+            f"No se ha encontrado un precio (rate) configurado para el tipo '{work_type}' para este usuario."
+        )
 
     # Adjust end_date if it crosses midnight
     if get_worklog_unit(type_def) == "hours" and merged_data.get("start_time") and merged_data.get("end_time"):
@@ -844,9 +976,9 @@ def _update_single_work_log(db: Session, db_work_log: models.WorkLog, work_log: 
             merged_data["end_date"] = merged_data["start_date"] + timedelta(days=1)
             new_data["end_date"] = merged_data["end_date"]
 
-    calc = calculate_dynamic_work_log(merged_data, type_def, type_rate, company.tax_config if company else None)
+    calc_input = {**merged_data, "amount": None, "net_amount": manual_value if explicit_manual else None}
+    calc = calculate_dynamic_work_log(calc_input, type_def, type_rate, tax_config)
 
-    # Apply changes
     for key, value in new_data.items():
         setattr(db_work_log, key, value)
 
@@ -855,10 +987,31 @@ def _update_single_work_log(db: Session, db_work_log: models.WorkLog, work_log: 
     db_work_log.duration = calc["duration"]
     db_work_log.calculation_snapshot = calc["snapshot"]
 
+    return _finish_updated_work_log(db, db_work_log, commit)
+
+
+def _recalc_inputs_changed(db_work_log: models.WorkLog, new_data: dict) -> bool:
+    """T5: True si la edicion toca algun dato que entra en el calculo del importe (con valor distinto al guardado)."""
+    for field in ("type", "start_time", "end_time", "start_date", "end_date"):
+        if field in new_data and new_data[field] != getattr(db_work_log, field):
+            return True
+    if "extra_data" in new_data:
+        new_options = (new_data["extra_data"] or {}).get("opciones")
+        if new_options != (db_work_log.extra_data or {}).get("opciones"):
+            return True
+    return False
+
+
+def _finish_updated_work_log(db: Session, db_work_log: models.WorkLog, commit: bool) -> models.WorkLog:
+    if not commit:
+        # Edicion de grupo: el commit unico lo hace el llamador
+        db.flush()
+        return db_work_log
     db.commit()
     db.refresh(db_work_log)
     if db_work_log.company_id:
         invalidate_dashboard_summary(db_work_log.company_id)
+    db_work_log.warnings = _overlap_warnings(db, db_work_log)
     return db_work_log
 
 
@@ -1643,12 +1796,11 @@ def get_dashboard_summary(
     today = date.today()
     defs = company.worklog_definitions or {}
 
-    # 1. Fetch all active members ordered by sort_order
+    # 1. Fetch all members (active and inactive, T11) ordered by sort_order
     members = db.query(models.CompanyMember).options(
         joinedload(models.CompanyMember.user)
     ).filter(
-        models.CompanyMember.company_id == cid,
-        models.CompanyMember.is_active == True
+        models.CompanyMember.company_id == cid
     ).order_by(
         models.CompanyMember.sort_order.asc(),
         models.CompanyMember.joined_at.asc()
