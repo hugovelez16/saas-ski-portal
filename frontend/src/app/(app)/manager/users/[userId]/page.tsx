@@ -16,7 +16,8 @@ import { format, subMonths, addMonths, parseISO, differenceInCalendarDays } from
 import { WorkLogsTable } from "@/components/work-log/work-logs-table";
 import { FilterBar, FilterConfig } from "@/components/ui/filter-bar";
 import { useState, useMemo, use, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { WorkLogDetailsDialog } from "@/components/work-log/details-dialog";
 import { UserCreateWorkLogDialog } from "@/components/work-log/user-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -122,9 +123,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
         onSuccess: () => {
             toast({ title: "Configuración actualizada" });
             onUpdate();
-        },
-        onError: () => toast({ title: "Error al actualizar", variant: "destructive" })
-    });
+        },    });
 
     function onSubmit(values: MemberConfigValues) {
         const newRatesConfig: Record<string, any> = {};
@@ -298,8 +297,8 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
 export default function ManagerUserDetailsPage({ params }: { params: Promise<{ userId: string }> }) {
     const { userId } = use(params);
     const router = useRouter();
-    const searchParams = useSearchParams();
-    const companyIdParam = searchParams.get("companyId");
+    const { user: currentUser } = useAuth();
+    const activeCompanyId = currentUser?.activeCompanyId ?? null;
 
     const { toast } = useToast();
     const queryClient = useQueryClient();
@@ -343,21 +342,10 @@ export default function ManagerUserDetailsPage({ params }: { params: Promise<{ u
     });
 
     // Fetch Logged-in Manager's companies for visibility restriction
-    const { data: myCompanies = [], isSuccess: isMyCompaniesSuccess } = useQuery({
+    const { data: myCompanies = [] } = useQuery({
         queryFn: getMyCompanies,
         queryKey: ["myCompanies"],
     });
-
-    // Auto-select first company if none selected
-    useEffect(() => {
-        if (!companyIdParam && isMyCompaniesSuccess && myCompanies.length > 0 && companies.length > 0) {
-            // Find first company that is both in user's companies and manager's managed companies
-            const firstManagedCompany = companies.find((c: any) => myCompanies.some((mc: any) => mc.id === c.id));
-            if (firstManagedCompany) {
-                router.replace(`/manager/users/${userId}?companyId=${firstManagedCompany.id}`);
-            }
-        }
-    }, [companyIdParam, isMyCompaniesSuccess, myCompanies, companies, router, userId]);
 
     // Filtering Logic: Only show companies (and associated data) that the manager manages
     // Filtering Logic: Only show companies (and associated data) that the manager manages
@@ -369,13 +357,13 @@ export default function ManagerUserDetailsPage({ params }: { params: Promise<{ u
         // 1. Filter by Manager's managed companies
         let filtered = companies.filter((c: any) => myCompanies.some((mc: any) => mc.id === c.id));
 
-        // 2. Strict filtering: If a specific company is selected in the URL, ONLY show that company.
-        if (companyIdParam) {
-            filtered = filtered.filter((c: any) => c.id === companyIdParam);
+        // 2. Strict filtering: If there is an active company, ONLY show that company.
+        if (activeCompanyId) {
+            filtered = filtered.filter((c: any) => c.id === activeCompanyId);
         }
 
         return filtered;
-    }, [companies, myCompanies, companyIdParam]);
+    }, [companies, myCompanies, activeCompanyId]);
 
     // Derived lists based on visibleCompanies
     const visibleRates = useMemo(() => {

@@ -59,9 +59,6 @@ export function MemberSettingsDialog({ companyId, userId, memberName, initialSet
             toast({ title: "Member settings updated" });
             setOpen(false);
         },
-        onError: () => {
-            toast({ title: "Failed to update member settings", variant: "destructive" });
-        }
     });
 
     const handleSave = () => {

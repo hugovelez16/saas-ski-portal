@@ -160,7 +160,7 @@ describe("CompanyDetailsPage: edicion del nombre de la empresa", () => {
         expect(updateCompany).not.toHaveBeenCalled();
     });
 
-    it("muestra el detalle del error del servidor en el toast", async () => {
+    it("no duplica el toast de error del servidor (lo muestra el interceptor)", async () => {
         updateCompany.mockRejectedValue({
             response: { status: 422, data: { detail: "El nombre de la empresa no es válido" } },
         });
@@ -170,15 +170,8 @@ describe("CompanyDetailsPage: edicion del nombre de la empresa", () => {
         fireEvent.change(screen.getByLabelText(NAME_INPUT_LABEL), { target: { value: "Nuevo" } });
         fireEvent.click(screen.getByRole("button", { name: SAVE_BUTTON_LABEL }));
 
-        await waitFor(() => {
-            expect(toast).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    title: "Error al guardar el nombre",
-                    description: "El nombre de la empresa no es válido",
-                    variant: "destructive",
-                })
-            );
-        });
+        await waitFor(() => expect(updateCompany).toHaveBeenCalled());
+        expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" }));
     });
 
     it("cancelar sale del modo edicion sin llamar a la API", async () => {

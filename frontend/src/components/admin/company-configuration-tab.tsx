@@ -30,9 +30,6 @@ export function CompanyConfigurationTab({ company }: CompanyConfigurationTabProp
             queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
             toast({ title: "Configuración guardada correctamente" });
         },
-        onError: () => {
-            toast({ title: "Error al guardar la configuración", variant: "destructive" });
-        }
     });
 
     return (

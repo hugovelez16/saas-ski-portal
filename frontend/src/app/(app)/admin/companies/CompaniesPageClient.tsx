@@ -75,9 +75,6 @@ export default function AdminCompaniesPage() {
             setPendingChange(null);
             setSuspendReason("");
         },
-        onError: () => {
-            toast({ title: "Error al actualizar empresa", variant: "destructive" });
-        }
     });
 
     const confirmPendingChange = () => {

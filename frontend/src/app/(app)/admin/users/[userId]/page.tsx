@@ -125,9 +125,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
         onSuccess: () => {
             toast({ title: "Configuración actualizada" });
             onUpdate();
-        },
-        onError: () => toast({ title: "Error al actualizar", variant: "destructive" })
-    });
+        },    });
 
     function onSubmit(values: MemberConfigValues) {
         console.log("Submitting configuration:", values);
@@ -358,9 +356,7 @@ export default function UserDetailPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["user-companies", userId] });
             toast({ title: "Configuración de miembro actualizada" });
-        },
-        onError: () => toast({ title: "Error al actualizar", variant: "destructive" })
-    });
+        },    });
 
 
 
