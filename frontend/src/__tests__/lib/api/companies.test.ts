@@ -19,6 +19,7 @@ import {
     getCompanyDashboardSummary,
     getDailyReport
 } from '@/lib/api/companies';
+import type { CompanyResponse } from '@/lib/types';
 
 vi.mock('@/lib/api', () => ({
     default: {
@@ -30,6 +31,28 @@ vi.mock('@/lib/api', () => ({
 }));
 
 const mockedApi = vi.mocked(api);
+
+const REDUCED_COMPANY_KEYS = [
+    'id', 'name', 'isManaged', 'role', 'isActiveMember', 'ratesConfig',
+    'worklogDefinitions', 'taxConfig', 'settings'
+].sort();
+
+const reducedCompany = {
+    id: 'c-1',
+    name: 'Escuela 1',
+    isManaged: true,
+    role: 'worker',
+    isActiveMember: true,
+    ratesConfig: {},
+    worklogDefinitions: {},
+    taxConfig: { iva: 21 },
+    settings: {
+        worker_experience: { input_mode: 'timer', allow_manual_amount: false },
+        ui_customization: { labels: {} },
+        modules: { reports: true },
+        business_logic: { price_type: 'net' },
+    },
+};
 
 describe('Companies API Client', () => {
     beforeEach(() => {
@@ -79,6 +102,17 @@ describe('Companies API Client', () => {
         expect(result.id).toBe('c-1');
     });
 
+    it('getCompany should keep the reduced view shape without PA-only fields', async () => {
+        (mockedApi.get as any).mockResolvedValue({ data: reducedCompany });
+
+        const result: CompanyResponse = await getCompany('c-1');
+        expect(Object.keys(result).sort()).toEqual(REDUCED_COMPANY_KEYS);
+        expect(result).not.toHaveProperty('isActive');
+        expect(result).not.toHaveProperty('createdAt');
+        expect(result).not.toHaveProperty('updatedAt');
+        expect(result.settings).not.toHaveProperty('allowed_rates');
+    });
+
     it('getCompaniesDetailed should GET /companies/detailed', async () => {
         (mockedApi.get as any).mockResolvedValue({ data: [{ id: 'c-1', members: [] }] });
 
@@ -93,6 +127,18 @@ describe('Companies API Client', () => {
         const result = await getMyCompanies();
         expect(mockedApi.get).toHaveBeenCalledWith('/users/me/companies');
         expect(result).toHaveLength(1);
+    });
+
+    it('getMyCompanies should keep the reduced view shape without PA-only fields', async () => {
+        (mockedApi.get as any).mockResolvedValue({ data: [reducedCompany] });
+
+        const result: CompanyResponse[] = await getMyCompanies();
+        expect(result).toHaveLength(1);
+        expect(Object.keys(result[0]).sort()).toEqual(REDUCED_COMPANY_KEYS);
+        expect(result[0]).not.toHaveProperty('isActive');
+        expect(result[0]).not.toHaveProperty('createdAt');
+        expect(result[0]).not.toHaveProperty('updatedAt');
+        expect(result[0].settings).not.toHaveProperty('allowed_rates');
     });
 
     it('updateMemberStatus should PUT status parameter', async () => {

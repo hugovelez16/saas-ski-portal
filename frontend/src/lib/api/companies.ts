@@ -1,5 +1,5 @@
 import api from "@/lib/api";
-import { CompanyResponse, CompanyWithMembers, CompanyMemberResponse, DailyReportResponse, DashboardSummaryResponse } from "@/lib/types";
+import { CompanyFull, CompanyResponse, CompanyWithMembers, CompanyMemberResponse, DailyReportResponse, DashboardSummaryResponse } from "@/lib/types";
 
 export const createCompany = async (data: {
     name: string;
@@ -26,14 +26,14 @@ export type CompanyUpdatePayload = {
     reason?: string;
 };
 
-export const updateCompany = async (companyId: string, data: CompanyUpdatePayload): Promise<CompanyResponse> => {
-    const response = await api.put<CompanyResponse>(`/companies/${companyId}`, data);
+export const updateCompany = async (companyId: string, data: CompanyUpdatePayload): Promise<CompanyFull> => {
+    const response = await api.put<CompanyFull>(`/companies/${companyId}`, data);
     return response.data;
 };
 
 // Solo platform admin. Los demas roles deben usar getMyCompanies.
-export const getCompanies = async (): Promise<CompanyResponse[]> => {
-    const response = await api.get<CompanyResponse[]>("/companies");
+export const getCompanies = async (): Promise<CompanyFull[]> => {
+    const response = await api.get<CompanyFull[]>("/companies");
     return response.data;
 };
 
