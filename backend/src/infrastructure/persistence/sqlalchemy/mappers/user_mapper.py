@@ -54,9 +54,10 @@ class SqlAlchemyCompanyMemberMapper:
             role=role_enum,
             is_active=bool(orm_member.is_active),
             sort_order=int(orm_member.sort_order or 0),
-            rates_config=orm_member.rates_config or {},
+            # Copias: el dominio no debe compartir los dict del ORM (JSONB sin deteccion de mutaciones).
+            rates_config=dict(orm_member.rates_config or {}),
             joined_at=orm_member.joined_at,
-            settings=orm_member.settings or {},
+            settings=dict(orm_member.settings or {}),
             updated_at=orm_member.updated_at,
         )
 

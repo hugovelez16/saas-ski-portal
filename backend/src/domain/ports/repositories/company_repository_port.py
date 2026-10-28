@@ -43,7 +43,10 @@ class CompanyRepositoryPort(ABC):
 
 class CompanyMemberRepositoryPort(ABC):
     @abstractmethod
-    async def get_membership(self, user_id: str, company_id: str) -> Optional[CompanyMember]:
+    async def get_membership(
+        self, user_id: str, company_id: str, *, for_update: bool = False
+    ) -> Optional[CompanyMember]:
+        """`for_update=True` bloquea la fila hasta el fin de la transaccion (borrado de membresia)."""
         pass
 
     @abstractmethod
@@ -60,6 +63,11 @@ class CompanyMemberRepositoryPort(ABC):
 
     @abstractmethod
     async def delete(self, user_id: str, company_id: str) -> None:
+        pass
+
+    @abstractmethod
+    async def reorder(self, company_id: str, user_ids: List[str]) -> None:
+        """Fija `sort_order` = posicion en `user_ids` para los miembros de la empresa; ignora los ajenos."""
         pass
 
     @abstractmethod

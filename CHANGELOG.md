@@ -19,6 +19,28 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.22.0] - 2026-10-28
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: API v2: membresias, tarifas e impuestos (PR-18 del plan de empresa; X1 parte 3, X3, Q3). Sin migracion. v1 no cambia de comportamiento.
+
+### Funcionalidades y Mejoras
+
+- **Endpoints de miembros y tarifas en `/api/v2/`** (JSON en `snake_case`, politica identica a v1): `GET /v2/companies/{id}/members?is_active=`, `POST .../members` (PA; 201 si crea la membresia, 200 si ya existia), `DELETE .../members/{user_id}` (PA), `PUT .../members/{user_id}/status` (PA, cuerpo `{is_active}`), `PUT .../role` (PA), `PUT .../rates`, `PUT .../settings`, `PUT .../members/order` y `GET /v2/companies/{id}/rates` (sustituye a `rates-v2`, X3).
+- **Casos de uso de membresia** en `backend/src/application/use_cases/company/` (`add_member`, `remove_member`, `set_member_status`, `set_member_role`, `set_member_rates`, `set_member_settings`, `reorder_members`, `list_members`, `list_rates`) con las mismas reglas M1-M6, M9, eventos de auditoria y lista blanca de `settings` (M2) que v1. Sin guardia de ultimo manager (E7).
+- **Pruebas de paridad**: `test_members_parity.py` (v1/v2 por endpoint, con `KNOWN_DIFFERENCES`), `test_v2_members.py` y `test_calculation_parity.py` (rejilla de mas de 200 entradas: `crud.calculate_dynamic_work_log` y el motor de `src/` devuelven el mismo `net_amount`, `gross_amount`, `duration` y `tax_applied`).
+
+### Cambiado
+
+- **Motor de calculo de `backend/src`** alineado con `crud.calculate_dynamic_work_log` (PR-10): `TaxConfiguration` pasa de tres tasas fijas a `taxes: Dict[str, Decimal]` (equivalente a `contracts.resolve_taxes`; un valor no numerico cuenta como 0), el snapshot incluye `tax_applied` y la version `2.3-free-taxes`, y las lineas de impuestos usan el nombre libre como `code`. Semantica de `is_gross` segun P-10.
+
+### Cambios Internos
+
+- `CompanyMemberRepositoryPort`: `get_membership(for_update=)` y `reorder`; el repositorio SQLAlchemy invalida `company_rates:{id}` y la cache de acceso tras `save` y `delete`, y fuerza la escritura de `rates_config` y `settings`.
+
+---
+
 ## [0.21.0] - 2026-10-27
 
 ### Tipo de Cambio SemVer
