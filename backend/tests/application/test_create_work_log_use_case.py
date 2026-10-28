@@ -47,7 +47,7 @@ class InMemoryCompanyMemberRepo(CompanyMemberRepositoryPort):
     def __init__(self):
         self.members = {}
 
-    async def get_membership(self, user_id: str, company_id: str):
+    async def get_membership(self, user_id: str, company_id: str, *, for_update: bool = False):
         return self.members.get((user_id, company_id))
 
     async def list_members_by_company(self, company_id: str, is_active=None):
@@ -66,6 +66,12 @@ class InMemoryCompanyMemberRepo(CompanyMemberRepositoryPort):
 
     async def delete(self, user_id: str, company_id: str):
         self.members.pop((user_id, company_id), None)
+
+    async def reorder(self, company_id: str, user_ids):
+        for position, user_id in enumerate(user_ids):
+            member = self.members.get((user_id, company_id))
+            if member is not None:
+                member.sort_order = position
 
     async def count_work_logs(self, user_id: str, company_id: str):
         return 0
