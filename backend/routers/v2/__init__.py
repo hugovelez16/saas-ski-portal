@@ -1,11 +1,12 @@
-"""API v2 del area empresa. Empresa y vistas (PR-17); membresias, tarifas e impuestos llegan en PR-18."""
+"""API v2 del area empresa. Empresa y vistas (PR-17); membresias y tarifas (PR-18)."""
 
 from fastapi import APIRouter
 
-from routers.v2 import companies
+from routers.v2 import companies, members
 
 router = APIRouter(prefix="/v2")
 router.include_router(companies.router)
+router.include_router(members.router)
 
 
 @router.get("/ping", tags=["v2"])

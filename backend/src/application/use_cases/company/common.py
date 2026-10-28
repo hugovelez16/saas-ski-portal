@@ -13,6 +13,11 @@ MSG_COMPANY_NOT_FOUND = "Empresa no encontrada"
 MSG_NO_ACCESS = "No tienes acceso a esta empresa"
 MSG_NO_CHANGES = "No hay cambios que guardar"
 MSG_DELETE_BLOCKED = "No se puede borrar la empresa: tiene "
+MSG_MEMBER_NOT_FOUND = "Member not found"
+MSG_USER_EMAIL_NOT_FOUND = "User email not found"
+MSG_UNKNOWN_SHIFT_TYPE = "Tipo de turno desconocido"
+# `company_members.sort_order` tiene este valor por defecto en BD; el dominio lo fija al crear la membresia.
+DEFAULT_MEMBER_SORT_ORDER = 1000
 
 # Campos de empresa editables y su accion de auditoria, en el orden en que se emiten.
 COMPANY_EVENT_ACTIONS = {
@@ -33,6 +38,11 @@ def company_event(field_name: str, new_value: Any) -> str:
 
 def company_snapshot(company: Company) -> Dict[str, Any]:
     return {"name": company.name, "is_active": bool(company.is_active), "is_managed": bool(company.is_managed)}
+
+
+def member_snapshot(member: CompanyMember) -> Dict[str, Any]:
+    """Valores de auditoria de una membresia (mismo formato que `crud._member_snapshot`)."""
+    return {"is_active": bool(member.is_active), "role": member.role.value}
 
 
 @dataclass(frozen=True)

@@ -1,12 +1,19 @@
 """Esquemas de v2: snake_case sin alias [Q-2]. Las entradas validan con `contracts.py`, igual que v1."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from application.use_cases.company.common import CompanyView, CompanyWithMembers, MemberDetail
-from contracts import MEMBER_SETTINGS_ALLOWED_KEYS, CompanySettings, TaxConfig, WorklogDefinitions
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from contracts import (
+    MEMBER_SETTINGS_ALLOWED_KEYS,
+    CompanySettings,
+    RatesConfig,
+    TaxConfig,
+    WorklogDefinitions,
+    validate_member_settings,
+)
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from schemas import limit_company_json, normalize_company_name, read_company_settings
 
 
@@ -113,6 +120,49 @@ class CompanyFullWithMembers(CompanyFull):
     members: list[CompanyMemberV2] = []
 
 
+class MemberOut(CompanyMemberV2):
+    """Membresia de los endpoints `/companies/{id}/members` y `/rates`: anade `updated_at` a la de `include=members`."""
+
+    updated_at: datetime | None = None
+
+
+class MemberDeleteOut(V2Model):
+    deleted: bool
+    deactivated: bool
+    reason: str | None = None
+
+
+class MemberAddIn(V2Model):
+    email: EmailStr
+
+
+class MemberStatusIn(V2Model):
+    is_active: bool
+
+
+class MemberRoleIn(V2Model):
+    # El rol `admin` de membresia esta reservado.
+    role: Literal["worker", "manager"]
+
+
+class MemberRatesIn(V2Model):
+    rates_config: RatesConfig
+
+
+class MemberSettingsIn(V2Model):
+    settings: dict[str, Any]
+
+    @field_validator("settings")
+    @classmethod
+    def _validate_settings(cls, value: dict[str, Any]) -> dict[str, Any]:
+        # Lista blanca de claves de usuario y tamano maximo (M2).
+        return validate_member_settings(value)
+
+
+class MemberOrderIn(V2Model):
+    user_ids: list[UUID] = Field(..., max_length=500)
+
+
 class CompanyReduced(V2Model):
     """Vista reducida: no expone is_active, allowed_rates, cost_markup ni fiscal_id."""
 
@@ -197,6 +247,10 @@ def _member_v2(detail: MemberDetail) -> CompanyMemberV2:
         if user is not None
         else None,
     )
+
+
+def member_out(detail: MemberDetail) -> MemberOut:
+    return MemberOut(**_member_v2(detail).model_dump(), updated_at=detail.member.updated_at)
 
 
 def company_full_with_members(item: CompanyWithMembers) -> CompanyFullWithMembers:

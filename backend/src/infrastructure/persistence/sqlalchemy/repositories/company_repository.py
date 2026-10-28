@@ -21,10 +21,18 @@ from infrastructure.persistence.sqlalchemy.mappers.user_mapper import (
     SqlAlchemyCompanyMemberMapper,
     SqlAlchemyUserMapper,
 )
+from redis_config import redis_manager
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 DEPENDENT_DATA_MESSAGE = "No se puede eliminar: existen datos dependientes"
+
+
+def _invalidate_member_caches(company_id, user_id) -> None:
+    """Mismas caches que invalida v1 al cambiar una membresia: acceso del usuario y tarifas de la empresa."""
+    redis_manager.delete(f"company_rates:{company_id}")
+    access_cache.invalidate_membership(user_id, company_id)
 
 
 def _commit_or_rollback(db: Session) -> None:
@@ -162,15 +170,17 @@ class SqlAlchemyCompanyMemberRepository(CompanyMemberRepositoryPort):
     def __init__(self, db: Session):
         self.db = db
 
-    async def get_membership(self, user_id: str, company_id: str) -> Optional[CompanyMember]:
-        orm_m = (
-            self.db.query(models.CompanyMember)
-            .filter(
-                models.CompanyMember.user_id == user_id,
-                models.CompanyMember.company_id == company_id,
-            )
-            .first()
+    async def get_membership(
+        self, user_id: str, company_id: str, *, for_update: bool = False
+    ) -> Optional[CompanyMember]:
+        query = self.db.query(models.CompanyMember).filter(
+            models.CompanyMember.user_id == user_id,
+            models.CompanyMember.company_id == company_id,
         )
+        if for_update:
+            # Igual que crud.remove_member: bloquea la fila y refresca el estado ya leido en la sesion.
+            query = query.with_for_update().populate_existing()
+        orm_m = query.first()
         return SqlAlchemyCompanyMemberMapper.to_domain(orm_m) if orm_m else None
 
     async def list_members_by_company(self, company_id: str, is_active: Optional[bool] = None) -> List[CompanyMember]:
@@ -204,14 +214,19 @@ class SqlAlchemyCompanyMemberRepository(CompanyMemberRepositoryPort):
             # Copias: ver nota en CompanyRepository.save sobre la deteccion de cambios en JSONB.
             existing.rates_config = dict(member.rates_config)
             existing.settings = dict(member.settings)
+            # Igual que crud.set_member_*: fuerza el UPDATE (y `updated_at`) aunque el valor no cambie.
+            flag_modified(existing, "rates_config")
+            flag_modified(existing, "settings")
             _commit_or_rollback(self.db)
             self.db.refresh(existing)
+            _invalidate_member_caches(member.company_id, member.user_id)
             return SqlAlchemyCompanyMemberMapper.to_domain(existing)
         else:
             orm_m = SqlAlchemyCompanyMemberMapper.to_orm(member)
             self.db.add(orm_m)
             _commit_or_rollback(self.db)
             self.db.refresh(orm_m)
+            _invalidate_member_caches(member.company_id, member.user_id)
             return SqlAlchemyCompanyMemberMapper.to_domain(orm_m)
 
     async def delete(self, user_id: str, company_id: str) -> None:
@@ -227,6 +242,20 @@ class SqlAlchemyCompanyMemberRepository(CompanyMemberRepositoryPort):
         except SQLAlchemyError:
             self.db.rollback()
             raise
+        _invalidate_member_caches(company_id, user_id)
+
+    async def reorder(self, company_id: str, user_ids: List[str]) -> None:
+        orm_members = (
+            self.db.query(models.CompanyMember)
+            .filter(models.CompanyMember.company_id == company_id, models.CompanyMember.user_id.in_(user_ids))
+            .all()
+        )
+        positions = {str(user_id): index for index, user_id in enumerate(user_ids)}
+        for orm_m in orm_members:
+            orm_m.sort_order = positions[str(orm_m.user_id)]
+        _commit_or_rollback(self.db)
+        # Igual que crud.update_company_members_order, no invalida nada: el orden no cambia permisos
+        # y la cache de tarifas de v1 no depende de `sort_order`.
 
     async def count_work_logs(self, user_id: str, company_id: str) -> int:
         return (
