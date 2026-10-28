@@ -16,6 +16,13 @@ class RateExtra:
 
 @dataclass(frozen=True)
 class RateDefinition:
+    """Tarifa de un miembro para un tipo de turno.
+
+    Semantica de `is_gross` (P-10): True = tarifa bruta, se descuentan del bruto todos los impuestos efectivos;
+    False (por defecto) = tarifa neta, no se deduce nada y el bruto devuelto es solo informativo.
+    `tax_overrides` admite claves libres; un valor None equivale a "sin override".
+    """
+
     base_rate: Decimal
     is_gross: bool
     extras: Dict[str, RateExtra] = field(default_factory=dict)
