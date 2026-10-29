@@ -52,6 +52,13 @@ function isPlatformAdminUser(u: UserProfile | null | undefined): boolean {
   return Boolean(u?.isPlatformAdmin || u?.role === 'admin');
 }
 
+// Pantalla de inicio tras iniciar sesion, segun el rol.
+export function homePathFor(u: UserProfile | null | undefined): string {
+    if (isPlatformAdminUser(u)) return '/admin/companies';
+    if (u?.isManager) return '/manager/daily-reports';
+    return '/dashboard';
+}
+
 // Un PA no tiene empresa recordada: su contexto es neutro.
 function rememberActiveCompany(u: UserProfile | null | undefined) {
   if (!u || isPlatformAdminUser(u) || !u.activeCompanyId) return;
@@ -116,13 +123,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setAuthToken(tokenData.accessToken);
             const userData = await fetchUser();
 
-            if (userData?.role === 'admin' || userData?.isPlatformAdmin) {
-                router.push('/admin/companies');
-            } else if (userData?.isManager) {
-                router.push('/manager/daily-reports');
-            } else {
-                router.push('/dashboard');
-            }
+            router.push(homePathFor(userData));
             return { requires2FA: false };
         } catch (error) {
             console.error("Error en bypass de inicio de sesión en desarrollo:", error);
@@ -179,13 +180,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         const userData = await fetchUser();
 
-        if (userData?.role === 'admin' || userData?.isPlatformAdmin) {
-            router.push('/admin/companies');
-        } else if (userData?.isManager) {
-            router.push('/manager/daily-reports');
-        } else {
-            router.push('/dashboard');
-        }
+        router.push(homePathFor(userData));
         return { requires2FA: false };
     };
 
