@@ -19,6 +19,24 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.23.1] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Cierre de E2 del plan de empresa (PR-23): se elimina la columna `companies.fiscal_id`, con migracion `b7e1a0d10006` y script de exportacion previo. El campo ya no se mostraba ni se devolvia en ninguna respuesta. **Despliegue**: requiere el paso previo de `docs/empresa/plan-implementacion-empresa.md`, seccion 10 (backup, `repair_fiscal_id.py --dry-run` y, si procede, `--apply`).
+
+### Cambiado
+
+- **Migracion `b7e1a0d10006`**: aborta con `RuntimeError` si hay empresas con `fiscal_id` real (no nulo, no vacio y distinto de `B00000000`) y `FISCAL_ID_EXPORTED` no vale `1`, o si una vista de PostgreSQL depende de la columna (la nombra). `downgrade` recrea la columna vacia: el rollback con datos es restaurar el backup.
+- **`models.Company`** sin `fiscal_id`; se retiran sus menciones en esquemas y pruebas.
+
+### Cambios Internos
+
+- `backend/scripts/repair_fiscal_id.py`: exporta `fiscal_id` a un JSON fuera del repo (`--dry-run` por defecto, `--apply` exige `--backup-dir`) sin modificar la BD.
+- Variable de entorno `FISCAL_ID_EXPORTED=1`: confirma la exportacion para que la migracion pueda borrar valores reales.
+
+---
+
 ## [0.23.0] - 2026-10-29
 
 ### Tipo de Cambio SemVer
