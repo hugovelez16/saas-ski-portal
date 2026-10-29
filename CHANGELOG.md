@@ -19,6 +19,33 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.26.0] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Landing publica en `/` orientada a escuelas de esqui, con funciones, capturas reales, tres planes (Basico, Escuela y Grande) para la temporada 2026-2027, calculadora de cuota, preguntas frecuentes, formulario de contacto y apartado para monitores (lista de espera). Incluye la correccion del desfase horario del Parte Diario del responsable.
+
+### Anadido
+
+- **`src/app/page.tsx`**: la raiz deja de redirigir a `/login` y muestra la landing. "Acceder" lleva a `/login`.
+- **`src/lib/landing-pricing.ts`**: modelo de los tres planes (cuota mensual, monitores incluidos, monitor y responsable adicionales, modulos, puesta en marcha y mantenimiento), calculo de la cuota y sugerencia del plan mas barato, con pruebas de los cruces entre planes.
+- **`src/lib/landing-contact.ts`**: validacion del formulario y construccion del mensaje, del enlace de WhatsApp y del correo.
+- **`src/components/landing/`**: calculadora de cuota, tarjetas de plan, formulario de contacto y apartado para monitores. El formulario abre WhatsApp o el correo del usuario con los datos rellenados; no hay endpoint en el backend.
+- **`public/landing/`**: capturas de la aplicacion con una escuela de demostracion (datos ficticios).
+
+### Corregido
+
+- **Parte Diario del responsable**: con rangos horarios amplios (por ejemplo 0:00 a 24:00) las clases se dibujaban horas antes de su hora real. Las celdas de la cabecera tenian ancho minimo y las de las filas no, asi que la cabecera se desbordaba y dejaba de coincidir con la rejilla. Ahora ambas comparten `min-w-[50px]`.
+
+### Cambiado
+
+- **`AuthContext`**: `/` se trata como ruta publica, para que un visitante sin sesion no sea expulsado a `/login`.
+- **`AuthContext`**: la pantalla de inicio segun el rol pasa a la funcion exportada `homePathFor`, usada por `login` y `devLogin`. `verify2FA` conserva su logica propia.
+- **Textos de la landing**: reformulados segun `docs/auditoria-propuesta-iliberis.md`. Se retiran la promesa de arrastrar clases en el calendario, el aviso "al instante", la exportacion de datos gratuita, las copias "fuera del servidor" y la cifra de horas ahorradas sin fuente.
+- **`src/components/landing/session-redirect.tsx`**: quien entra en `/` con sesion activa (por ejemplo, desde un marcador) va directo a su pantalla de inicio sin ver la landing.
+
+---
+
 ## [0.25.0] - 2026-10-29
 
 ### Tipo de Cambio SemVer
