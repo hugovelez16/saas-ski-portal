@@ -47,6 +47,7 @@ export interface Company {
     // UI specific
     role?: string;
     isActiveMember?: boolean;
+    ratesConfig?: DynamicRateConfig | null;
     isManaged?: boolean;
     isActive?: boolean;
 }
@@ -115,7 +116,9 @@ export interface CompanyMember {
     status?: string;
     ratesConfig?: DynamicRateConfig | null;
     settings?: Record<string, any>;
-    joinedAt: string;
+    joinedAt: string | null;
+    sortOrder?: number;
+    updatedAt?: string | null;
     user?: UserProfile;
 }
 

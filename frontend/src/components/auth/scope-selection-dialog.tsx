@@ -1,9 +1,9 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import api, { SUSPENDED_COMPANY_MESSAGE } from "@/lib/api";
+import { SUSPENDED_COMPANY_MESSAGE } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
-import { getMyCompanies } from "@/lib/api/companies";
+import { getCompanies, getMyCompanies } from "@/lib/api/companies";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Building2, User, ShieldCheck, Check } from "lucide-react";
@@ -21,8 +21,7 @@ export function ScopeSelectionDialog({ open, onOpenChange }: ScopeSelectionDialo
     const { data: allCompanies = [], isLoading } = useQuery({
         queryFn: async () => {
             if (isPlatformAdmin) {
-                const response = await api.get('/companies');
-                return response.data;
+                return getCompanies();
             }
             return getMyCompanies();
         },

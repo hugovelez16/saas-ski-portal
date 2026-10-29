@@ -18,9 +18,11 @@ vi.mock("@/lib/api", () => ({
   SUSPENDED_COMPANY_MESSAGE: "Tu empresa esta suspendida. Contacta con el administrador",
 }));
 
-vi.mock("@/lib/api/companies", () => ({
-  getMyCompanies,
-}));
+// getCompanies (PA) se ejecuta real: GET /v2/companies sobre el apiGet mockeado.
+vi.mock("@/lib/api/companies", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/companies")>();
+  return { ...actual, getMyCompanies };
+});
 
 import { ScopeSelectionDialog } from "@/components/auth/scope-selection-dialog";
 
@@ -49,11 +51,12 @@ describe("ScopeSelectionDialog", () => {
       activeRole: null,
       createdAt: "2026-01-01T00:00:00",
     };
-    apiGet.mockResolvedValue({ data: [{ id: "c1", name: "Querkus", role: "owner" }] });
+    apiGet.mockResolvedValue({ data: { items: [{ id: "c1", name: "Querkus", is_active: true }], total: 1 } });
 
     renderDialog();
 
     await waitFor(() => expect(screen.getByText("Querkus")).toBeTruthy());
+    expect(apiGet).toHaveBeenCalledWith("/v2/companies", { params: { limit: 2000 } });
 
     expect(screen.getByRole("button", { name: "Gestionar" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Ver como manager/ })).toBeTruthy();
@@ -136,7 +139,7 @@ describe("ScopeSelectionDialog", () => {
       activeRole: null,
       createdAt: "2026-01-01T00:00:00",
     };
-    apiGet.mockResolvedValue({ data: [{ id: "c1", name: "Suspendida SL", isActive: false }] });
+    apiGet.mockResolvedValue({ data: { items: [{ id: "c1", name: "Suspendida SL", is_active: false }], total: 1 } });
 
     renderDialog();
 

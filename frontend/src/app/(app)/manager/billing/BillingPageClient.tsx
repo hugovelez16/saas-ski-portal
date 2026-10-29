@@ -6,7 +6,7 @@ import { startOfMonth, endOfMonth, format, addMonths, subMonths } from "date-fns
 import { DateRangeFilter } from "@/components/manager/date-range-filter";
 import { BillingTable } from "@/components/manager/billing-table";
 import { getBillingSummary } from "@/lib/api/work-logs";
-import { getCompaniesDetailed } from "@/lib/api/companies";
+import { getCompaniesDetailed, getCompany } from "@/lib/api/companies";
 import { useQuery } from "@tanstack/react-query";
 import { BillingSummaryItem, DynamicBillingRow } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +38,7 @@ export default function ManagerBillingPage() {
 
     // 2. Fetch Company Details for Settings
     const { data: company } = useQuery({
-        queryFn: async () => (await import("@/lib/api").then(m => m.default.get(`/companies/${selectedCompanyId}`))).data,
+        queryFn: () => getCompany(selectedCompanyId as string),
         queryKey: ["company", selectedCompanyId],
         enabled: !!selectedCompanyId,
     });
