@@ -19,6 +19,25 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.24.1] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Frontend: `getUserCompanies` pasa de `GET /users/{id}/companies` (v1) a `GET /v2/users/{user_id}/companies` (prerrequisito de PR-21). Sin cambios de backend ni de base de datos. Las pantallas `admin/users/[userId]` y `manager/users/[userId]` siguen recibiendo los mismos campos en `camelCase`.
+
+### Funcionalidades y Mejoras
+
+- `listUserCompanies` (`lib/api/v2`) devuelve `CompanyFullWithMembership` (administrador de plataforma) o `CompanyReduced` (manager); el adaptador `fromV2Company` acepta el nuevo tipo y conserva `role`, `isActiveMember` y `ratesConfig`.
+- `getUserCompanies` devuelve `Company[]` en lugar de `any[]`. Para ello `mapMemberToLegacyRate` (`lib/utils/rates.ts`) acepta cualquier objeto con `ratesConfig` y, opcionalmente, `userId`, `companyId` y `user`; si faltan `userId` o `companyId`, devuelve `""` en lugar de `undefined`. Sin cambio para los llamadores que pasan un `CompanyMember` completo.
+- Tests de cliente v2, adaptador y `getUserCompanies`.
+
+### Notas
+
+- Deuda anotada: en `manager/users/[userId]/page.tsx` el bloque `effectiveUserSettings` (lineas 380-388) no se usa en ninguna parte y es lo que motivo relajar la firma de `mapMemberToLegacyRate`. Borrarlo en el PR que migre las pantallas a `snake_case` haria innecesario ese relajamiento.
+- PR-21 queda desbloqueado en lo que respecta a `getUserCompanies`. Sigue pendiente `lib/api/settings.ts`, que llama a `GET /companies/{id}/members/me` (no existe).
+
+---
+
 ## [0.24.0] - 2026-10-29
 
 ### Tipo de Cambio SemVer

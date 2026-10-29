@@ -9,7 +9,7 @@ import {
     listMyCompanies,
     listUserCompanies,
 } from '@/lib/api/v2/companies';
-import type { CompanyCreateV2, CompanyUpdateV2, CompanyFull, Page } from '@/lib/api/v2/types';
+import type { CompanyCreateV2, CompanyUpdateV2, CompanyFull, CompanyFullWithMembership, Page } from '@/lib/api/v2/types';
 
 vi.mock('@/lib/api', () => ({
     default: {
@@ -161,6 +161,21 @@ describe('API v2 Companies client', () => {
 
             expect(mockedApi.get).toHaveBeenCalledWith('/v2/users/u-1/companies');
             expect(result).toHaveLength(2);
+        });
+
+        it('returns the full view with the target user membership', async () => {
+            const withMembership: CompanyFullWithMembership = {
+                ...companyFull,
+                role: 'worker',
+                is_active_member: true,
+                rates_config: { particular: { base_rate: 10 } },
+            };
+            (mockedApi.get as any).mockResolvedValue({ data: [withMembership] });
+
+            const result = await listUserCompanies('u-1');
+
+            expect(result[0]).toEqual(withMembership);
+            expect(mockedApi.get).toHaveBeenCalledTimes(1);
         });
     });
 });
