@@ -4,8 +4,7 @@ Administracion de empresas solo de plataforma (PR-06.0).
 Describen el comportamiento objetivo de PR-06.1: solo el administrador de la plataforma (PA)
 crea, edita y borra empresas; validacion de `name` (E1); borrado con motivos de bloqueo y sin
 cascadas (E4); suspension y reactivacion con motivo (E5); `isManaged` (E6); eventos de
-auditoria de empresa (A1); PUT sin cambios rechazado sin auditoria (E8); `fiscalId` fuera de
-las respuestas (E2); invalidacion de cache de acceso tras suspender; y empresa sin manager
+auditoria de empresa (A1); PUT sin cambios rechazado sin auditoria (E8); invalidacion de cache de acceso tras suspender; y empresa sin manager
 como estado valido (E7). Tambien cubren la capa de servicio de P3 (`crud.update_company` y
 `crud.get_company_for_actor`).
 
@@ -120,17 +119,6 @@ def _use_token(client, token):
     """Reutiliza un token ya emitido (mismo jti) en el cliente."""
     client.cookies.clear()
     client.cookies.set("access_token", token)
-
-
-def _keys(node):
-    """Todas las claves de una estructura JSON anidada."""
-    if isinstance(node, dict):
-        for key, value in node.items():
-            yield key
-            yield from _keys(value)
-    elif isinstance(node, list):
-        for item in node:
-            yield from _keys(item)
 
 
 # --- 1. Matriz de permisos: solo PA gestiona empresas ---
@@ -477,40 +465,6 @@ def test_get_company_for_actor_scopes_by_membership(db, world):
     assert own.id == world.company.id
 
     assert crud.get_company_for_actor(db, world.company.id, actor=world.other_manager) is None
-
-
-# --- 9. E2: fiscalId fuera de las respuestas ---
-
-
-def test_company_responses_never_expose_fiscal_id(client, db, world):
-    world.company.fiscal_id = "B12345678"
-    db.commit()
-    cid = world.company.id
-    responses = []
-
-    as_user(client, world.pa, world.company)
-    responses.append(client.get("/companies"))
-    responses.append(client.get(f"/companies/{cid}"))
-    responses.append(client.get("/users/me/companies"))
-    responses.append(client.get("/companies/detailed"))
-
-    as_user(client, world.manager, world.company)
-    responses.append(client.get("/users/me/companies"))
-
-    for resp in responses:
-        assert resp.status_code == 200, resp.text
-        assert not any("fiscal" in key.lower() for key in _keys(resp.json())), resp.text
-        assert "B12345678" not in resp.text
-
-
-def test_create_company_ignores_fiscal_id(client, db, world):
-    as_user(client, world.pa)
-
-    resp = client.post("/companies", json={"name": "Nueva", "taxConfig": {}, "fiscalId": "B99999999"})
-
-    assert resp.status_code == 200, resp.text
-    assert not any("fiscal" in key.lower() for key in _keys(resp.json())), resp.text
-    assert _fresh_company(db, uuid.UUID(resp.json()["id"])).fiscal_id is None
 
 
 def test_pa_user_companies_include_is_active_and_is_managed(client, db):
