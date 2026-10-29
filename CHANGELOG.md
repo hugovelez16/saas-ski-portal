@@ -19,6 +19,25 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.25.0] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR** (cambio incompatible en la API v1, version principal 0): PR-21, retirada de los endpoints de empresa y membresia de la API v1 (cierre de X1). Sin migracion de base de datos. Los clientes deben usar `/api/v2/`.
+
+### Cambio incompatible
+
+- Retirados de v1 (responden 404): `GET/POST /companies`, `PUT/DELETE /companies/{id}`, `GET /companies/detailed`, `GET /companies/{id}`, `GET /companies/{id}/members`, `PUT /companies/{id}/members/order`, `POST /companies/{id}/members/add`, `PUT /companies/{id}/members/{user_id}/status|role|rates|settings`, `DELETE /companies/{id}/members/{user_id}`, `GET /companies/{id}/rates-v2`, `GET /users/me/companies` y `GET /users/{id}/companies`.
+- Se mantienen en v1: `GET /companies/{id}/dashboard-summary`, `GET /companies/{id}/daily-report`, turnos, auth, usuarios, modulos y auditoria.
+- Despliegue: en produccion `main` lleva backend y frontend a la vez; durante el cambio de contenedores una pestana abierta con el frontend antiguo puede recibir 404 en los endpoints retirados (se acepta; basta refrescar la pagina).
+
+### Funcionalidades y Mejoras
+
+- Eliminadas de `crud.py` las funciones de empresa y membresia sin uso (v2 tiene su propia capa en `src/`) y de `schemas.py` los esquemas v1 asociados.
+- Tests: casos de v1 portados a `tests/routers/v2/`; borrada la paridad de empresa de `tests/parity/` (se conserva `test_calculation_parity.py`); nuevo `test_v1_company_endpoints_removed.py`.
+
+---
+
 ## [0.24.1] - 2026-10-29
 
 ### Tipo de Cambio SemVer
