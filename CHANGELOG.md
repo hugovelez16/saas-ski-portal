@@ -19,6 +19,25 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.23.0] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Frontend: migracion de las llamadas de empresa y miembros a la API v2 (PR-20 del plan de empresa; X1 cliente, X7). Sin migracion de base de datos. Los endpoints v1 de empresa siguen disponibles hasta PR-21.
+
+### Funcionalidades y Mejoras
+
+- **Cliente v2** en `frontend/src/lib/api/v2/` (`types.ts`, `companies.ts`, `members.ts`, `adapters.ts`): tipos `snake_case` y funciones `listCompanies`, `getCompany`, `createCompany`, `updateCompany`, `deleteCompany`, `listMyCompanies`, `listUserCompanies`, `listMembers`, `addMember`, `removeMember`, `setMemberStatus`, `setMemberRole`, `setMemberRates`, `setMemberSettings`, `reorderMembers` y `listRates`.
+- **Pantallas sin cambios de tipos**: `lib/api/companies.ts` delega en v2 y devuelve los tipos `camelCase` actuales mediante un adaptador temporal (`fromV2Company`, `fromV2Member`), que se eliminara cuando las pantallas pasen a `snake_case`.
+- **Listado con miembros**: `getCompaniesDetailed` usa `GET /v2/companies?include=members` para el administrador de plataforma y `GET /v2/me/companies` mas `GET /v2/companies/{id}/members` para el manager.
+- Selector de contexto, ajustes y facturacion del manager obtienen la empresa con el cliente v2 en lugar de llamadas directas a `/companies`.
+
+### Notas
+
+- Siguen en v1: `dashboard-summary`, `daily-report`, turnos, auditoria, modulos, usuarios, auth y `GET /users/{id}/companies` (la vista completa de v2 no incluye `role`, `is_active_member` ni `rates_config` de la membresia que usan las fichas de usuario).
+
+---
+
 ## [0.22.0] - 2026-10-28
 
 ### Tipo de Cambio SemVer

@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
-import api from "@/lib/api";
+import { getCompany } from "@/lib/api/companies";
 import { CompanyConfigurationTab } from "@/components/admin/company-configuration-tab";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
@@ -14,7 +14,7 @@ export default function ManagerSettingsPage() {
 
     const { data: company, isLoading: isLoadingCompany } = useQuery({
         queryKey: ["company", selectedCompanyId],
-        queryFn: async () => (await api.get(`/companies/${selectedCompanyId}`)).data,
+        queryFn: () => getCompany(selectedCompanyId as string),
         enabled: !!selectedCompanyId,
     });
 
