@@ -116,6 +116,14 @@ class CompanyFull(V2Model):
     updated_at: datetime | None = None
 
 
+class CompanyFullWithMembership(CompanyFull):
+    """Vista completa de `/users/{id}/companies`: la empresa mas la membresia del usuario consultado."""
+
+    role: str | None = None
+    is_active_member: bool
+    rates_config: dict[str, Any] | None = None
+
+
 class CompanyFullWithMembers(CompanyFull):
     members: list[CompanyMemberV2] = []
 
@@ -208,6 +216,23 @@ def _full_fields(company) -> dict[str, Any]:
 
 def company_full(company) -> CompanyFull:
     return CompanyFull(**_full_fields(company))
+
+
+def company_full_with_membership(view: CompanyView) -> CompanyFullWithMembership:
+    member = view.member
+    fields = _full_fields(view.company)
+    # A los settings de empresa se suman las claves permitidas del miembro.
+    raw_member = member.settings if member is not None and isinstance(member.settings, dict) else {}
+    fields["settings"] = {
+        **fields["settings"],
+        **{key: value for key, value in raw_member.items() if key in MEMBER_SETTINGS_ALLOWED_KEYS},
+    }
+    return CompanyFullWithMembership(
+        **fields,
+        role=member.role.value if member is not None else view.role,
+        is_active_member=member.is_active if member is not None else True,
+        rates_config=member.rates_config if member is not None else None,
+    )
 
 
 def company_reduced(view: CompanyView) -> CompanyReduced:

@@ -19,26 +19,59 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.25.0] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR** (cambio incompatible en la API v1, version principal 0): PR-21, retirada de los endpoints de empresa y membresia de la API v1 (cierre de X1). Sin migracion de base de datos. Los clientes deben usar `/api/v2/`.
+
+### Cambio incompatible
+
+- Retirados de v1 (responden 404): `GET/POST /companies`, `PUT/DELETE /companies/{id}`, `GET /companies/detailed`, `GET /companies/{id}`, `GET /companies/{id}/members`, `PUT /companies/{id}/members/order`, `POST /companies/{id}/members/add`, `PUT /companies/{id}/members/{user_id}/status|role|rates|settings`, `DELETE /companies/{id}/members/{user_id}`, `GET /companies/{id}/rates-v2`, `GET /users/me/companies` y `GET /users/{id}/companies`.
+- Se mantienen en v1: `GET /companies/{id}/dashboard-summary`, `GET /companies/{id}/daily-report`, turnos, auth, usuarios, modulos y auditoria.
+- Despliegue: en produccion `main` lleva backend y frontend a la vez; durante el cambio de contenedores una pestana abierta con el frontend antiguo puede recibir 404 en los endpoints retirados (se acepta; basta refrescar la pagina).
+
+### Funcionalidades y Mejoras
+
+- Eliminadas de `crud.py` las funciones de empresa y membresia sin uso (v2 tiene su propia capa en `src/`) y de `schemas.py` los esquemas v1 asociados.
+- Tests: casos de v1 portados a `tests/routers/v2/`; borrada la paridad de empresa de `tests/parity/` (se conserva `test_calculation_parity.py`); nuevo `test_v1_company_endpoints_removed.py`.
+
+---
+
+## [0.24.1] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Frontend: `getUserCompanies` pasa de `GET /users/{id}/companies` (v1) a `GET /v2/users/{user_id}/companies` (prerrequisito de PR-21). Sin cambios de backend ni de base de datos. Las pantallas `admin/users/[userId]` y `manager/users/[userId]` siguen recibiendo los mismos campos en `camelCase`.
+
+### Funcionalidades y Mejoras
+
+- `listUserCompanies` (`lib/api/v2`) devuelve `CompanyFullWithMembership` (administrador de plataforma) o `CompanyReduced` (manager); el adaptador `fromV2Company` acepta el nuevo tipo y conserva `role`, `isActiveMember` y `ratesConfig`.
+- `getUserCompanies` devuelve `Company[]` en lugar de `any[]`. Para ello `mapMemberToLegacyRate` (`lib/utils/rates.ts`) acepta cualquier objeto con `ratesConfig` y, opcionalmente, `userId`, `companyId` y `user`; si faltan `userId` o `companyId`, devuelve `""` en lugar de `undefined`. Sin cambio para los llamadores que pasan un `CompanyMember` completo.
+- Tests de cliente v2, adaptador y `getUserCompanies`.
+
+### Notas
+
+- Deuda anotada: en `manager/users/[userId]/page.tsx` el bloque `effectiveUserSettings` (lineas 380-388) no se usa en ninguna parte y es lo que motivo relajar la firma de `mapMemberToLegacyRate`. Borrarlo en el PR que migre las pantallas a `snake_case` haria innecesario ese relajamiento.
+- PR-21 queda desbloqueado en lo que respecta a `getUserCompanies`. Sigue pendiente `lib/api/settings.ts`, que llama a `GET /companies/{id}/members/me` (no existe).
+
+---
+
 ## [0.24.0] - 2026-10-29
 
 ### Tipo de Cambio SemVer
 
-- **MINOR**: Landing publica en `/` con funciones, capturas reales, precios de la temporada 2026-2027, preguntas frecuentes y formulario de contacto. Incluye la correccion del desfase horario del Parte Diario del responsable.
+- **MINOR**: API v2: la vista completa de `GET /v2/users/{user_id}/companies` incluye la membresia del usuario consultado (prerrequisito de PR-21). Sin migracion de base de datos. v1 no cambia.
 
-### Anadido
+### Funcionalidades y Mejoras
 
-- **`src/app/page.tsx`**: la raiz deja de redirigir a `/login` y muestra la landing. "Acceder" lleva a `/login`.
-- **`src/lib/landing-pricing.ts`**: tarifas publicas (cuota base, tramos marginales por monitor, modulos, puesta en marcha y mantenimiento) y calculo de la cuota, con pruebas contra los ejemplos de la propuesta comercial.
-- **`src/components/landing/`**: calculadora de cuota y formulario de contacto. El formulario abre el correo del usuario con los datos rellenados; no hay endpoint en el backend.
-- **`public/landing/`**: capturas de la aplicacion con una escuela de demostracion (datos ficticios).
+- **Campos nuevos** en la vista completa (administrador de plataforma actuando): `role`, `is_active_member` y `rates_config` de la membresia del usuario objetivo en cada empresa, planos y en `snake_case`, con la misma forma que v1. Los `settings` fusionan, como en v1, las claves permitidas del miembro.
+- Esquema nuevo `CompanyFullWithMembership` (extiende `CompanyFull`). La vista reducida del manager no cambia y no expone `is_active`, `allowed_rates`, `cost_markup` ni `fiscal_id`.
+- Reglas de acceso sin cambios: administrador de plataforma todas las empresas, manager solo la interseccion con sus membresias activas, worker y "ver como" 403.
 
-### Corregido
+### Notas
 
-- **Parte Diario del responsable**: con rangos horarios amplios (por ejemplo 0:00 a 24:00) las clases se dibujaban horas antes de su hora real. Las celdas de la cabecera tenian ancho minimo y las de las filas no, asi que la cabecera se desbordaba y dejaba de coincidir con la rejilla. Ahora ambas comparten `min-w-[50px]`.
-
-### Cambiado
-
-- **`AuthContext`**: `/` se trata como ruta publica, para que un visitante sin sesion no sea expulsado a `/login`.
+- Queda pendiente el PR de frontend que migre `getUserCompanies` a `GET /v2/users/{id}/companies`; hasta entonces PR-21 sigue bloqueado.
 
 ---
 

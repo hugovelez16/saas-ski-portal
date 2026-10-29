@@ -87,6 +87,22 @@ describe('fromV2Company', () => {
         expect(result.ratesConfig).toEqual({ particular: { base_rate: 10 } });
     });
 
+    it('convierte la vista completa con membresia (role, is_active_member, rates_config)', () => {
+        const result = fromV2Company({
+            ...fullCompanyV2,
+            role: 'manager',
+            is_active_member: false,
+            rates_config: { particular: { base_rate: 12 } },
+        } as any);
+
+        expect(result.role).toBe('manager');
+        expect(result.isActiveMember).toBe(false);
+        expect(result.ratesConfig).toEqual({ particular: { base_rate: 12 } });
+        expect(result.isActive).toBe(true);
+        expect(result).not.toHaveProperty('is_active_member');
+        expect(result).not.toHaveProperty('rates_config');
+    });
+
     it('conserva sin convertir el contenido interno de settings, rates_config, tax_config y worklog_definitions', () => {
         const result = fromV2Company({
             ...fullCompanyV2,

@@ -54,6 +54,13 @@ export interface CompanyFull {
     updated_at: string | null;
 }
 
+/** Vista completa de `/users/{id}/companies` para PA: la empresa mas la membresia del usuario consultado. */
+export interface CompanyFullWithMembership extends CompanyFull {
+    role: string | null;
+    is_active_member: boolean;
+    rates_config: Record<string, any> | null;
+}
+
 export interface CompanyFullWithMembers extends CompanyFull {
     /** Solo presente con `include=members`. */
     members?: CompanyMemberV2[];

@@ -10,7 +10,6 @@ import schemas
 from access_policy import PolicyError
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from routers import deps
@@ -58,34 +57,6 @@ def read_users_me(
     user_data.is_read_only_view = bool(user_data.view_as)
 
     return user_data
-
-
-@router.get("/me/companies", response_model=None)
-def read_user_companies(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
-    """
-    Get companies the current user is a member of: vista completa para el PA actuando, reducida para el resto.
-    """
-    if deps.acting_platform_admin(current_user):
-        companies = db.query(models.Company).all()
-        results = []
-        for company in companies:
-            results.append(
-                {
-                    "id": company.id,
-                    "name": company.name,
-                    "tax_config": company.tax_config,
-                    "worklog_definitions": company.worklog_definitions,
-                    "is_active": company.is_active,
-                    "is_managed": company.is_managed,
-                    "created_at": company.created_at,
-                    "updated_at": company.updated_at,
-                    "settings": company.settings if isinstance(company.settings, dict) else {},
-                    "role": "admin",
-                }
-            )
-        return JSONResponse([crud.serialize_company_view(c, full=True) for c in results])
-    companies = crud.get_user_companies(db, str(current_user.id))
-    return JSONResponse([crud.serialize_company_view(c, full=False) for c in companies])
 
 
 @router.get("/{user_id}", response_model=schemas.UserResponse)
@@ -273,19 +244,3 @@ def update_user(
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     return db_user
-
-
-@router.get("/{user_id}/companies", response_model=None)
-def read_user_companies_admin(
-    user_id: UUID, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
-):
-    """PA actuando: todas las empresas del usuario (incluidas inactivas), vista completa.
-    Manager: solo la empresa del token, si es manager de ella y el usuario es miembro activo, vista reducida."""
-    if deps.acting_platform_admin(current_user):
-        companies = crud.get_user_companies(db, str(user_id), include_inactive=True)
-        return JSONResponse([crud.serialize_company_view(c, full=True) for c in companies])
-    allowed = deps.manager_company_ids(db, current_user)
-    if not allowed:
-        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
-    companies = [c for c in crud.get_user_companies(db, str(user_id)) if str(c["id"]) in allowed]
-    return JSONResponse([crud.serialize_company_view(c, full=False) for c in companies])
