@@ -311,12 +311,3 @@ def test_work_logs_worker_with_module_sees_only_own(client, db):
         ids = {item["id"] for item in resp.json()}
         assert str(own.id) in ids
         assert str(other.id) not in ids
-
-
-def test_companies_detailed_worker_with_module_is_forbidden(client, db):
-    company, _, worker, _ = _setup(db)
-    as_user(client, worker, company, claims={"role": "worker"})
-
-    resp = client.get("/companies/detailed")
-
-    assert resp.status_code == 403, resp.text

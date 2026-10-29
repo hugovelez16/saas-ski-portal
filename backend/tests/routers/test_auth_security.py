@@ -35,31 +35,6 @@ def _dev_env(monkeypatch, environment=None, bypass=None, node_env=None):
             monkeypatch.setenv(name, value)
 
 
-# --- S2: tokens 2FA pendientes en endpoints de empresa ---
-
-
-@pytest.mark.parametrize(
-    "method, path_template, kwargs",
-    [
-        ("PUT", "/companies/{cid}/members/{uid}/status", {"params": {"status": "active"}}),
-        ("GET", "/companies/{cid}", {}),
-        ("GET", "/companies/{cid}/rates-v2", {}),
-        ("PUT", "/companies/{cid}/members/{uid}/rates", {"json": {"ratesConfig": {}}}),
-    ],
-)
-def test_2fa_pending_token_rejected_on_company_endpoints(client, db, method, path_template, kwargs):
-    user = make_user(db)
-    company = make_company(db)
-    make_member(db, user, company, role="manager")
-    as_user(client, user, company, scope="2fa_pending")
-
-    path = path_template.format(cid=company.id, uid=user.id)
-    resp = client.request(method, path, **kwargs)
-
-    assert resp.status_code == 403, resp.text
-    assert resp.json().get("detail") == "2FA Verification Required"
-
-
 # --- S7: token 2fa_pending y verify-2fa ---
 
 

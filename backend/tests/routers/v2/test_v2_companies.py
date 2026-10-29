@@ -9,14 +9,18 @@ de estado para que el fallo sea siempre por la razon correcta y no por un assert
 No se mockea la logica: se usan el TestClient (`client`), la sesion `db` y las fabricas de tests/factories.py.
 """
 
+import copy
 import re
 import uuid
+from datetime import date, time
 from types import SimpleNamespace
 
+import crud
 import models
 import pytest
+import schemas
 
-from tests.factories import as_user, make_company, make_member, make_user, make_work_log
+from tests.factories import as_user, make_company, make_member, make_token, make_user, make_work_log
 
 BASE = "/v2/companies"
 ME_COMPANIES = "/v2/me/companies"
@@ -1125,5 +1129,365 @@ def test_user_companies_forbidden_for_worker_and_pa_view_as(client, world, actor
     _act(client, world, actor)
 
     resp = client.get(f"/v2/users/{world.worker.id}/companies")
+
+    assert resp.status_code == 403, resp.text
+
+
+# --- 10. Casos portados desde tests/routers/test_company_admin.py y test_company_views.py (PR-21.0) ---
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({"tax_config": {"social_security": 0.1}}, id="tax_config"),
+        pytest.param(
+            {"worklog_definitions": {"guardia": {"unit": "hours", "label": "G", "fields": []}}},
+            id="worklog_definitions",
+        ),
+        pytest.param({"settings": {"modules": {"daily_report": False}, "allowed_rates": ["particular"]}}, id="settings"),
+    ],
+)
+def test_manager_cannot_change_tax_worklog_or_settings(client, db, world, payload):
+    cid = world.company.id
+    before = copy.deepcopy(
+        {
+            "tax_config": world.company.tax_config,
+            "worklog_definitions": world.company.worklog_definitions,
+            "settings": world.company.settings,
+        }
+    )
+    as_user(client, world.manager, world.company)
+
+    resp = client.put(f"{BASE}/{cid}", json=payload)
+
+    assert resp.status_code == 403, resp.text
+    company = _fresh(db, cid)
+    after = {
+        "tax_config": company.tax_config,
+        "worklog_definitions": company.worklog_definitions,
+        "settings": company.settings,
+    }
+    assert after == before
+
+
+def test_managed_change_keeps_existing_shift_amounts(client, db, world):
+    """El evento company.managed_changed ya lo cubre test_put_emits_single_event_with_old_and_new_value;
+    aqui se comprueba que cambiar is_managed no recalcula los turnos existentes."""
+    shift = make_work_log(db, world.worker, world.company, net_amount=40.0)
+    shift_id = shift.id
+    as_user(client, world.pa, world.company)
+
+    resp = client.put(f"{BASE}/{world.company.id}", json={"is_managed": True})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["is_managed"] is True
+    db.expire_all()
+    assert db.get(models.WorkLog, shift_id).net_amount == 40.0
+
+
+def test_suspension_blocks_manager_with_token_still_valid(client, db, world):
+    """Un manager con un token ya emitido (mismo jti) pierde el acceso a los miembros al suspender la empresa."""
+    cid = world.company.id
+    manager_token = make_token(world.manager, world.company)
+    client.cookies.clear()
+    client.cookies.set("access_token", manager_token)
+    warm = client.get(f"{BASE}/{cid}/members")
+    assert warm.status_code == 200, warm.text
+
+    as_user(client, world.pa, world.company)
+    suspend = client.put(f"{BASE}/{cid}", json={"is_active": False})
+    assert suspend.status_code == 200, suspend.text
+
+    client.cookies.clear()
+    client.cookies.set("access_token", manager_token)
+    resp = client.get(f"{BASE}/{cid}/members")
+
+    assert resp.status_code == 403, resp.text
+
+
+def test_me_companies_pa_acting_reports_is_active_and_is_managed(client, db, world):
+    flagged = make_company(db, name="Suspendida y gestionada", is_active=False, is_managed=True)
+    make_member(db, world.pa, flagged, role="manager")
+    as_user(client, world.pa)
+
+    resp = client.get(ME_COMPANIES)
+
+    assert resp.status_code == 200, resp.text
+    entries = {item["id"]: item for item in resp.json()}
+    assert entries[str(flagged.id)]["is_active"] is False
+    assert entries[str(flagged.id)]["is_managed"] is True
+
+
+def test_member_settings_only_expose_whitelisted_keys(client, db, world):
+    """Solo pasan la whitelist de settings del miembro: ui_preferences si; business_logic y allowed_rates no."""
+    member = db.query(models.CompanyMember).filter_by(user_id=world.worker.id, company_id=world.company.id).one()
+    member.settings = {
+        "ui_preferences": {"theme": "dark"},
+        "business_logic": {"price_type": "gross"},
+        "allowed_rates": ["hack"],
+    }
+    db.commit()
+    as_user(client, world.worker, world.company)
+
+    listed = client.get(ME_COMPANIES)
+    detail = client.get(f"{BASE}/{world.company.id}")
+
+    assert listed.status_code == 200, listed.text
+    assert detail.status_code == 200, detail.text
+    for body in (listed.json()[0], detail.json()):
+        assert body["settings"]["ui_preferences"] == {"theme": "dark"}
+        # Valor por defecto de la empresa (price_type "net"); el del miembro ("gross") no se expone.
+        assert body["settings"]["business_logic"] == {"price_type": "net"}
+        assert "allowed_rates" not in body["settings"]
+
+
+def test_user_companies_manager_with_token_where_only_worker_is_403(client, db, world):
+    """Manager de world.company, pero con el token apuntando a una empresa donde solo es worker."""
+    worker_side = make_company(db, name="Donde solo es worker")
+    make_member(db, world.manager, worker_side, role="worker")
+    make_member(db, world.worker, worker_side, role="worker")
+    as_user(client, world.manager, worker_side, claims={"role": "worker"})
+
+    resp = client.get(f"/v2/users/{world.worker.id}/companies")
+
+    assert resp.status_code == 403, resp.text
+
+
+def test_user_companies_pa_view_as_manager_reveals_only_token_company(client, db, world):
+    """PA en 'ver como manager': vista reducida y solo la empresa del token, aunque el usuario este en mas."""
+    other = make_company(db, name="Escuela Otra")
+    make_member(db, world.pa, world.company, role="manager")
+    make_member(db, world.pa, other, role="manager")
+    make_member(db, world.worker, other, role="worker")
+    as_user(client, world.pa, world.company, claims=VIEW_AS_MANAGER)
+
+    resp = client.get(f"/v2/users/{world.worker.id}/companies")
+
+    assert resp.status_code == 200, resp.text
+    assert _ids(resp.json()) == {str(world.company.id)}
+    _assert_reduced(resp.json()[0], role="worker")
+
+
+# --- 7. Portados de tests/routers/test_company_contracts.py, test_tax_calculation.py,
+#        test_company_access.py, test_governance.py y test_daily_report.py (retirada de v1, PR-21) ---
+
+SETTINGS_OUTSIDE_CONTRACT = [
+    pytest.param({"allow_tutorial": True}, id="allow_tutorial_retirada"),
+    pytest.param({"allow_coordination": False}, id="allow_coordination_retirada"),
+    pytest.param({"is_managed": True}, id="is_managed_retirada"),
+    pytest.param({"business_logic": {"cost_markup": 0}}, id="cost_markup_retirada"),
+    pytest.param({"billing": {"cost_markup_percent": 32.0}}, id="cost_markup_percent_retirada"),
+    pytest.param({"clave_inventada": 1}, id="clave_desconocida"),
+    pytest.param({"business_logic": {"price_type": "bruto"}}, id="price_type_fuera_de_enum"),
+    pytest.param({"worker_experience": {"input_mode": "voz"}}, id="input_mode_fuera_de_enum"),
+    pytest.param({"worker_experience": {"allow_manual_amount": "si"}}, id="allow_manual_amount_no_bool"),
+    pytest.param({"ui_customization": {"labels": {"worklog": "x" * 61}}}, id="label_de_61_caracteres"),
+]
+
+
+@pytest.mark.parametrize("settings", SETTINGS_OUTSIDE_CONTRACT)
+def test_put_rejects_settings_outside_contract_and_keeps_previous(client, db, world, settings):
+    as_user(client, world.pa, world.company)
+    before = dict(_fresh(db, world.company.id).settings or {})
+
+    resp = client.put(f"{BASE}/{world.company.id}", json={"settings": settings})
+
+    assert resp.status_code == 422, resp.text
+    assert dict(_fresh(db, world.company.id).settings or {}) == before
+
+
+WORKLOG_DEFINITIONS_OUTSIDE_CONTRACT = [
+    pytest.param({"guardia": {"is_range": True, "label": "Guardia"}}, id="sin_unit_con_is_range"),
+    pytest.param({"guardia": {"unit": "hours", "label": "x" * 61}}, id="label_de_61_caracteres"),
+    pytest.param({"guardia": {"unit": "hours", "label": ""}}, id="label_vacio"),
+    pytest.param({"": {"unit": "hours", "label": "Guardia"}}, id="clave_vacia"),
+]
+
+
+@pytest.mark.parametrize("definitions", WORKLOG_DEFINITIONS_OUTSIDE_CONTRACT)
+def test_put_rejects_worklog_definitions_outside_contract(client, db, world, definitions):
+    as_user(client, world.pa, world.company)
+    before = _audit_count(db)
+
+    resp = client.put(f"{BASE}/{world.company.id}", json={"worklog_definitions": definitions})
+
+    assert resp.status_code == 422, resp.text
+    assert _fresh(db, world.company.id).worklog_definitions == DEFINITIONS
+    assert _audit_count(db) == before
+
+
+def test_get_company_pa_returns_settings_with_defaults(client, db):
+    company = make_company(db, name="Sin ajustes")
+    pa = make_user(db, role="admin")
+    as_user(client, pa, company)
+
+    resp = client.get(f"{BASE}/{company.id}")
+
+    assert resp.status_code == 200, resp.text
+    settings = resp.json()["settings"]
+    assert settings["business_logic"]["price_type"] == "net"
+    assert "cost_markup" not in settings["business_logic"]
+    assert settings["worker_experience"]["input_mode"] == "manual_single"
+    assert settings["worker_experience"]["allow_manual_amount"] is False
+    assert settings["modules"] == {}
+    labels = settings["ui_customization"]["labels"]
+    assert {key: value for key, value in labels.items() if value is not None} == {}
+
+
+def test_create_company_rejects_null_tax_config(client, db, world):
+    as_user(client, world.pa, world.company)
+    before = _company_count(db)
+
+    resp = client.post(BASE, json={"name": "Nula", "tax_config": None})
+
+    assert resp.status_code == 422, resp.text
+    assert _company_count(db) == before
+
+
+@pytest.mark.parametrize(
+    "tax_config",
+    [
+        pytest.param({"IRPF": True}, id="bool"),
+        pytest.param({"IRPF": "x"}, id="texto_no_numerico"),
+    ],
+)
+def test_create_company_rejects_tax_rate_of_wrong_type(client, db, world, tax_config):
+    as_user(client, world.pa, world.company)
+    before = _company_count(db)
+
+    resp = client.post(BASE, json={"name": "Impuestos malos", "tax_config": tax_config})
+
+    assert resp.status_code == 422, resp.text
+    assert _company_count(db) == before
+
+
+def test_create_company_stores_free_taxes(client, db, world):
+    as_user(client, world.pa, world.company)
+    tax_config = {"IRPF": 0.15, "Seguridad Social": 0}
+
+    resp = client.post(BASE, json={"name": "Libres", "tax_config": tax_config})
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["tax_config"] == tax_config
+    stored = db.query(models.Company).filter_by(name="Libres").one()
+    assert stored.tax_config == tax_config
+
+
+@pytest.mark.parametrize(
+    "tax_config",
+    [
+        pytest.param({"IRPF": "x"}, id="texto_no_numerico"),
+        pytest.param({"IRPF": None}, id="valor_null"),
+    ],
+)
+def test_put_rejects_tax_config_with_wrong_rate_type(client, db, world, tax_config):
+    as_user(client, world.pa, world.company)
+    before = _audit_count(db)
+
+    resp = client.put(f"{BASE}/{world.company.id}", json={"tax_config": tax_config})
+
+    assert resp.status_code == 422, resp.text
+    assert _fresh(db, world.company.id).tax_config == TAX_CONFIG
+    assert _audit_count(db) == before
+
+
+def test_saved_work_log_does_not_change_when_company_taxes_are_edited(client, db, world):
+    company = make_company(db, tax_config={"IRPF": 0.15})
+    worker = make_user(db)
+    make_member(
+        db,
+        worker,
+        company,
+        role="worker",
+        rates_config={"particular": {"base_rate": 20.0, "is_gross": True, "tax_overrides": {}}},
+    )
+    work_log = crud.create_work_log(
+        db,
+        schemas.WorkLogCreate(
+            type="particular",
+            start_date=date(2026, 1, 10),
+            end_date=date(2026, 1, 10),
+            start_time=time(9, 0),
+            end_time=time(11, 0),
+            user_id=worker.id,
+            company_id=company.id,
+        ),
+    )
+    work_log_id = work_log.id
+    net_before = float(work_log.net_amount)
+    snapshot_before = copy.deepcopy(work_log.calculation_snapshot)
+
+    as_user(client, world.pa, company)
+    resp = client.put(f"{BASE}/{company.id}", json={"tax_config": {"IRPF": 0.5, "Mutua": 0.1}})
+    assert resp.status_code == 200, resp.text
+
+    db.expire_all()
+    reloaded = db.query(models.WorkLog).filter_by(id=work_log_id).one()
+    assert float(reloaded.net_amount) == net_before
+    assert reloaded.calculation_snapshot == snapshot_before
+
+
+def test_get_suspended_company_is_readable_by_pa(client, world):
+    as_user(client, world.pa, world.suspended)
+
+    resp = client.get(f"{BASE}/{world.suspended.id}")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["is_active"] is False
+
+
+def test_view_as_claim_without_company_is_ignored_for_pa(client, db, world):
+    as_user(client, world.pa, None, claims=VIEW_AS_WORKER)
+
+    resp = client.put(f"{BASE}/{world.company.id}", json={"name": "Modificada"})
+
+    assert resp.status_code == 200, resp.text
+    assert _fresh(db, world.company.id).name == "Modificada"
+
+
+def test_worker_with_token_of_other_company_gets_switch_company(client, db, world):
+    both = make_user(db)
+    make_member(db, both, world.company, role="worker")
+    make_member(db, both, world.other, role="worker")
+    as_user(client, both, world.other)
+
+    resp = client.get(f"{BASE}/{world.company.id}")
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == MSG_SWITCH_COMPANY
+
+
+def test_malformed_company_id_returns_422(client, world):
+    as_user(client, world.pa)
+
+    resp = client.get(f"{BASE}/no-es-un-uuid")
+
+    assert resp.status_code == 422, resp.text
+
+
+def test_worker_with_daily_report_module_in_two_companies_cannot_list_companies(client, db, world):
+    # El modulo de parte diario no concede acceso al listado de empresas: solo el PA lo ve.
+    user = make_user(db)
+    make_member(db, user, world.company, role="worker")
+    make_member(db, user, world.other, role="worker")
+    module = db.query(models.AppModule).filter(models.AppModule.code_name == "worker_daily_report").first()
+    if module is None:
+        module = models.AppModule(code_name="worker_daily_report", name="Parte diario", is_active=True)
+        db.add(module)
+        db.flush()
+    for company in (world.company, world.other):
+        db.add(
+            models.ModuleSubscription(
+                module_id=module.id,
+                company_id=company.id,
+                user_id=None,
+                scope=models.SubscriptionScope.company,
+                status=models.SubscriptionStatus.active,
+            )
+        )
+    db.commit()
+    as_user(client, user, world.company, claims={"role": "worker"})
+
+    resp = client.get(BASE)
 
     assert resp.status_code == 403, resp.text
