@@ -30,7 +30,7 @@ DEPENDENT_DATA_MESSAGE = "No se puede eliminar: existen datos dependientes"
 
 
 def _invalidate_member_caches(company_id, user_id) -> None:
-    """Mismas caches que invalida v1 al cambiar una membresia: acceso del usuario y tarifas de la empresa."""
+    """Invalida las caches de acceso del usuario y de tarifas de la empresa al cambiar una membresia."""
     redis_manager.delete(f"company_rates:{company_id}")
     access_cache.invalidate_membership(user_id, company_id)
 
@@ -131,7 +131,7 @@ class SqlAlchemyCompanyRepository(CompanyRepositoryPort):
             existing.is_managed = company.is_managed
             _commit_or_rollback(self.db)
             self.db.refresh(existing)
-            # Suspension, gestion o nombre cambian los hechos de acceso cacheados (igual que crud.update_company).
+            # Suspension, gestion o nombre cambian los hechos de acceso cacheados.
             access_cache.invalidate_company(existing.id)
             return SqlAlchemyCompanyMapper.to_domain(existing)
         else:
@@ -178,7 +178,7 @@ class SqlAlchemyCompanyMemberRepository(CompanyMemberRepositoryPort):
             models.CompanyMember.company_id == company_id,
         )
         if for_update:
-            # Igual que crud.remove_member: bloquea la fila y refresca el estado ya leido en la sesion.
+            # Bloquea la fila y refresca el estado ya leido en la sesion.
             query = query.with_for_update().populate_existing()
         orm_m = query.first()
         return SqlAlchemyCompanyMemberMapper.to_domain(orm_m) if orm_m else None
@@ -214,7 +214,7 @@ class SqlAlchemyCompanyMemberRepository(CompanyMemberRepositoryPort):
             # Copias: ver nota en CompanyRepository.save sobre la deteccion de cambios en JSONB.
             existing.rates_config = dict(member.rates_config)
             existing.settings = dict(member.settings)
-            # Igual que crud.set_member_*: fuerza el UPDATE (y `updated_at`) aunque el valor no cambie.
+            # Fuerza el UPDATE (y `updated_at`) aunque el valor no cambie.
             flag_modified(existing, "rates_config")
             flag_modified(existing, "settings")
             _commit_or_rollback(self.db)
@@ -254,8 +254,7 @@ class SqlAlchemyCompanyMemberRepository(CompanyMemberRepositoryPort):
         for orm_m in orm_members:
             orm_m.sort_order = positions[str(orm_m.user_id)]
         _commit_or_rollback(self.db)
-        # Igual que crud.update_company_members_order, no invalida nada: el orden no cambia permisos
-        # y la cache de tarifas de v1 no depende de `sort_order`.
+        # No invalida caches: el orden no cambia permisos y la cache de tarifas no depende de `sort_order`.
 
     async def count_work_logs(self, user_id: str, company_id: str) -> int:
         return (

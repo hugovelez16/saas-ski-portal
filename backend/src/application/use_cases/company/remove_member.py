@@ -26,7 +26,7 @@ class RemoveMemberUseCase:
 
     async def execute(self, *, actor_id: str, company_id: str, user_id: str) -> RemoveMemberResult:
         """Sin turnos borra la membresia; con turnos la desactiva y conserva los turnos."""
-        # Bloquea la fila antes de contar turnos, como crud.remove_member (la carrera con la creacion de
+        # Bloquea la fila antes de contar turnos (la carrera con la creacion de
         # turnos sigue anotada en el plan: work_logs no tiene FK a company_members).
         member = await self.member_repo.get_membership(user_id, company_id, for_update=True)
         if member is None:

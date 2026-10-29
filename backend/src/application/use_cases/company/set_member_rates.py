@@ -38,7 +38,7 @@ class SetMemberRatesUseCase:
         member = await self.member_repo.get_membership(user_id, company_id)
 
         # Solo se exige definicion a los tipos nuevos: los ya presentes en la tarifa del miembro se conservan
-        # aunque el tipo se haya retirado de la empresa. Igual que v1, este chequeo precede al 404 del miembro.
+        # aunque el tipo se haya retirado de la empresa. Este chequeo precede al 404 del miembro.
         definitions = company.worklog_definitions or {}
         existing = set((member.rates_config or {}).keys()) if member is not None else set()
         if any(shift_type not in definitions for shift_type in rates_config if shift_type not in existing):

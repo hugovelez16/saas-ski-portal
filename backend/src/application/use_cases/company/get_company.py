@@ -15,7 +15,7 @@ class GetCompanyUseCase:
     async def execute(self, *, company_id: str, user_id: str, role: Optional[str]) -> CompanyView:
         company = await self.company_repo.get_by_id(company_id)
         if company is None:
-            # Mismo 403 que v1: el router ya valido la existencia, esto solo cubre una carrera con un borrado.
+            # El router ya valido la existencia; esto solo cubre una carrera con un borrado.
             raise UnauthorizedDomainActionException(MSG_NO_ACCESS)
         member = await self.member_repo.get_membership(user_id, company_id)
         return CompanyView(company=company, member=member, role=role)

@@ -17,7 +17,7 @@ class SetMemberSettingsUseCase:
     async def execute(self, *, company_id: str, user_id: str, settings: Dict[str, Any]) -> MemberDetail:
         """Aplica la lista blanca de claves de usuario (M2) tambien aqui, no solo en el esquema HTTP.
 
-        Igual que v1, no genera evento de auditoria.
+        No genera evento de auditoria.
         """
         try:
             validated = validate_member_settings(settings)
