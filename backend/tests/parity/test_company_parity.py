@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import models
 import pytest
 
-from tests.factories import as_user, make_company, make_member
+from tests.factories import as_user, make_company, make_member, make_user
 from tests.parity.helpers import assert_parity, call_both, to_snake
 
 PAIR_LIST = "GET /companies vs GET /v2/companies"
@@ -121,9 +121,12 @@ KNOWN_DIFFERENCES = [
     ),
     KnownDifference(
         par=PAIR_USER,
-        clave="vista completa",
-        motivo="CompanyFull de v2 no lleva role, is_active_member ni rates_config (solo PA actuando).",
-        ignore=FULL_VIEW_IGNORE,
+        clave="nombres",
+        motivo=(
+            "Los datos de la membresia (role, is_active_member, rates_config) llegan en ambas versiones; "
+            "v1 los nombra en camelCase (isActiveMember, ratesConfig) y v2 en snake_case. "
+            "La comparacion normaliza los nombres con to_snake y no ignora ninguna clave."
+        ),
     ),
 ]
 
@@ -443,3 +446,31 @@ def test_user_companies_matches_v1(client, parity_world, actor):
         assert_parity(_normalize(to_snake(v1.json())), _normalize(to_snake(v2.json())), ignore=ignore)
     else:
         assert v1.json()["detail"] == v2.json()["detail"]
+
+
+@pytest.mark.parametrize("actor", ["pa", "manager"])
+def test_user_companies_membership_fields_match_v1(client, db, parity_world, actor):
+    """role, is_active_member y rates_config del usuario objetivo coinciden con v1, incluida una membresia inactiva."""
+    rates = {"particular": {"base_rate": 27.5, "is_gross": False, "tax_overrides": {}}}
+    target = make_user(db)
+    member = make_member(db, target, parity_world.autonoma, role="manager", rates_config=rates)
+    member.settings = {"notifications": {"email": False}, "not_allowed_key": 1}
+    db.commit()
+    make_member(db, target, parity_world.gestionada, role="worker", is_active=False)
+    _act(client, parity_world, actor, parity_world.autonoma)
+
+    v1, v2 = call_both(client, "GET", f"/users/{target.id}/companies", f"/v2/users/{target.id}/companies")
+
+    assert v1.status_code == v2.status_code == 200, f"v1 {v1.status_code} / v2 {v2.status_code}: {v2.text}"
+    keys = ("role", "is_active_member", "rates_config")
+    v1_items = {item["id"]: {key: item[key] for key in keys} for item in to_snake(v1.json())}
+    v2_items = {item["id"]: {key: item[key] for key in keys} for item in to_snake(v2.json())}
+    assert v1_items == v2_items
+    assert str(parity_world.autonoma.id) in v2_items
+    assert v2_items[str(parity_world.autonoma.id)]["rates_config"] == rates
+    if actor == "pa":
+        assert v2_items[str(parity_world.gestionada.id)]["is_active_member"] is False
+        autonoma = next(i for i in v2.json() if i["id"] == str(parity_world.autonoma.id))
+        assert autonoma["settings"]["notifications"] == {"email": False}
+        assert "not_allowed_key" not in autonoma["settings"]
+    assert_parity(_normalize(to_snake(v1.json())), _normalize(to_snake(v2.json())), ignore=_ignore_for(PAIR_USER))

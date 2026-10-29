@@ -16,6 +16,7 @@ dentro del propio test que las usa, para que cada excepcion quede visible y revi
 
 import json
 import re
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import Any
 
@@ -43,7 +44,7 @@ def to_snake(obj: Any) -> Any:
     return obj
 
 
-def _without_keys(obj: Any, ignore: frozenset[str] | set[str]) -> Any:
+def _without_keys(obj: Any, ignore: AbstractSet[str]) -> Any:
     if isinstance(obj, dict):
         return {key: _without_keys(value, ignore) for key, value in obj.items() if key not in ignore}
     if isinstance(obj, list):
@@ -51,7 +52,7 @@ def _without_keys(obj: Any, ignore: frozenset[str] | set[str]) -> Any:
     return obj
 
 
-def assert_parity(v1: Any, v2: Any, *, ignore: set[str] = frozenset()) -> None:
+def assert_parity(v1: Any, v2: Any, *, ignore: AbstractSet[str] = frozenset()) -> None:
     """Falla con AssertionError si v1 y v2 difieren tras quitar las claves de `ignore` a cualquier nivel."""
     left = _without_keys(v1, ignore)
     right = _without_keys(v2, ignore)

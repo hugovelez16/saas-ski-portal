@@ -48,6 +48,8 @@ FULL_KEYS = {
     "created_at",
     "updated_at",
 }
+# Datos de la membresia del usuario objetivo que anade la vista completa de /v2/users/{id}/companies.
+MEMBERSHIP_KEYS = {"role", "is_active_member", "rates_config"}
 REDUCED_KEYS = {
     "id",
     "name",
@@ -189,6 +191,16 @@ def _assert_reduced(body, *, role):
 
 def _assert_full(body):
     assert set(body) == FULL_KEYS, sorted(body)
+    _assert_no_leak(body)
+    _assert_snake_case(body)
+
+
+def _assert_full_with_membership(body, *, role, is_active_member=True):
+    """Vista completa de `/v2/users/{id}/companies`: CompanyFull mas la membresia del usuario objetivo."""
+    assert set(body) == FULL_KEYS | MEMBERSHIP_KEYS, sorted(body)
+    assert body["role"] == role
+    assert body["is_active_member"] is is_active_member
+    assert isinstance(body["rates_config"], dict)
     _assert_no_leak(body)
     _assert_snake_case(body)
 
@@ -1015,8 +1027,59 @@ def test_user_companies_pa_acting_returns_all_including_inactive(client, db, wor
     assert resp.status_code == 200, resp.text
     assert isinstance(resp.json(), list)
     assert _ids(resp.json()) == {str(world.company.id), str(world.suspended.id), str(inactive.id)}
+    by_id = {item["id"]: item for item in resp.json()}
+    _assert_full_with_membership(by_id[str(world.company.id)], role="worker")
+    _assert_full_with_membership(by_id[str(inactive.id)], role="worker", is_active_member=False)
     for item in resp.json():
-        _assert_full(item)
+        assert set(item) == FULL_KEYS | MEMBERSHIP_KEYS, sorted(item)
+
+
+def test_user_companies_pa_full_view_carries_target_membership_not_actor_membership(client, db, world):
+    """role y rates_config son los del usuario objetivo en cada empresa, no los del PA ni de otra empresa."""
+    rates = {"particular": {"base_rate": 33.5, "is_gross": False, "tax_overrides": {}}}
+    target = make_user(db)
+    make_member(db, target, world.company, role="manager", rates_config=rates)
+    make_member(db, target, world.other, role="worker", rates_config={})
+    as_user(client, world.pa, world.company)
+
+    resp = client.get(f"/v2/users/{target.id}/companies")
+
+    assert resp.status_code == 200, resp.text
+    by_id = {item["id"]: item for item in resp.json()}
+    assert set(by_id) == {str(world.company.id), str(world.other.id)}
+    assert by_id[str(world.company.id)]["role"] == "manager"
+    assert by_id[str(world.company.id)]["rates_config"] == rates
+    assert by_id[str(world.other.id)]["role"] == "worker"
+    assert by_id[str(world.other.id)]["rates_config"] == {}
+
+
+def test_user_companies_pa_inactive_member_is_reflected(client, db, world):
+    target = make_user(db)
+    make_member(db, target, world.company, role="worker", is_active=False)
+    as_user(client, world.pa, world.company)
+
+    resp = client.get(f"/v2/users/{target.id}/companies")
+
+    assert resp.status_code == 200, resp.text
+    assert len(resp.json()) == 1
+    _assert_full_with_membership(resp.json()[0], role="worker", is_active_member=False)
+
+
+def test_user_companies_manager_reduced_view_keeps_membership_and_hides_management_fields(client, db, world):
+    """Vista reducida: misma forma que v1 (role, is_active_member y rates_config del objetivo; nada mas de gestion)."""
+    rates = {"particular": {"base_rate": 18.0, "is_gross": True, "tax_overrides": {}}}
+    target = make_user(db)
+    make_member(db, target, world.company, role="worker", rates_config=rates)
+    as_user(client, world.manager, world.company)
+
+    resp = client.get(f"/v2/users/{target.id}/companies")
+
+    assert resp.status_code == 200, resp.text
+    assert len(resp.json()) == 1
+    body = resp.json()[0]
+    _assert_reduced(body, role="worker")
+    assert body["is_active_member"] is True
+    assert body["rates_config"] == rates
 
 
 def test_user_companies_manager_only_reveals_token_company(client, db, world):

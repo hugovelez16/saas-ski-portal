@@ -19,6 +19,24 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.24.0] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: API v2: la vista completa de `GET /v2/users/{user_id}/companies` incluye la membresia del usuario consultado (prerrequisito de PR-21). Sin migracion de base de datos. v1 no cambia.
+
+### Funcionalidades y Mejoras
+
+- **Campos nuevos** en la vista completa (administrador de plataforma actuando): `role`, `is_active_member` y `rates_config` de la membresia del usuario objetivo en cada empresa, planos y en `snake_case`, con la misma forma que v1. Los `settings` fusionan, como en v1, las claves permitidas del miembro.
+- Esquema nuevo `CompanyFullWithMembership` (extiende `CompanyFull`). La vista reducida del manager no cambia y no expone `is_active`, `allowed_rates`, `cost_markup` ni `fiscal_id`.
+- Reglas de acceso sin cambios: administrador de plataforma todas las empresas, manager solo la interseccion con sus membresias activas, worker y "ver como" 403.
+
+### Notas
+
+- Queda pendiente el PR de frontend que migre `getUserCompanies` a `GET /v2/users/{id}/companies`; hasta entonces PR-21 sigue bloqueado.
+
+---
+
 ## [0.23.1] - 2026-10-29
 
 ### Tipo de Cambio SemVer
