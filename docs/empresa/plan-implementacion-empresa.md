@@ -1087,6 +1087,8 @@ class CompanyMemberRepositoryPort(ABC):
 
 - Rama: `chore/retirar-empresa-v1`. Depende de: PR-20 y de que el frontend desplegado ya use v2 en todos ellos. Reviewers: `code-reviewer`, `security-reviewer`. Version: MINOR (cambio incompatible en 0.y.z). Migracion: NO.
 - Condicion previa (la comprueba el agente y la cita en el PR): `grep` del paso final de PR-20 limpio; los tests de `tests/parity/` en verde.
+- Prerrequisito detectado en PR-20 (BLOQUEA este bloque): `GET /users/{id}/companies` sigue en v1 en el frontend (`lib/api/users.ts:getUserCompanies`) porque la vista completa de `GET /v2/users/{id}/companies` no trae `role`, `is_active_member` ni `rates_config` de la membresia, que leen `admin/users/[userId]` y `manager/users/[userId]`. Antes de PR-21: PR de backend que anada esos campos a esa vista en v2 y PR pequeno de frontend que migre `getUserCompanies`. Tambien queda `lib/api/settings.ts` llamando a `GET /companies/{id}/members/me`, que no existe (seccion 2, punto 13).
+- Trabajo posterior a PR-21 (fuera de este plan): migrar las pantallas a los tipos `snake_case` y borrar `lib/api/v2/adapters.ts` [Q-2]; revisar el conflicto de peer `react-day-picker`/React 18 que obliga a `npm ci --legacy-peer-deps` en `frontend/` (CI y Dockerfile).
 
 **PR-21.0 [tester]**: mover los casos de `tests/routers/test_members.py`, `test_company_admin.py`, `test_company_views.py` a `tests/routers/v2/` si no estan ya cubiertos; borrar `tests/parity/` de empresa (la paridad ya no tiene dos lados) conservando `test_calculation_parity.py` mientras `crud.calculate_dynamic_work_log` y el motor de `src/` convivan; los endpoints retirados responden 404.
 
