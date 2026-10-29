@@ -3,6 +3,7 @@ import {
     CompanyCreateV2,
     CompanyFull,
     CompanyFullWithMembers,
+    CompanyFullWithMembership,
     CompanyReduced,
     CompanyUpdateV2,
     ListCompaniesParams,
@@ -44,8 +45,8 @@ export const listMyCompanies = async (): Promise<(CompanyFull | CompanyReduced)[
     return response.data;
 };
 
-/** GET /v2/users/{userId}/companies. */
-export const listUserCompanies = async (userId: string): Promise<(CompanyFull | CompanyReduced)[]> => {
-    const response = await api.get<(CompanyFull | CompanyReduced)[]>(`/v2/users/${userId}/companies`);
+/** GET /v2/users/{userId}/companies. PA: vista completa con la membresia del usuario; manager: vista reducida. */
+export const listUserCompanies = async (userId: string): Promise<(CompanyFullWithMembership | CompanyReduced)[]> => {
+    const response = await api.get<(CompanyFullWithMembership | CompanyReduced)[]>(`/v2/users/${userId}/companies`);
     return response.data;
 };

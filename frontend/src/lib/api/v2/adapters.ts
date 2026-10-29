@@ -8,7 +8,7 @@
  * (la vista reducida no debe ganar `isActive`, `createdAt`, etc.).
  */
 import type { Company, CompanyMember, CompanyUpdatePayload, CompanyWithMembers, UserProfile } from "@/lib/types";
-import type { CompanyCreateV2, CompanyFull, CompanyFullWithMembers, CompanyReduced, CompanyUpdateV2, CompanyMemberV2, MemberOut } from "./types";
+import type { CompanyCreateV2, CompanyFull, CompanyFullWithMembers, CompanyFullWithMembership, CompanyReduced, CompanyUpdateV2, CompanyMemberV2, MemberOut } from "./types";
 
 const snakeToCamel = (key: string): string => key.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
 const camelToSnake = (key: string): string => key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
@@ -32,7 +32,9 @@ export const fromV2Member = (member: CompanyMemberV2 | MemberOut): CompanyMember
     return out as unknown as CompanyMember;
 };
 
-export const fromV2Company = (company: CompanyFull | CompanyFullWithMembers | CompanyReduced): Company => {
+export const fromV2Company = (
+    company: CompanyFull | CompanyFullWithMembers | CompanyFullWithMembership | CompanyReduced
+): Company => {
     const { members, ...rest } = company as CompanyFullWithMembers;
     return mapKeys(rest, snakeToCamel) as unknown as Company;
 };
