@@ -85,7 +85,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 console.error("Failed to fetch user:", error);
             } else {
                 const path = typeof window !== 'undefined' ? window.location.pathname : '';
-                const publicPaths = ['/login', '/forgot-password', '/reset-password'];
+                const publicPaths = ['/', '/login', '/forgot-password', '/reset-password'];
                 if (!publicPaths.includes(path)) {
                     logout();
                 } else {

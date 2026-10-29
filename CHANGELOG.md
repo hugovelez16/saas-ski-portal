@@ -19,6 +19,29 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.24.0] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Landing publica en `/` con funciones, capturas reales, precios de la temporada 2026-2027, preguntas frecuentes y formulario de contacto. Incluye la correccion del desfase horario del Parte Diario del responsable.
+
+### Anadido
+
+- **`src/app/page.tsx`**: la raiz deja de redirigir a `/login` y muestra la landing. "Acceder" lleva a `/login`.
+- **`src/lib/landing-pricing.ts`**: tarifas publicas (cuota base, tramos marginales por monitor, modulos, puesta en marcha y mantenimiento) y calculo de la cuota, con pruebas contra los ejemplos de la propuesta comercial.
+- **`src/components/landing/`**: calculadora de cuota y formulario de contacto. El formulario abre el correo del usuario con los datos rellenados; no hay endpoint en el backend.
+- **`public/landing/`**: capturas de la aplicacion con una escuela de demostracion (datos ficticios).
+
+### Corregido
+
+- **Parte Diario del responsable**: con rangos horarios amplios (por ejemplo 0:00 a 24:00) las clases se dibujaban horas antes de su hora real. Las celdas de la cabecera tenian ancho minimo y las de las filas no, asi que la cabecera se desbordaba y dejaba de coincidir con la rejilla. Ahora ambas comparten `min-w-[50px]`.
+
+### Cambiado
+
+- **`AuthContext`**: `/` se trata como ruta publica, para que un visitante sin sesion no sea expulsado a `/login`.
+
+---
+
 ## [0.23.1] - 2026-10-29
 
 ### Tipo de Cambio SemVer
