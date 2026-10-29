@@ -13,12 +13,14 @@ por la razon correcta y no por un assert posterior.
 No se mockea la logica: se usan el TestClient (`client`), la sesion `db` y las fabricas de tests/factories.py.
 """
 
+import json
 import re
 import uuid
 from types import SimpleNamespace
 
 import models
 import pytest
+from contracts import RATES_CONFIG_MAX_KEYS
 
 from tests.factories import as_user, make_company, make_member, make_user, make_work_log
 
@@ -30,6 +32,8 @@ MSG_NOT_FOUND = "Empresa no encontrada"
 MSG_MANAGED_READONLY = "En empresas gestionadas solo el equipo gestor puede modificar turnos y tarifas"
 VIEW_AS_READONLY_FRAGMENT = "solo lectura"
 ORDER_MESSAGE = "Order updated successfully"
+MSG_SUSPENDED = "Empresa inactiva o suspendida"
+MSG_SWITCH_COMPANY = "Cambia a esta empresa para gestionarla"
 
 OLD_RATES = {"particular": {"base_rate": 20.0, "is_gross": True, "tax_overrides": {}}}
 NEW_RATES = {"particular": {"base_rate": 25.0, "is_gross": True, "tax_overrides": {}}}
@@ -805,3 +809,414 @@ def test_member_responses_never_use_camel_case(client, db):
         resp = client.request(method, url, json=body)
         assert resp.status_code in (200, 201), f"{method} {url}: {resp.status_code} {resp.text}"
         _assert_snake_case(resp.json())
+
+
+# --- Ruta antigua PUT sobre el recurso miembro (PR-21.0: sustituida por status, role, rates y settings) ---
+
+
+def test_put_on_member_resource_is_not_a_v2_route(client, db):
+    s = _scenario(db)
+    as_user(client, s.pa, s.company)
+
+    resp = client.put(f"{BASE}/{s.company.id}/members/{s.worker.id}", json={"role": "manager"})
+
+    assert resp.status_code in (404, 405), resp.text
+    assert _membership(db, s.worker, s.company).role == models.CompanyRole.worker
+
+
+# --- Portados de tests/routers/test_company_contracts.py, test_company_access.py, test_governance.py,
+#     test_auth_security.py y test_tax_calculation.py (retirada de v1 en PR-21) ---
+
+
+def _put_json(client, url, body):
+    """Envia el cuerpo con json.dumps para reproducir NaN (no es JSON estandar, pero Starlette lo acepta)."""
+    return client.put(url, content=json.dumps(body), headers={"content-type": "application/json"})
+
+
+def _member_of_a_and_b(db, role):
+    """Usuario no PA con membresia activa del mismo rol en las empresas A y B."""
+    company_a = make_company(db)
+    company_b = make_company(db)
+    user = make_user(db)
+    make_member(db, user, company_a, role=role)
+    make_member(db, user, company_b, role=role)
+    return user, company_a, company_b
+
+
+def _other_member(db, company, role="worker"):
+    other = make_user(db)
+    make_member(db, other, company, role=role)
+    return other
+
+
+RATE_BASE = {"base_rate": 20.0, "is_gross": True, "tax_overrides": {}}
+
+RATE_VALUE_OUTSIDE_CONTRACT = [
+    pytest.param("base_rate", -1, id="base_rate_negativo"),
+    pytest.param("base_rate", float("nan"), id="base_rate_nan"),
+    pytest.param("base_rate", "abc", id="base_rate_texto"),
+    pytest.param("base_rate", True, id="base_rate_bool"),
+    pytest.param("tax_overrides", {"irpf": -0.1}, id="tax_override_negativo"),
+    pytest.param("tax_overrides", {"irpf": 1.5}, id="tax_override_mayor_que_1"),
+    pytest.param("tax_overrides", {"irpf": float("nan")}, id="tax_override_nan"),
+    pytest.param("tax_overrides", {"irpf": "abc"}, id="tax_override_texto"),
+    pytest.param("extras", {"noche": {"value": -1}}, id="extra_value_negativo"),
+    pytest.param("extras", {"noche": {"value": float("nan")}}, id="extra_value_nan"),
+    pytest.param("extras", {"noche": {"value": "abc"}}, id="extra_value_texto"),
+]
+
+COMPANY_LEVEL_SETTINGS = [
+    pytest.param({"business_logic": {"price_type": "gross"}}, id="business_logic"),
+    pytest.param({"worker_experience": {"input_mode": "bulk"}}, id="worker_experience"),
+    pytest.param({"ui_customization": {"labels": {"worklog": "Turno"}}}, id="ui_customization"),
+    pytest.param({"modules": {"tutorials": True}}, id="modules"),
+    pytest.param({"allowed_rates": ["particular"]}, id="allowed_rates"),
+    pytest.param({"is_managed": True}, id="is_managed"),
+]
+
+
+def test_rates_keep_retired_type_already_in_member_rates(client, db):
+    # "retirado" ya estaba en la tarifa del miembro y ya no existe en la empresa: no se vuelve a validar.
+    company = make_company(db, worklog_definitions={"particular": {"unit": "hours", "label": "Particular"}})
+    worker = make_user(db)
+    make_member(db, worker, company, role="worker", rates_config={"retirado": {**RATE_BASE}})
+    manager = make_user(db)
+    make_member(db, manager, company, role="manager")
+    as_user(client, manager, company)
+    rates = {"retirado": {**RATE_BASE}, "particular": {**RATE_BASE}}
+
+    resp = client.put(f"{BASE}/{company.id}/members/{worker.id}/rates", json={"rates_config": rates})
+
+    assert resp.status_code == 200, resp.text
+
+
+def test_rates_reject_new_undefined_type_even_when_retired_type_is_kept(client, db):
+    company = make_company(db, worklog_definitions={"particular": {"unit": "hours", "label": "Particular"}})
+    worker = make_user(db)
+    make_member(db, worker, company, role="worker", rates_config={"retirado": {**RATE_BASE}})
+    manager = make_user(db)
+    make_member(db, manager, company, role="manager")
+    as_user(client, manager, company)
+    rates = {"retirado": {**RATE_BASE}, "guardia": {**RATE_BASE}}
+
+    resp = client.put(f"{BASE}/{company.id}/members/{worker.id}/rates", json={"rates_config": rates})
+
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"] == "Tipo de turno desconocido"
+
+
+def test_rates_of_unknown_company_return_404_for_pa(client, db):
+    # Equivalente v2 de la rama "empresa no resuelta" de v1: la autorizacion rechaza una empresa inexistente.
+    pa = make_user(db, role="admin")
+    as_user(client, pa)
+
+    resp = client.put(f"{BASE}/{uuid.uuid4()}/members/{uuid.uuid4()}/rates", json={"rates_config": NEW_RATES})
+
+    assert resp.status_code == 404, resp.text
+    assert resp.json()["detail"] == MSG_NOT_FOUND
+
+
+def test_rates_above_key_limit_return_422(client, db):
+    # Limite de claves de contracts.RATES_CONFIG_MAX_KEYS; todos los tipos estan definidos en la empresa.
+    many_types = {f"tipo{i}": {"unit": "hours", "label": f"Tipo {i}"} for i in range(RATES_CONFIG_MAX_KEYS + 1)}
+    company = make_company(db, worklog_definitions=many_types)
+    worker = make_user(db)
+    make_member(db, worker, company, role="worker")
+    manager = make_user(db)
+    make_member(db, manager, company, role="manager")
+    as_user(client, manager, company)
+    rates = {f"tipo{i}": {**RATE_BASE} for i in range(RATES_CONFIG_MAX_KEYS + 1)}
+
+    resp = client.put(f"{BASE}/{company.id}/members/{worker.id}/rates", json={"rates_config": rates})
+
+    assert resp.status_code == 422, resp.text
+
+
+def test_rates_with_few_keys_on_same_company_return_200(client, db):
+    # Control: mismo tipo de empresa y de actor, con pocas claves, debe aceptarse.
+    many_types = {f"tipo{i}": {"unit": "hours", "label": f"Tipo {i}"} for i in range(3)}
+    company = make_company(db, worklog_definitions=many_types)
+    worker = make_user(db)
+    make_member(db, worker, company, role="worker")
+    manager = make_user(db)
+    make_member(db, manager, company, role="manager")
+    as_user(client, manager, company)
+    rates = {f"tipo{i}": {**RATE_BASE} for i in range(3)}
+
+    resp = client.put(f"{BASE}/{company.id}/members/{worker.id}/rates", json={"rates_config": rates})
+
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.parametrize("field, value", RATE_VALUE_OUTSIDE_CONTRACT)
+def test_rates_with_invalid_numeric_value_return_422(client, db, field, value):
+    s = _scenario(db)
+    as_user(client, s.manager, s.company)
+    entry = {**RATE_BASE, field: value}
+
+    resp = _put_json(
+        client,
+        f"{BASE}/{s.company.id}/members/{s.worker.id}/rates",
+        {"rates_config": {"particular": entry}},
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"IRPF": 1.5}, {"IRPF": -0.1}, {"IRPF": "x"}, {"IRPF": True}, {"": 0.1}],
+    ids=["gt1", "neg", "str", "bool", "empty_name"],
+)
+def test_rates_with_invalid_tax_overrides_are_rejected_and_keep_previous(client, db, overrides):
+    s = _scenario(db)
+    as_user(client, s.pa, s.company)
+    before = _membership(db, s.worker, s.company).rates_config
+
+    resp = client.put(
+        f"{BASE}/{s.company.id}/members/{s.worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 20, "tax_overrides": overrides}}},
+    )
+
+    assert resp.status_code == 422, resp.text
+    assert _membership(db, s.worker, s.company).rates_config == before
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [None, {}, {"IRPF": 0.2}, {"IRPF": None}, {"IRPF": 0, "Mutua": 1}],
+    ids=["null", "empty", "value", "none_value", "bounds"],
+)
+def test_rates_with_valid_tax_overrides_are_accepted_and_stored(client, db, overrides):
+    s = _scenario(db)
+    as_user(client, s.pa, s.company)
+
+    resp = client.put(
+        f"{BASE}/{s.company.id}/members/{s.worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 20, "tax_overrides": overrides}}},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert _membership(db, s.worker, s.company).rates_config["particular"]["tax_overrides"] == overrides
+
+
+def test_rates_without_tax_overrides_key_are_accepted(client, db):
+    s = _scenario(db)
+    as_user(client, s.pa, s.company)
+
+    resp = client.put(
+        f"{BASE}/{s.company.id}/members/{s.worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 20}}},
+    )
+
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.parametrize("settings", COMPANY_LEVEL_SETTINGS)
+def test_worker_cannot_store_company_level_keys_in_member_settings(client, db, settings):
+    s = _scenario(db)
+    as_user(client, s.worker, s.company)
+
+    resp = client.put(f"{BASE}/{s.company.id}/members/{s.worker.id}/settings", json={"settings": settings})
+
+    assert resp.status_code == 422, resp.text
+    assert _membership(db, s.worker, s.company).settings in (None, {})
+
+
+def test_member_settings_keep_legacy_dialog_keys_until_o10(client, db):
+    # TEMPORAL (O10): member-settings-dialog.tsx aun guarda estas claves; borrar con el dialogo.
+    s = _scenario(db)
+    as_user(client, s.worker, s.company)
+
+    resp = client.put(
+        f"{BASE}/{s.company.id}/members/{s.worker.id}/settings",
+        json={"settings": {"allow_tutorial": True, "allow_coordination": False}},
+    )
+
+    assert resp.status_code == 200, resp.text
+
+
+def test_worker_can_store_allowed_user_keys_in_member_settings(client, db):
+    s = _scenario(db)
+    as_user(client, s.worker, s.company)
+    allowed = {"notifications": {"email": True}, "ui_preferences": {"compact": True}}
+
+    resp = client.put(f"{BASE}/{s.company.id}/members/{s.worker.id}/settings", json={"settings": allowed})
+
+    assert resp.status_code == 200, resp.text
+    assert _membership(db, s.worker, s.company).settings == allowed
+
+
+def test_worker_member_settings_over_size_limit_returns_422(client, db):
+    s = _scenario(db)
+    as_user(client, s.worker, s.company)
+    huge = {"ui_preferences": {"nota": "x" * 200_000}}
+
+    resp = client.put(f"{BASE}/{s.company.id}/members/{s.worker.id}/settings", json={"settings": huge})
+
+    assert resp.status_code == 422, resp.text
+
+
+def test_manager_cannot_change_member_role_and_role_is_kept(client, db):
+    s = _scenario(db)
+    as_user(client, s.manager, s.company)
+
+    resp = client.put(f"{BASE}/{s.company.id}/members/{s.worker.id}/role", json={"role": "manager"})
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == MSG_FORBIDDEN
+    assert _membership(db, s.worker, s.company).role == models.CompanyRole.worker
+
+
+@pytest.mark.parametrize("role", ["manager", "worker"])
+def test_member_of_a_and_b_with_token_b_cannot_change_role_in_a(client, db, role):
+    # Para un no PA el cambio de rol responde 403 generico (anti-enumeracion), no el mensaje de cambio de empresa.
+    user, company_a, company_b = _member_of_a_and_b(db, role)
+    other = _other_member(db, company_a)
+    as_user(client, user, company_b, claims={"role": role})
+
+    resp = client.put(f"{BASE}/{company_a.id}/members/{other.id}/role", json={"role": "manager"})
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == MSG_FORBIDDEN
+    assert _membership(db, other, company_a).role == models.CompanyRole.worker
+
+
+def test_list_members_is_allowed_for_pa_view_as_manager(client, db):
+    s = _scenario(db)
+    as_user(client, s.pa, s.company, claims={"view_as": "manager"})
+
+    resp = client.get(_members_url(s.company))
+
+    assert resp.status_code == 200, resp.text
+    assert {member["user_id"] for member in resp.json()} == {str(s.manager.id), str(s.worker.id)}
+
+
+def test_view_as_claim_is_ignored_for_non_pa_manager(client, db):
+    s = _scenario(db)
+    as_user(client, s.manager, s.company, claims={"role": "manager", "view_as": "worker"})
+
+    resp = client.get(_members_url(s.company))
+
+    assert resp.status_code == 200, resp.text
+
+
+def test_role_claim_manager_is_ignored_when_membership_is_worker(client, db):
+    s = _scenario(db)
+    as_user(client, s.worker, s.company, claims={"role": "manager"})
+
+    resp = client.get(_members_url(s.company))
+
+    assert resp.status_code == 403, resp.text
+
+
+def test_role_claim_worker_is_ignored_when_membership_is_manager(client, db):
+    s = _scenario(db)
+    as_user(client, s.manager, s.company, claims={"role": "worker"})
+
+    resp = client.get(_members_url(s.company))
+
+    assert resp.status_code == 200, resp.text
+
+
+def test_manager_token_for_other_company_cannot_list_members_of_company_a(client, db):
+    company_a = make_company(db)
+    company_b = make_company(db)
+    manager = make_user(db)
+    make_member(db, manager, company_a, role="manager")
+    make_member(db, manager, company_b, role="manager")
+    as_user(client, manager, company_b, claims={"role": "manager"})
+
+    resp = client.get(_members_url(company_a))
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == MSG_SWITCH_COMPANY
+
+
+def test_manager_of_a_cannot_list_rates_of_b(client, db):
+    company_a = make_company(db)
+    company_b = make_company(db)
+    manager = make_user(db)
+    make_member(db, manager, company_a, role="manager")
+    as_user(client, manager, company_a, claims={"role": "manager"})
+
+    resp = client.get(f"{BASE}/{company_b.id}/rates")
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == MSG_NO_ACCESS
+
+
+def test_role_downgrade_takes_effect_on_next_request_of_manager(client, db):
+    s = _scenario(db)
+    as_user(client, s.manager, s.company, claims={"role": "manager"})
+    assert client.get(_members_url(s.company)).status_code == 200
+
+    as_user(client, s.pa, s.company)
+    resp_change = client.put(f"{BASE}/{s.company.id}/members/{s.manager.id}/role", json={"role": "worker"})
+    assert resp_change.status_code == 200, resp_change.text
+
+    as_user(client, s.manager, s.company, claims={"role": "manager"})
+    assert client.get(_members_url(s.company)).status_code == 403
+
+
+def test_membership_deactivation_takes_effect_on_next_request_of_manager(client, db):
+    s = _scenario(db)
+    as_user(client, s.manager, s.company, claims={"role": "manager"})
+    assert client.get(_members_url(s.company)).status_code == 200
+
+    as_user(client, s.pa, s.company)
+    resp_change = client.put(f"{BASE}/{s.company.id}/members/{s.manager.id}/status", json={"is_active": False})
+    assert resp_change.status_code == 200, resp_change.text
+
+    as_user(client, s.manager, s.company, claims={"role": "manager"})
+    resp = client.get(_members_url(s.company))
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == MSG_NO_ACCESS
+
+
+def test_company_suspension_takes_effect_on_next_request_of_manager(client, db):
+    s = _scenario(db)
+    as_user(client, s.manager, s.company, claims={"role": "manager"})
+    assert client.get(_members_url(s.company)).status_code == 200
+
+    as_user(client, s.pa, s.company)
+    resp_change = client.put(f"{BASE}/{s.company.id}", json={"is_active": False})
+    assert resp_change.status_code == 200, resp_change.text
+
+    as_user(client, s.manager, s.company, claims={"role": "manager"})
+    resp = client.get(_members_url(s.company))
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == MSG_SUSPENDED
+
+
+def test_redis_down_does_not_block_legit_manager(client, db, fake_redis):
+    s = _scenario(db)
+    fake_redis.raise_errors = True
+    as_user(client, s.manager, s.company)
+
+    resp = client.get(_members_url(s.company))
+
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.parametrize(
+    "method, path_template, kwargs",
+    [
+        ("PUT", f"{BASE}/{{cid}}/members/{{uid}}/status", {"json": {"is_active": False}}),
+        ("GET", f"{BASE}/{{cid}}", {}),
+        ("GET", f"{BASE}/{{cid}}/rates", {}),
+        ("PUT", f"{BASE}/{{cid}}/members/{{uid}}/rates", {"json": {"rates_config": {}}}),
+    ],
+)
+def test_2fa_pending_token_rejected_on_company_endpoints(client, db, method, path_template, kwargs):
+    user = make_user(db)
+    company = make_company(db)
+    make_member(db, user, company, role="manager")
+    as_user(client, user, company, scope="2fa_pending")
+
+    resp = client.request(method, path_template.format(cid=company.id, uid=user.id), **kwargs)
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json().get("detail") == "2FA Verification Required"

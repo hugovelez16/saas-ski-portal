@@ -117,7 +117,7 @@ class CompanyFull(V2Model):
 
 
 class CompanyFullWithMembership(CompanyFull):
-    """Vista completa de `/users/{id}/companies`: la empresa mas la membresia del usuario consultado (paridad con v1)."""
+    """Vista completa de `/users/{id}/companies`: la empresa mas la membresia del usuario consultado."""
 
     role: str | None = None
     is_active_member: bool
@@ -221,7 +221,7 @@ def company_full(company) -> CompanyFull:
 def company_full_with_membership(view: CompanyView) -> CompanyFullWithMembership:
     member = view.member
     fields = _full_fields(view.company)
-    # Como v1 (crud.company_view_dict): a los settings de empresa se suman las claves permitidas del miembro.
+    # A los settings de empresa se suman las claves permitidas del miembro.
     raw_member = member.settings if member is not None and isinstance(member.settings, dict) else {}
     fields["settings"] = {
         **fields["settings"],

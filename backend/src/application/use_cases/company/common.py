@@ -8,7 +8,7 @@ from domain.entities.company import Company
 from domain.entities.company_member import CompanyMember
 from domain.entities.user import User
 
-# Mensajes identicos a los de v1 (crud.py, access_policy.py).
+# Mensajes compartidos por las reglas de acceso a la empresa.
 MSG_COMPANY_NOT_FOUND = "Empresa no encontrada"
 MSG_NO_ACCESS = "No tienes acceso a esta empresa"
 MSG_NO_CHANGES = "No hay cambios que guardar"
@@ -41,7 +41,7 @@ def company_snapshot(company: Company) -> Dict[str, Any]:
 
 
 def member_snapshot(member: CompanyMember) -> Dict[str, Any]:
-    """Valores de auditoria de una membresia (mismo formato que `crud._member_snapshot`)."""
+    """Valores de auditoria de una membresia: estado activo y rol."""
     return {"is_active": bool(member.is_active), "role": member.role.value}
 
 

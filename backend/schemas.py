@@ -8,18 +8,16 @@ It ensures that data sent to and received from the API conforms to the expected 
 import json
 from datetime import date as dt_date
 from datetime import datetime, time, timedelta
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from contracts import (
     MEMBER_SETTINGS_ALLOWED_KEYS,
     CompanySettings,
-    RatesConfig,
     TaxConfig,
     WorklogDefinitions,
-    validate_member_settings,
 )
-from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 def to_camel(string: str) -> str:
@@ -249,10 +247,6 @@ class UserCompanyRateResponse(UserCompanyRate):
     user: UserResponse | None = None
 
 
-class UpdateCompanyMembersOrder(CamelModel):
-    user_ids: list[UUID] = Field(..., max_length=500)
-
-
 COMPANY_NAME_MAX = 120
 
 
@@ -297,46 +291,10 @@ class CompanyBase(CamelModel):
         return normalize_company_name(v)
 
 
-class CompanyCreate(CompanyBase):
-    @field_validator("settings", "worklog_definitions", mode="before")
-    @classmethod
-    def _limit_json(cls, v: Any) -> Any:
-        return limit_company_json(v)
-
-
-class CompanyUpdate(CamelModel):
-    name: str | None = None
-    tax_config: TaxConfig | None = Field(None, alias="taxConfig")
-    worklog_definitions: WorklogDefinitions | None = Field(None, alias="worklogDefinitions")
-    is_active: bool | None = Field(None, alias="isActive")
-    is_managed: bool | None = Field(None, alias="isManaged")
-    settings: CompanySettings | None = None
-    # Solo para auditoria (motivo de suspension, etc.). No se persiste en la empresa.
-    reason: str | None = Field(None, max_length=500)
-
-    @field_validator("name")
-    @classmethod
-    def _validate_name(cls, v: str | None) -> str:
-        return normalize_company_name(v)
-
-    @field_validator("settings", "worklog_definitions", mode="before")
-    @classmethod
-    def _limit_json(cls, v: Any) -> Any:
-        return limit_company_json(v)
-
-    @field_validator("is_active", "is_managed")
-    @classmethod
-    def _reject_null_flag(cls, v: bool | None) -> bool | None:
-        # Evita un 500 por violar NOT NULL: si el campo viene en la peticion debe ser true/false.
-        if v is None:
-            raise ValueError("Debe ser true o false")
-        return v
-
-
 def read_company_settings(raw: Any) -> dict[str, Any]:
     """
     Settings para respuestas de empresa: lectura tolerante con defaults aplicados.
-    Las claves de miembro (lista blanca) se conservan porque `crud.get_user_companies` las fusiona aqui.
+    Las claves de miembro (lista blanca) se conservan porque la vista de empresa de la API v2 las fusiona aqui.
     """
     source = raw if isinstance(raw, dict) else {}
     member_part = {key: value for key, value in source.items() if key in MEMBER_SETTINGS_ALLOWED_KEYS}
@@ -367,87 +325,6 @@ class CompanyResponse(Company):
     is_active_member: bool | None = Field(True, alias="isActiveMember")
     role: str | None = None
     rates_config: dict[str, Any] | None = Field(None, alias="ratesConfig")
-
-
-class CompanyFullResponse(CompanyResponse):
-    """Vista completa de empresa (PR-13): solo platform admin actuando."""
-
-
-class CompanyReducedResponse(CamelModel):
-    """Vista reducida de empresa (PR-13): worker, manager y platform admin en 'ver como'.
-
-    `settings` es el resultado de `CompanySettings.ui_view()` mas las claves del propio miembro.
-    No expone `is_active`, `allowed_rates` ni `cost_markup`.
-    """
-
-    id: UUID
-    name: str
-    is_managed: bool
-    role: str | None = None
-    is_active_member: bool
-    rates_config: dict[str, Any] | None = None
-    worklog_definitions: dict[str, Any] = {}
-    tax_config: dict[str, float] = {}
-    settings: dict[str, Any]
-
-
-def default_role(v: Any) -> str:
-    return v or "worker"
-
-
-def default_is_active(v: Any) -> bool:
-    return v if v is not None else True
-
-
-class CompanyMemberBase(CamelModel):
-    role: Annotated[str, BeforeValidator(default_role)] = "worker"
-    is_active: Annotated[bool, BeforeValidator(default_is_active)] = True
-    rates_config: dict[str, Any] | None = None
-    settings: dict[str, Any] | None = None
-
-
-class CompanyMemberResponse(CompanyMemberBase):
-    user_id: UUID
-    company_id: UUID
-    joined_at: datetime
-    user: UserResponse | None = None
-
-
-class AddMemberRequest(CamelModel):
-    email: EmailStr
-
-
-class MemberRoleUpdate(CamelModel):
-    role: Literal["worker", "manager"]
-
-
-class MemberRatesUpdate(CamelModel):
-    rates_config: RatesConfig
-
-
-class MemberSettingsUpdate(CamelModel):
-    settings: dict[str, Any]
-
-    @field_validator("settings")
-    @classmethod
-    def _validate_settings(cls, value: dict[str, Any]) -> dict[str, Any]:
-        return validate_member_settings(value)
-
-
-class MemberDeleteResponse(CamelModel):
-    deleted: bool
-    deactivated: bool
-    reason: str | None = None
-
-
-class CompanyWithMembers(CompanyResponse):
-    members: list[CompanyMemberResponse] = []
-
-
-class CompanyReducedWithMembers(CompanyReducedResponse):
-    """Vista reducida con miembros (`GET /companies/detailed` para el manager)."""
-
-    members: list[CompanyMemberResponse] = []
 
 
 class Token(CamelModel):

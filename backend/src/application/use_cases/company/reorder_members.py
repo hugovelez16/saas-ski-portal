@@ -10,5 +10,5 @@ class ReorderMembersUseCase:
         self.member_repo = member_repo
 
     async def execute(self, *, company_id: str, user_ids: List[str]) -> None:
-        """`sort_order` pasa a ser la posicion en `user_ids`. Los ids que no son miembros se ignoran, como en v1."""
+        """`sort_order` pasa a ser la posicion en `user_ids`. Los ids que no son miembros se ignoran."""
         await self.member_repo.reorder(company_id, user_ids)
