@@ -164,7 +164,7 @@ class MemberOrderIn(V2Model):
 
 
 class CompanyReduced(V2Model):
-    """Vista reducida: no expone is_active, allowed_rates, cost_markup ni fiscal_id."""
+    """Vista reducida: no expone is_active, allowed_rates ni cost_markup."""
 
     id: UUID
     name: str

@@ -2,7 +2,7 @@
 Pruebas HTTP de las vistas reducida y completa de empresa en v1 (PR-13, P7, P8).
 
 Vista reducida (worker, manager y PA en "ver como"): conjunto EXACTO de claves, sin `isActive`,
-`createdAt`/`updatedAt`, `settings.business_logic.costMarkup`, `allowedRates` ni `fiscalId`.
+`createdAt`/`updatedAt`, `settings.business_logic.costMarkup` ni `allowedRates`.
 Vista completa: solo el platform admin actuando.
 """
 
@@ -27,7 +27,6 @@ REDUCED_KEYS = {
     "settings",
 }
 REDUCED_SETTINGS_KEYS = {"worker_experience", "ui_customization", "modules", "business_logic"}
-FISCAL_ID = "B12345678"
 RATES = {"particular": {"base_rate": 31.5, "is_gross": False, "tax_overrides": {}}}
 TAX_CONFIG = {"social_security": 0.0648}
 DEFINITIONS = {"particular": {"unit": "hours", "label": "Particular", "fields": []}}
@@ -37,14 +36,12 @@ COMPANY_SETTINGS = {
     "modules": {"daily_report": True},
     "allowed_rates": ["particular"],
 }
-FORBIDDEN_FRAGMENTS = ("costMarkup", "cost_markup", "allowedRates", "allowed_rates", "fiscal", FISCAL_ID)
+FORBIDDEN_FRAGMENTS = ("costMarkup", "cost_markup", "allowedRates", "allowed_rates")
 
 
 @pytest.fixture()
 def world(db):
     company = make_company(db, tax_config=TAX_CONFIG, worklog_definitions=DEFINITIONS, settings=COMPANY_SETTINGS)
-    company.fiscal_id = FISCAL_ID
-    db.commit()
     pa = make_user(db, role="admin")
     manager = make_user(db)
     worker = make_user(db)
@@ -118,7 +115,6 @@ def test_me_companies_pa_acting_gets_full_view(client, world):
     assert entry["isActive"] is True
     assert entry["isManaged"] is False
     assert entry["settings"]["allowed_rates"] == ["particular"]
-    assert "fiscalId" not in entry
 
 
 def test_me_companies_pa_view_as_gets_reduced_view(client, db, world):
@@ -145,7 +141,6 @@ def test_company_detail_pa_gets_full_view(client, world):
     body = resp.json()
     assert body["isActive"] is True
     assert body["settings"]["allowed_rates"] == ["particular"]
-    assert "fiscalId" not in body
 
 
 @pytest.mark.parametrize("who, claims, role", [("worker", WORKER_CLAIMS, "worker"), ("manager", MANAGER_CLAIMS, "manager")])

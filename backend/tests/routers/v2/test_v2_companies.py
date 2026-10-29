@@ -72,7 +72,7 @@ MEMBER_KEYS = {
     "user",
 }
 MEMBER_USER_KEYS = {"id", "email", "first_name", "last_name", "is_active"}
-FORBIDDEN_ANYWHERE = ("fiscal_id", "cost_markup")
+FORBIDDEN_ANYWHERE = ("cost_markup",)
 
 # Actores de la matriz. PA en "ver como" se modela con el claim view_as sobre el token del PA.
 NON_PA_ACTORS = ["manager", "worker", "pa_view_as_worker", "pa_view_as_manager"]

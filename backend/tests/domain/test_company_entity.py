@@ -1,8 +1,7 @@
 """
 Contrato de las entidades de empresa tras PR-16.2 (alineacion del dominio con la BD).
 
-- Company: is_active (default True), is_managed (default False), updated_at (default None)
-  y sin fiscal_id (retirado en PR-06).
+- Company: is_active (default True), is_managed (default False), updated_at (default None).
 - CompanyMember: settings (dict por defecto, no compartido entre instancias) y updated_at.
 
 Hasta implementar PR-16.2 estos tests fallan con AttributeError/TypeError sobre los campos nuevos.
@@ -42,11 +41,6 @@ def test_company_declares_updated_at_defaulting_to_none():
 
     assert "updated_at" in _field_names(Company)
     assert company.updated_at is None
-
-
-def test_company_has_no_fiscal_id():
-    assert "fiscal_id" not in _field_names(Company)
-    assert not hasattr(Company(id="c1", name="Escuela"), "fiscal_id")
 
 
 def test_company_member_settings_defaults_to_empty_dict():

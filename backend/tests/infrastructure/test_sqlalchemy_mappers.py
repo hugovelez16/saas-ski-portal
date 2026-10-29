@@ -2,7 +2,6 @@
 Pruebas para mapeadores de persistencia SQLAlchemy.
 """
 
-import dataclasses
 from datetime import datetime
 from decimal import Decimal
 
@@ -69,25 +68,6 @@ def test_company_mapper_bidirectional():
     assert domain_comp.is_active is False
     assert domain_comp.is_managed is True
     assert domain_comp.updated_at == datetime(2026, 3, 1, 10, 30)
-
-
-def test_company_domain_has_no_fiscal_id():
-    """fiscal_id se retiro del dominio en PR-06; el mapper no debe exponerlo."""
-    orm_comp = models.Company(
-        id="comp-9",
-        name="Sin NIF",
-        tax_config={},
-        worklog_definitions={},
-        settings={},
-        is_active=True,
-        is_managed=False,
-        fiscal_id="FISCAL-TEST",
-    )
-
-    domain_comp = SqlAlchemyCompanyMapper.to_domain(orm_comp)
-
-    assert "fiscal_id" not in {f.name for f in dataclasses.fields(Company)}
-    assert not hasattr(domain_comp, "fiscal_id")
 
 
 def test_company_member_mapper_maps_settings_and_updated_at():

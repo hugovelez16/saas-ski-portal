@@ -370,14 +370,14 @@ class CompanyResponse(Company):
 
 
 class CompanyFullResponse(CompanyResponse):
-    """Vista completa de empresa (PR-13): solo platform admin actuando. Nunca incluye `fiscal_id`."""
+    """Vista completa de empresa (PR-13): solo platform admin actuando."""
 
 
 class CompanyReducedResponse(CamelModel):
     """Vista reducida de empresa (PR-13): worker, manager y platform admin en 'ver como'.
 
     `settings` es el resultado de `CompanySettings.ui_view()` mas las claves del propio miembro.
-    No expone `is_active`, `allowed_rates`, `cost_markup` ni `fiscal_id`.
+    No expone `is_active`, `allowed_rates` ni `cost_markup`.
     """
 
     id: UUID

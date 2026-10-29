@@ -78,7 +78,6 @@ class Company(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(120), nullable=False)
-    fiscal_id = Column(String)  # Obsoleto: se borra en PR-23
 
     # SaaS Evolution: Dynamic tax/deduction configuration
     tax_config = Column(JSONB, nullable=True)
