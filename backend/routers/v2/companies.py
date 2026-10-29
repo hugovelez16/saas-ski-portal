@@ -89,11 +89,11 @@ async def read_user_companies(
     company_repo=Depends(v2_deps.get_company_repository),
     member_repo=Depends(v2_deps.get_member_repository),
 ):
-    """PA actuando: todas las empresas del usuario (vista completa). Manager: solo la del token (vista reducida)."""
+    """PA actuando: todas las empresas del usuario (vista completa con su membresia). Manager: solo la del token (vista reducida)."""
     use_case = ListUserCompaniesUseCase(company_repo, member_repo)
     if deps.acting_platform_admin(current_user):
         views = await use_case.execute(user_id=str(user_id), include_inactive=True)
-        return [schemas.company_full(view.company).model_dump(mode="json") for view in views]
+        return [schemas.company_full_with_membership(view).model_dump(mode="json") for view in views]
     allowed = deps.manager_company_ids(db, current_user)
     if not allowed:
         raise PolicyError(403, access_policy.MSG_FORBIDDEN)
