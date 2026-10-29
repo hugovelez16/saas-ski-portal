@@ -3,22 +3,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ContactForm, CONTACT_EMAIL } from "@/components/landing/contact-form";
+import { ContactForm } from "@/components/landing/contact-form";
+import { MonitorSection } from "@/components/landing/monitor-section";
+import { PlanCards } from "@/components/landing/plan-cards";
 import { PricingCalculator } from "@/components/landing/pricing-calculator";
-import {
-    BASE_FEE,
-    EXTRA_MANAGER_FEE,
-    MODULE_FEES,
-    MONITOR_TIERS,
-    OFF_SEASON_FEE,
-    SETUP_FEE,
-    formatEuros,
-} from "@/lib/landing-pricing";
+import { SessionRedirect } from "@/components/landing/session-redirect";
+import { EXTRAS, OFF_SEASON_FEE, SETUP_FEE, formatEurosCompact } from "@/lib/landing-pricing";
 
 export const metadata: Metadata = {
     title: "Vesotel Jornadas: gestión de clases y monitores para escuelas de esquí",
-    description:
-        "Asigna las clases a tus monitores y deja que las horas y los importes se calculen solos. Calendario, parte diario y liquidación para escuelas de esquí.",
+    description: "Gestión de clases, horas e importes para escuelas de esquí de España. Planes desde 129 € al mes, sin permanencia.",
 };
 
 const container = "mx-auto max-w-[1200px] px-6";
@@ -28,10 +22,10 @@ const lead = "text-[17px] leading-relaxed text-slate-500";
 const screenshotFrame = "overflow-hidden rounded-[14px] border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.10)]";
 
 const comparison = [
-    ["Asignar una clase", "Anotarla y avisar al monitor", "Se registra en la app, una a una o en bloque"],
-    ["Aviso al monitor", "Manual, uno a uno", "La ve en su calendario al momento"],
+    ["Asignar una clase", "Anotarla y avisar al monitor", "Se registra en la app, una a una o para varios monitores a la vez"],
+    ["Consulta del monitor", "Manual, uno a uno", "La ve en cuanto entra en la app"],
     ["Total por monitor", "Sumar horas y hacer cuentas al cierre", "Calculado solo, por monitor y por periodo"],
-    ["Suplementos y retenciones", "Se calculan a mano", "Se configuran una vez y se aplican con su desglose"],
+    ["Suplementos y retenciones", "Se calculan a mano", "Se configuran y se aplican con su desglose: Seguridad Social, IRPF y otros"],
 ];
 
 const steps = [
@@ -53,19 +47,23 @@ const faqs = [
     },
     {
         q: "¿Puedo cambiar una tarifa a mitad de temporada?",
-        a: "Sí. Cada clase guarda el desglose con el que se calculó, así que el cambio solo afecta a las clases que se registren a partir de ese momento.",
+        a: "Sí. Las clases ya registradas conservan el cálculo con el que se guardaron. Si editas una clase, se recalcula con las tarifas vigentes.",
     },
     {
         q: "¿Qué pasa con mis datos fuera de temporada?",
-        a: `Puedes mantener la escuela lista para la siguiente temporada por ${OFF_SEASON_FEE} € al mes de mayo a noviembre, o darla de baja sin coste y volver más adelante con una nueva puesta en marcha. La exportación de tus datos es siempre gratuita.`,
+        a: `Puedes mantener la escuela de mayo a noviembre por ${OFF_SEASON_FEE} € al mes. Si la escuela se mantiene hasta la temporada siguiente, no paga nueva puesta en marcha y conserva todos sus datos. Si no la mantienes, al volver se hace una nueva puesta en marcha.`,
+    },
+    {
+        q: "¿Qué es la puesta en marcha?",
+        a: `Es un pago único de ${SETUP_FEE} € la primera temporada. Incluye la reunión inicial, el alta de la escuela, del responsable y de los monitores, la configuración de tipos de clase, tarifas, suplementos y retenciones, y una formación breve al responsable.`,
     },
     {
         q: "¿Qué pasa si la aplicación falla en plena temporada?",
-        a: "El servicio incluye copias de seguridad periódicas de la base de datos, guardadas fuera del servidor donde funciona la aplicación.",
+        a: "El servicio incluye copias de seguridad diarias de la base de datos.",
     },
     {
         q: "¿Hay permanencia?",
-        a: "No. La escuela puede cancelar cuando quiera.",
+        a: "No. La escuela puede cancelar cuando quiera. Los importes publicados no incluyen IVA.",
     },
 ];
 
@@ -93,25 +91,34 @@ function Screenshot({ src, alt, priority = false }: { src: string; alt: string; 
 export default function LandingPage() {
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900">
+            <SessionRedirect />
             {/* Cabecera */}
-            <header className="border-b border-slate-200 bg-white">
-                <div className={`${container} flex flex-wrap items-center justify-between gap-3 py-3.5`}>
+            <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+                <div className={`${container} flex items-center justify-between gap-3 py-3.5`}>
                     <Link href="/" className="flex items-center gap-3">
                         <Image src="/logo.webp" alt="Vesotel" width={44} height={40} className="h-auto w-11" />
                         <span className="flex flex-col leading-tight">
                             <span className="text-[19px] font-extrabold">Vesotel</span>
-                            <span className="text-[13px] text-slate-500">Jornadas</span>
+                            <span className="hidden text-[13px] text-slate-500 sm:inline">Jornadas</span>
                         </span>
                     </Link>
-                    <nav aria-label="Principal" className="flex flex-wrap items-center gap-1 text-[15px] font-medium">
-                        <a href="#funciones" className="p-3 text-slate-600 hover:text-slate-900">Funciones</a>
-                        <a href="#precios" className="p-3 text-slate-600 hover:text-slate-900">Precios</a>
-                        <a href="#preguntas" className="p-3 text-slate-600 hover:text-slate-900">Preguntas</a>
-                        <Link href="/login" className="rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 font-semibold hover:bg-slate-50">
+                    <nav aria-label="Principal" className="flex items-center gap-2 text-[15px] font-medium">
+                        <div className="hidden items-center gap-1 md:flex">
+                            <a href="#funciones" className="p-3 text-slate-600 hover:text-slate-900">Funciones</a>
+                            <a href="#precios" className="p-3 text-slate-600 hover:text-slate-900">Planes</a>
+                            <a href="#preguntas" className="p-3 text-slate-600 hover:text-slate-900">Preguntas</a>
+                        </div>
+                        <Link
+                            href="/login"
+                            className="inline-flex min-h-11 items-center whitespace-nowrap rounded-[10px] border border-slate-200 bg-white px-4 font-semibold hover:bg-slate-50"
+                        >
                             Acceder
                         </Link>
-                        <a href="#contacto" className="rounded-[10px] bg-slate-900 px-4 py-3 font-semibold text-white hover:bg-slate-800">
-                            Solicitar información
+                        <a
+                            href="#contacto"
+                            className="inline-flex min-h-11 items-center whitespace-nowrap rounded-[10px] bg-slate-900 px-4 font-semibold text-white hover:bg-slate-800"
+                        >
+                            Pide una demo
                         </a>
                     </nav>
                 </div>
@@ -122,21 +129,21 @@ export default function LandingPage() {
                 <section className="pb-14 pt-16 sm:pt-[72px]">
                     <div className={`${container} flex flex-col items-center gap-7 text-center`}>
                         <span className="rounded-full border border-indigo-100 bg-indigo-50 px-3.5 py-1.5 text-[13px] font-semibold text-indigo-600">
-                            Para escuelas de esquí · Temporada 2026-2027
+                            Para escuelas de esquí de España · Temporada 2026-2027
                         </span>
                         <h1 className="max-w-[900px] text-[clamp(36px,5vw,60px)] font-extrabold leading-[1.05] tracking-[-0.03em]">
                             Asigna las clases. Las horas y los importes se calculan solos.
                         </h1>
                         <p className="max-w-[700px] text-[19px] leading-relaxed text-slate-500">
-                            El responsable reparte las clases desde un panel, cada monitor las ve en su móvil y a final de mes el resumen por
-                            monitor ya está hecho. Sin hojas de cálculo ni avisos uno a uno.
+                            El responsable reparte las clases desde un panel, cada monitor las consulta desde el navegador de su móvil y a final de
+                            mes el resumen por monitor ya está hecho. Sin hojas de cálculo.
                         </p>
                         <div className="flex flex-wrap justify-center gap-3">
                             <a href="#contacto" className="rounded-[10px] bg-slate-900 px-6 py-3.5 font-semibold text-white hover:bg-slate-800">
-                                Solicitar información
+                                Pide una demo de 20 min
                             </a>
                             <a href="#precios" className="rounded-[10px] border border-slate-200 bg-white px-6 py-3.5 font-semibold hover:bg-slate-50">
-                                Ver precios
+                                Ver planes
                             </a>
                         </div>
                         <div className="mt-6 w-full max-w-[1100px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.14)]">
@@ -161,10 +168,10 @@ export default function LandingPage() {
                 <section className="py-14">
                     <div className={`${container} flex flex-col gap-7`}>
                         <div className="flex max-w-[720px] flex-col gap-2.5">
-                            <h2 className={sectionTitle}>Entre 4 y 5 horas al mes, solo en contar horas</h2>
+                            <h2 className={sectionTitle}>Control y trazabilidad de cada importe</h2>
                             <p className={lead}>
-                                Es lo que dedica de media un responsable a sumar las horas de cada monitor y calcular lo que le corresponde, sin contar
-                                los cambios de cada día.
+                                Cada clase guarda el desglose con el que se calculó: tarifa, suplementos y retenciones. Al cerrar el mes, los totales
+                                salen por monitor y por tipo de clase, sin hojas de cálculo.
                             </p>
                         </div>
                         <div className="overflow-x-auto rounded-[14px] border border-slate-200 bg-white">
@@ -191,20 +198,17 @@ export default function LandingPage() {
                 </section>
 
                 {/* Responsable: calendario */}
-                <section id="funciones" className="py-14">
+                <section id="funciones" className="scroll-mt-24 py-14">
                     <div className={`${container} flex flex-wrap items-center gap-12`}>
                         <div className="flex min-w-0 flex-[1_1_360px] flex-col gap-4">
                             <span className={eyebrow}>Para el responsable</span>
                             <h2 className={sectionTitle}>Toda la escuela en un calendario</h2>
-                            <p className={lead}>
-                                Vista de mes, semana, día y agenda con las clases de cada monitor. Mueves una clase arrastrándola y el monitor lo ve al
-                                instante.
-                            </p>
+                            <p className={lead}>Vista de mes, semana, día y agenda con las clases de cada monitor, y filtro por monitor.</p>
                             <CheckList
                                 items={[
-                                    "Alta individual o masiva de clases, y edición en cualquier momento",
+                                    "Alta individual o para varios monitores a la vez, y edición en cualquier momento",
                                     "Tipos de clase a medida: por horas, por días o importe fijo",
-                                    "Equipo: alta, baja y orden de la plantilla",
+                                    "Equipo: activa, desactiva y ordena la plantilla (el alta inicial la hacemos nosotros en la puesta en marcha)",
                                 ]}
                             />
                         </div>
@@ -227,7 +231,13 @@ export default function LandingPage() {
                                 </p>
                             </div>
                             <div className="flex-[0_1_380px]">
-                                <CheckList items={["Franja horaria ajustable a la jornada de la escuela", "Pasa de un día a otro con las flechas"]} />
+                                <CheckList
+                                    items={[
+                                        "Franja horaria ajustable a la jornada de la escuela",
+                                        "Pasa de un día a otro con las flechas",
+                                        "Incluido en todos los planes",
+                                    ]}
+                                />
                             </div>
                         </div>
                         <Screenshot src="/landing/parte-diario.webp" alt="Parte diario del responsable con las clases de cada monitor por horas" />
@@ -243,13 +253,13 @@ export default function LandingPage() {
                         <div className="flex min-w-0 flex-[1_1_360px] flex-col gap-4">
                             <span className={eyebrow}>Liquidación</span>
                             <h2 className={sectionTitle}>El cierre de mes, ya calculado</h2>
-                            <p className={lead}>Totales por monitor, por tipo de clase y por periodo, en bruto y en neto. Se exporta a CSV para la gestoría.</p>
+                            <p className={lead}>Totales por monitor, por tipo de clase y por periodo, en bruto y en neto. Los listados se exportan a CSV para la gestoría.</p>
                             <CheckList
                                 items={[
                                     "Tarifa propia por monitor y tipo de clase, en bruto o en neto",
                                     "Suplementos como nocturnidad u otros pluses",
                                     "Seguridad Social, IRPF y otras retenciones con su desglose",
-                                    "Cada clase guarda su cálculo: cambiar una tarifa no altera lo ya registrado",
+                                    "Las clases ya registradas conservan su cálculo; si editas una clase, se recalcula con las tarifas vigentes",
                                 ]}
                             />
                         </div>
@@ -262,16 +272,16 @@ export default function LandingPage() {
                         <div className="flex flex-wrap items-end gap-12 overflow-hidden rounded-[20px] bg-slate-900 px-6 pt-12 text-white sm:px-10">
                             <div className="flex min-w-0 flex-[1_1_360px] flex-col gap-4 pb-12">
                                 <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-indigo-300">Para los monitores</span>
-                                <h2 className={sectionTitle}>Sus clases y lo que lleva ganado, en el móvil</h2>
+                                <h2 className={sectionTitle}>Sus clases y lo que lleva generado, desde el navegador del móvil</h2>
                                 <p className="text-[17px] leading-relaxed text-slate-300">
-                                    Cada monitor entra con su usuario y solo ve lo suyo. No tiene que instalar nada ni esperar a que le avisen.
+                                    Cada monitor entra con su usuario y solo ve lo suyo. No tiene que instalar nada.
                                 </p>
                                 <CheckList
                                     dark
                                     items={[
                                         "Calendario con sus clases por día, semana o mes",
                                         "Horas trabajadas e importe generado, con el desglose",
-                                        "Cuenta personal con contraseña y verificación en dos pasos",
+                                        "Acceso con cuenta personal y verificación en dos pasos opcional",
                                     ]}
                                 />
                             </div>
@@ -290,82 +300,53 @@ export default function LandingPage() {
                     </div>
                 </section>
 
-                {/* Precios */}
-                <section id="precios" className="border-y border-slate-200 bg-white py-20">
-                    <div className={`${container} flex flex-col gap-9`}>
+                {/* Módulos */}
+                <section id="modulos" className="scroll-mt-24 py-14">
+                    <div className={`${container} flex flex-col gap-7`}>
                         <div className="flex max-w-[720px] flex-col gap-2.5">
-                            <span className={eyebrow}>Precios</span>
-                            <h2 className={sectionTitle}>Pagas solo los meses de temporada</h2>
-                            <p className={lead}>
-                                Temporada de diciembre a abril. Se factura por las cuentas de monitor de cada mes, así que si entran o salen monitores el
-                                importe se ajusta. Sin permanencia.
-                            </p>
+                            <span className={eyebrow}>Módulos</span>
+                            <h2 className={sectionTitle}>Dos módulos para completar la herramienta</h2>
                         </div>
-
-                        <div className="flex flex-wrap items-stretch gap-6">
-                            <div className="flex min-w-0 flex-[1_1_420px] flex-col gap-5">
-                                <div className="flex flex-col gap-3.5 rounded-[14px] border border-slate-200 bg-slate-50 p-6">
-                                    <div className="flex flex-wrap items-baseline justify-between gap-3">
-                                        <span className="font-semibold">Cuota base de la escuela</span>
-                                        <span className="text-[28px] font-extrabold tracking-tight">
-                                            {BASE_FEE} € <span className="text-sm font-medium text-slate-500">/mes</span>
-                                        </span>
-                                    </div>
-                                    <p className="text-sm text-slate-500">
-                                        Incluye una cuenta de responsable. Cada responsable adicional, {EXTRA_MANAGER_FEE} € al mes.
-                                    </p>
-                                </div>
-
-                                <div className="overflow-hidden rounded-[14px] border border-slate-200">
-                                    <table className="w-full border-collapse text-[15px]">
-                                        <thead>
-                                            <tr className="bg-slate-900 text-left text-white">
-                                                <th className="px-5 py-3 font-semibold">Monitores</th>
-                                                <th className="px-5 py-3 text-right font-semibold">Por monitor y mes</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {MONITOR_TIERS.map((tier) => (
-                                                <tr key={tier.from} className="border-t border-slate-200">
-                                                    <td className="px-5 py-3">
-                                                        {tier.from} a {tier.to}
-                                                    </td>
-                                                    <td className="px-5 py-3 text-right font-semibold tabular-nums">{formatEuros(tier.price)}</td>
-                                                </tr>
-                                            ))}
-                                            <tr className="border-t border-slate-200">
-                                                <td className="px-5 py-3">Más de 50</td>
-                                                <td className="px-5 py-3 text-right font-semibold">A consultar</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <p className="text-sm leading-normal text-slate-500">
-                                    Tramos progresivos: cada precio se aplica solo a los monitores de ese tramo. Con 15 monitores, los 10 primeros a 5,00 € y
-                                    los 5 siguientes a 4,75 €.
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="flex flex-col gap-3 rounded-[14px] border border-slate-200 bg-white p-6">
+                                <h3 className="text-[19px] font-bold">Cuadrante compartido</h3>
+                                <p className="text-base leading-relaxed text-slate-600">Cada monitor ve las clases de sus compañeros del día.</p>
+                                <p className="text-sm text-slate-500">
+                                    Incluido en los planes Escuela y Grande; en Básico, {formatEurosCompact(EXTRAS.sharedSchedule)} al mes.
                                 </p>
-
-                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    {[
-                                        ["Módulo Informes", `${MODULE_FEES.reports} € /mes`],
-                                        ["Parte diario del equipo", `${MODULE_FEES.teamDailyReport} € /mes`],
-                                        ["Puesta en marcha", `${SETUP_FEE} € una vez`],
-                                        ["Mantenimiento fuera de temporada", `${OFF_SEASON_FEE} € /mes`],
-                                    ].map(([label, price]) => (
-                                        <div key={label} className="flex flex-col gap-1 rounded-xl border border-slate-200 p-4">
-                                            <span className="text-sm text-slate-500">{label}</span>
-                                            <span className="text-lg font-bold">{price}</span>
-                                        </div>
-                                    ))}
-                                </div>
                             </div>
-
-                            <div className="min-w-0 flex-[1_1_380px]">
-                                <PricingCalculator />
+                            <div className="flex flex-col gap-3 rounded-[14px] border border-slate-200 bg-white p-6">
+                                <h3 className="text-[19px] font-bold">Informes</h3>
+                                <p className="text-base leading-relaxed text-slate-600">Genera y descarga informes en PDF y CSV, con un formato fijo.</p>
+                                <p className="text-base leading-relaxed text-slate-600">Informes a medida: bajo consulta.</p>
+                                <p className="text-sm text-slate-500">
+                                    Incluido en los planes Escuela y Grande; en Básico, {formatEurosCompact(EXTRAS.reports)} al mes.
+                                </p>
                             </div>
                         </div>
                     </div>
                 </section>
+
+                {/* Precios */}
+                <section id="precios" className="scroll-mt-24 border-y border-slate-200 bg-white py-20">
+                    <div className={`${container} flex flex-col gap-9`}>
+                        <div className="flex max-w-[720px] flex-col gap-2.5">
+                            <span className={eyebrow}>Planes</span>
+                            <h2 className={sectionTitle}>Tres planes, la cuota solo en los meses de temporada</h2>
+                            <p className={lead}>
+                                Temporada de diciembre a abril. Elige el plan según el tamaño de tu escuela. Sin permanencia.
+                            </p>
+                        </div>
+
+                        <PlanCards />
+                        <div className="mx-auto w-full max-w-[720px]">
+                            <PricingCalculator />
+                        </div>
+                    </div>
+                </section>
+
+                <MonitorSection />
+                {/* Prueba social: pendiente. Sin clientes aun. No anadir testimonios ni logos inventados (decision del usuario: sin oferta escuela fundadora). */}
 
                 {/* Cómo empezar */}
                 <section className="pb-10 pt-20">
@@ -383,7 +364,7 @@ export default function LandingPage() {
                 </section>
 
                 {/* Preguntas frecuentes */}
-                <section id="preguntas" className="pb-20 pt-14">
+                <section id="preguntas" className="scroll-mt-24 pb-20 pt-14">
                     <div className="mx-auto flex max-w-[820px] flex-col gap-7 px-6">
                         <h2 className={sectionTitle}>Preguntas frecuentes</h2>
                         <Accordion type="single" collapsible defaultValue="faq-0" className="rounded-[14px] border border-slate-200 bg-white px-6">
@@ -398,21 +379,15 @@ export default function LandingPage() {
                 </section>
 
                 {/* Contacto */}
-                <section id="contacto" className="bg-slate-900 py-20 text-white">
-                    <div className={`${container} flex flex-wrap items-start gap-12`}>
-                        <div className="flex min-w-0 flex-[1_1_360px] flex-col gap-4">
-                            <h2 className={sectionTitle}>Ten la escuela lista antes del primer día de nieve</h2>
+                <section id="contacto" className="scroll-mt-24 bg-slate-900 py-20 text-white">
+                    <div className={`${container} flex flex-wrap gap-10`}>
+                        <div className="flex flex-[1_1_320px] flex-col gap-4">
+                            <h2 className={sectionTitle}>Pide una demo de 20 minutos</h2>
                             <p className="text-[17px] leading-relaxed text-slate-300">
-                                Cuéntanos cuántos monitores tienes y te preparamos un presupuesto. Te respondemos por correo.
-                            </p>
-                            <p className="text-[15px] text-slate-400">
-                                O escríbenos a{" "}
-                                <a href={`mailto:${CONTACT_EMAIL}`} className="text-white underline">
-                                    {CONTACT_EMAIL}
-                                </a>
+                                Cuéntanos cómo organizáis las clases y te enseñamos la aplicación. Sin compromiso ni permanencia.
                             </p>
                         </div>
-                        <div className="min-w-0 flex-[1_1_460px]">
+                        <div className="flex-[1_1_420px]">
                             <ContactForm />
                         </div>
                     </div>
