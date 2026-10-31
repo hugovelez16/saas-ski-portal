@@ -1,4 +1,4 @@
-import type { PlanId } from "@/lib/landing-pricing";
+import { PLANS, type PlanId } from "@/lib/landing-pricing";
 
 export const CONTACT_EMAIL = "hugo@vesotel.com";
 export const WHATSAPP_NUMBER = "34685710117";
@@ -12,9 +12,7 @@ export const MONITOR_CONTACT_MESSAGE =
 
 export type PlanChoice = PlanId | "no-se";
 export const PLAN_CHOICES: readonly { value: PlanChoice; label: string }[] = [
-    { value: "basico", label: "Básico" },
-    { value: "escuela", label: "Escuela" },
-    { value: "grande", label: "Grande" },
+    ...PLANS.map((plan) => ({ value: plan.id, label: plan.name })),
     { value: "no-se", label: "No lo sé" },
 ];
 

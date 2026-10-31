@@ -156,6 +156,39 @@ describe('quote', () => {
         });
     });
 
+    it('por defecto 5 meses activos y 7 de mantenimiento opcional, que no suma a la primera temporada', () => {
+        expect(quote({ planId: 'basico', monitors: 10 })).toMatchObject({
+            activeMonths: 5,
+            inactiveMonths: 7,
+            maintenance: 105,
+            firstSeason: 795,
+        });
+    });
+
+    it('los meses activos cambian la temporada y el mantenimiento usa la cuota de cada plan', () => {
+        expect(quote({ planId: 'escuela', monitors: 25, activeMonths: 3 })).toMatchObject({
+            season: 747,
+            firstSeason: 897,
+            inactiveMonths: 9,
+            maintenance: 180,
+        });
+        expect(quote({ planId: 'grande', monitors: 50, activeMonths: 4 })).toMatchObject({
+            season: 1596,
+            inactiveMonths: 8,
+            maintenance: 240,
+        });
+    });
+
+    it('limita los meses activos entre 1 y 12', () => {
+        expect(quote({ planId: 'basico', monitors: 10, activeMonths: 0 })).toMatchObject({ activeMonths: 1, inactiveMonths: 11 });
+        expect(quote({ planId: 'basico', monitors: 10, activeMonths: 15 })).toMatchObject({
+            activeMonths: 12,
+            inactiveMonths: 0,
+            maintenance: 0,
+        });
+        expect(quote({ planId: 'basico', monitors: 10, activeMonths: NaN })?.activeMonths).toBe(1);
+    });
+
     it('trata 0, negativos y NaN como 0 monitores', () => {
         for (const monitors of [0, -5, NaN]) {
             expect(quote({ planId: 'basico', monitors })).toMatchObject({
@@ -218,6 +251,10 @@ describe('PLANS y getPlan', () => {
     it('solo escuela esta marcado como recomendado', () => {
         const recommended = PLANS.filter((p) => p.recommended).map((p) => p.id);
         expect(recommended).toEqual(['escuela']);
+    });
+
+    it('el mantenimiento crece con el plan: 15, 20 y 30', () => {
+        expect(PLANS.map((p) => p.maintenanceFee)).toEqual([15, 20, 30]);
     });
 
     it('getPlan devuelve el plan pedido', () => {

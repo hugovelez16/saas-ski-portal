@@ -8,7 +8,7 @@ import { MonitorSection } from "@/components/landing/monitor-section";
 import { PlanCards } from "@/components/landing/plan-cards";
 import { PricingCalculator } from "@/components/landing/pricing-calculator";
 import { SessionRedirect } from "@/components/landing/session-redirect";
-import { EXTRAS, OFF_SEASON_FEE, SETUP_FEE, formatEurosCompact } from "@/lib/landing-pricing";
+import { EXTRAS, PLANS, SETUP_FEE, formatEurosCompact, getPlan } from "@/lib/landing-pricing";
 
 export const metadata: Metadata = {
     title: "Vesotel Jornadas: gestión de clases y monitores para escuelas de esquí",
@@ -26,6 +26,12 @@ const comparison = [
     ["Consulta del monitor", "Manual, uno a uno", "La ve en cuanto entra en la app"],
     ["Total por monitor", "Sumar horas y hacer cuentas al cierre", "Calculado solo, por monitor y por periodo"],
     ["Suplementos y retenciones", "Se calculan a mano", "Se configuran y se aplican con su desglose: Seguridad Social, IRPF y otros"],
+];
+
+const pains = [
+    "Apuntas las clases en una hoja, en el móvil o en papel, y avisas a cada monitor uno a uno.",
+    "Al cerrar el mes sumas horas, días y suplementos por monitor, y repasas las retenciones a mano.",
+    "Cuando un monitor pregunta por qué cobra lo que cobra, toca buscar clase por clase.",
 ];
 
 const steps = [
@@ -47,11 +53,11 @@ const faqs = [
     },
     {
         q: "¿Puedo cambiar una tarifa a mitad de temporada?",
-        a: "Sí. Las clases ya registradas conservan el cálculo con el que se guardaron. Si editas una clase, se recalcula con las tarifas vigentes.",
+        a: "Sí. Cada clase guarda la tarifa con la que se registró y la mantiene aunque la edites. La nueva tarifa solo se aplica a las clases que registres después, o si cambias el tipo de clase.",
     },
     {
         q: "¿Qué pasa con mis datos fuera de temporada?",
-        a: `Puedes mantener la escuela de mayo a noviembre por ${OFF_SEASON_FEE} € al mes. Si la escuela se mantiene hasta la temporada siguiente, no paga nueva puesta en marcha y conserva todos sus datos. Si no la mantienes, al volver se hace una nueva puesta en marcha.`,
+        a: `En los meses que no activas la escuela puedes pagar el mantenimiento: ${PLANS.map((plan) => `${formatEurosCompact(plan.maintenanceFee)} al mes en ${plan.name}`).join(", ")}. No hay acceso, pero la escuela conserva todos sus datos, al volver no paga nueva puesta en marcha y mantiene su precio la temporada siguiente. Si no la mantienes, al volver se hace una nueva puesta en marcha, sin los datos anteriores.`,
     },
     {
         q: "¿Qué es la puesta en marcha?",
@@ -90,7 +96,7 @@ function Screenshot({ src, alt, priority = false }: { src: string; alt: string; 
 
 export default function LandingPage() {
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-900">
+        <div data-landing className="min-h-screen bg-slate-50 text-slate-900">
             <SessionRedirect />
             {/* Cabecera */}
             <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -164,15 +170,19 @@ export default function LandingPage() {
                     </div>
                 </section>
 
-                {/* Antes y después */}
+                {/* Problema: antes y después */}
                 <section className="py-14">
                     <div className={`${container} flex flex-col gap-7`}>
-                        <div className="flex max-w-[720px] flex-col gap-2.5">
-                            <h2 className={sectionTitle}>Control y trazabilidad de cada importe</h2>
-                            <p className={lead}>
-                                Cada clase guarda el desglose con el que se calculó: tarifa, suplementos y retenciones. Al cerrar el mes, los totales
-                                salen por monitor y por tipo de clase, sin hojas de cálculo.
-                            </p>
+                        <div className="flex max-w-[760px] flex-col gap-4">
+                            <span className={eyebrow}>¿Te suena?</span>
+                            <h2 className={sectionTitle}>Cada fin de mes, horas sumando clases de monitores a mano</h2>
+                            <ul className="flex flex-col gap-3">
+                                {pains.map((pain) => (
+                                    <li key={pain} className={`${lead} border-l-2 border-slate-300 pl-4`}>
+                                        {pain}
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
                         <div className="overflow-x-auto rounded-[14px] border border-slate-200 bg-white">
                             <table className="w-full min-w-[640px] border-collapse text-[15px]">
@@ -259,7 +269,7 @@ export default function LandingPage() {
                                     "Tarifa propia por monitor y tipo de clase, en bruto o en neto",
                                     "Suplementos como nocturnidad u otros pluses",
                                     "Seguridad Social, IRPF y otras retenciones con su desglose",
-                                    "Las clases ya registradas conservan su cálculo; si editas una clase, se recalcula con las tarifas vigentes",
+                                    "Cada clase guarda su tarifa: cambiar una tarifa no altera lo ya registrado, aunque edites la clase",
                                 ]}
                             />
                         </div>
@@ -306,13 +316,21 @@ export default function LandingPage() {
                         <div className="flex max-w-[720px] flex-col gap-2.5">
                             <span className={eyebrow}>Módulos</span>
                             <h2 className={sectionTitle}>Dos módulos para completar la herramienta</h2>
+                            <p className={lead}>
+                                Seguimos desarrollando módulos nuevos de forma continua. Si tu escuela necesita algo concreto,{" "}
+                                <a href="#contacto" className="font-semibold text-slate-900 underline underline-offset-4">
+                                    cuéntanoslo
+                                </a>
+                                .
+                            </p>
                         </div>
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="flex flex-col gap-3 rounded-[14px] border border-slate-200 bg-white p-6">
                                 <h3 className="text-[19px] font-bold">Cuadrante compartido</h3>
                                 <p className="text-base leading-relaxed text-slate-600">Cada monitor ve las clases de sus compañeros del día.</p>
                                 <p className="text-sm text-slate-500">
-                                    Incluido en los planes Escuela y Grande; en Básico, {formatEurosCompact(EXTRAS.sharedSchedule)} al mes.
+                                    Incluido en los planes {getPlan("escuela").name} y {getPlan("grande").name}; en {getPlan("basico").name},{" "}
+                                    {formatEurosCompact(EXTRAS.sharedSchedule)} al mes.
                                 </p>
                             </div>
                             <div className="flex flex-col gap-3 rounded-[14px] border border-slate-200 bg-white p-6">
@@ -320,7 +338,8 @@ export default function LandingPage() {
                                 <p className="text-base leading-relaxed text-slate-600">Genera y descarga informes en PDF y CSV, con un formato fijo.</p>
                                 <p className="text-base leading-relaxed text-slate-600">Informes a medida: bajo consulta.</p>
                                 <p className="text-sm text-slate-500">
-                                    Incluido en los planes Escuela y Grande; en Básico, {formatEurosCompact(EXTRAS.reports)} al mes.
+                                    Incluido en los planes {getPlan("escuela").name} y {getPlan("grande").name}; en {getPlan("basico").name},{" "}
+                                    {formatEurosCompact(EXTRAS.reports)} al mes.
                                 </p>
                             </div>
                         </div>
@@ -332,10 +351,8 @@ export default function LandingPage() {
                     <div className={`${container} flex flex-col gap-9`}>
                         <div className="flex max-w-[720px] flex-col gap-2.5">
                             <span className={eyebrow}>Planes</span>
-                            <h2 className={sectionTitle}>Tres planes, la cuota solo en los meses de temporada</h2>
-                            <p className={lead}>
-                                Temporada de diciembre a abril. Elige el plan según el tamaño de tu escuela. Sin permanencia.
-                            </p>
+                            <h2 className={sectionTitle}>Pagas solo los meses que abres</h2>
+                            <p className={lead}>Elige el plan por número de monitores. Sin permanencia.</p>
                         </div>
 
                         <PlanCards />

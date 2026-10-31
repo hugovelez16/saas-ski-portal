@@ -23,7 +23,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ### Tipo de Cambio SemVer
 
-- **MINOR**: Landing publica en `/` orientada a escuelas de esqui, con funciones, capturas reales, tres planes (Basico, Escuela y Grande) para la temporada 2026-2027, calculadora de cuota, preguntas frecuentes, formulario de contacto y apartado para monitores (lista de espera). Incluye la correccion del desfase horario del Parte Diario del responsable.
+- **MINOR**: Landing publica en `/` orientada a escuelas de esqui, con funciones, capturas reales, tres planes (Pista Verde, Pista Azul y Pista Roja) para la temporada 2026-2027, calculadora de cuota, preguntas frecuentes, formulario de contacto y apartado para monitores (lista de espera). Incluye la correccion del desfase horario del Parte Diario del responsable.
 
 ### Anadido
 
@@ -32,6 +32,8 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - **`src/lib/landing-contact.ts`**: validacion del formulario y construccion del mensaje, del enlace de WhatsApp y del correo.
 - **`src/components/landing/`**: calculadora de cuota, tarjetas de plan, formulario de contacto y apartado para monitores. El formulario abre WhatsApp o el correo del usuario con los datos rellenados; no hay endpoint en el backend.
 - **`public/landing/`**: capturas de la aplicacion con una escuela de demostracion (datos ficticios).
+- **Meses activos a elegir**: la escuela paga solo los meses que activa, sin temporada fija. La calculadora incluye un selector de meses activos y el mantenimiento opcional de los meses inactivos (15, 20 o 30 € al mes segun el plan). Con mantenimiento, la escuela conserva su precio la temporada siguiente.
+- **`docs/planes-y-precios.md`**: condiciones comerciales de los planes publicos: meses activos, puesta en marcha, mantenimiento, precio garantizado, cambio de plan y recuento de monitores.
 
 ### Corregido
 

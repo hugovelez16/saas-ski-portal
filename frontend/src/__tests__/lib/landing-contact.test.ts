@@ -29,13 +29,13 @@ afterEach(() => {
 describe('buildContactMessage', () => {
     it('genera el mensaje exacto con los campos del formulario', () => {
         expect(buildContactMessage(valid)).toBe(
-            'Hola, quiero pedir una demo de Vesotel Jornadas.\nEscuela: Escuela Sol y Nieve\nMonitores (aprox.): 18\nPlan: Escuela\nContacto: Ana Pérez\nCorreo: ana@escuela.es',
+            'Hola, quiero pedir una demo de Vesotel Jornadas.\nEscuela: Escuela Sol y Nieve\nMonitores (aprox.): 18\nPlan: Pista Azul\nContacto: Ana Pérez\nCorreo: ana@escuela.es',
         );
     });
 
     it('usa la etiqueta de cada plan', () => {
-        expect(buildContactMessage({ ...valid, plan: 'basico' })).toContain('Plan: Básico');
-        expect(buildContactMessage({ ...valid, plan: 'grande' })).toContain('Plan: Grande');
+        expect(buildContactMessage({ ...valid, plan: 'basico' })).toContain('Plan: Pista Verde');
+        expect(buildContactMessage({ ...valid, plan: 'grande' })).toContain('Plan: Pista Roja');
         expect(buildContactMessage({ ...valid, plan: 'no-se' })).toContain('Plan: No lo sé');
     });
 

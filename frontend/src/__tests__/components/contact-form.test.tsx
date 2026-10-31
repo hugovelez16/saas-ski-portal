@@ -51,6 +51,12 @@ describe("ContactForm", () => {
         const select = screen.getByLabelText("Plan que te interesa") as HTMLSelectElement;
         expect(select.value).toBe("no-se");
         expect(select.options).toHaveLength(4);
+        expect(Array.from(select.options).map((option) => option.textContent)).toEqual([
+            "Pista Verde",
+            "Pista Azul",
+            "Pista Roja",
+            "No lo sé",
+        ]);
         expect(screen.getByRole("button", { name: "Enviar por WhatsApp" })).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Enviar por correo" })).toBeInTheDocument();
     });
@@ -139,7 +145,7 @@ describe("ContactForm", () => {
         );
     });
 
-    it("announcePlan('grande') preselecciona el plan Grande en el select", () => {
+    it("announcePlan('grande') preselecciona el plan Pista Roja en el select", () => {
         render(<ContactForm />);
 
         act(() => announcePlan("grande"));

@@ -2,11 +2,9 @@
 
 import { Check } from "lucide-react";
 import {
-    EXTRAS,
+    DEFAULT_ACTIVE_MONTHS,
     MAX_PRICED_MONITORS,
-    OFF_SEASON_FEE,
     PLANS,
-    SEASON_MONTHS,
     SETUP_FEE,
     formatEurosCompact,
     type Plan,
@@ -20,8 +18,7 @@ const FEATURES: Record<PlanId, (plan: Plan) => string[]> = {
         `Monitor adicional: ${formatEurosCompact(plan.extraMonitorFee)} al mes`,
         `${plan.managers} (adicional: ${formatEurosCompact(plan.extraManagerFee)} al mes)`,
         "Parte diario del responsable incluido",
-        `Cuadrante compartido: ${formatEurosCompact(EXTRAS.sharedSchedule)} al mes (aparte)`,
-        `Informes: ${formatEurosCompact(EXTRAS.reports)} al mes (aparte)`,
+        "Módulos aparte",
     ],
     escuela: (plan) => [
         `Hasta ${plan.includedMonitors} monitores`,
@@ -32,11 +29,17 @@ const FEATURES: Record<PlanId, (plan: Plan) => string[]> = {
     ],
     grande: (plan) => [
         `Hasta ${plan.includedMonitors} monitores incluidos`,
-        `Más de ${MAX_PRICED_MONITORS} monitores: a consultar`,
+        `Más de ${MAX_PRICED_MONITORS} monitores: Pista Negra, a consultar`,
         plan.managers,
         "Parte diario del responsable incluido",
         "Cuadrante compartido e Informes incluidos",
     ],
+};
+
+const TRACK_DOT_CLASS: Record<PlanId, string> = {
+    basico: "bg-green-600",
+    escuela: "bg-blue-600",
+    grande: "bg-red-600",
 };
 
 export function PlanCards() {
@@ -46,17 +49,20 @@ export function PlanCards() {
                 {PLANS.map((plan) => (
                     <article
                         key={plan.id}
-                        className={`flex flex-col gap-5 rounded-2xl border p-6 ${
+                        className={`relative flex flex-col gap-5 rounded-2xl border p-6 ${
                             plan.recommended ? "border-2 border-indigo-600 shadow-lg" : "border-slate-200 bg-white"
                         }`}
                     >
                         {plan.recommended && (
-                            <span className="self-start rounded-full bg-indigo-600 px-3 py-1 text-xs font-semibold text-white">
+                            <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-indigo-600 px-3 py-1 text-xs font-semibold text-white">
                                 Recomendado
                             </span>
                         )}
 
-                        <h3 className="text-2xl font-bold">{plan.name}</h3>
+                        <div className="flex items-center gap-2.5">
+                            <span aria-hidden className={`h-3 w-3 rounded-full ${TRACK_DOT_CLASS[plan.id]}`} />
+                            <h3 className="text-2xl font-bold">{plan.name}</h3>
+                        </div>
 
                         <div>
                             <p className="text-3xl font-extrabold tabular-nums">
@@ -64,7 +70,10 @@ export function PlanCards() {
                                 <span className="text-sm font-normal text-slate-500">/mes</span>
                             </p>
                             <p className="text-sm text-slate-600">
-                                Temporada (5 meses): {formatEurosCompact(plan.monthly * SEASON_MONTHS)}
+                                Ejemplo, {DEFAULT_ACTIVE_MONTHS} meses: {formatEurosCompact(plan.monthly * DEFAULT_ACTIVE_MONTHS)}
+                            </p>
+                            <p className="text-sm text-slate-600">
+                                Mantenimiento: {formatEurosCompact(plan.maintenanceFee)} por mes inactivo
                             </p>
                         </div>
 
@@ -94,11 +103,14 @@ export function PlanCards() {
             </div>
 
             <div className="mt-6 flex flex-col gap-2 text-sm text-slate-600">
-                <p>Todos los importes son sin IVA, por mes de temporada (diciembre a abril, 5 meses). Sin permanencia.</p>
+                <p>
+                    Todos los importes son sin IVA, por mes activo. Tú eliges qué meses activas la escuela y se factura por mes
+                    natural completo. Sin permanencia.
+                </p>
                 <p>Puesta en marcha única: {formatEurosCompact(SETUP_FEE)} en todos los planes.</p>
                 <p>
-                    Mantenimiento fuera de temporada: {formatEurosCompact(OFF_SEASON_FEE)} al mes (mayo a noviembre). Si la escuela se
-                    mantiene hasta la temporada siguiente, no paga nueva puesta en marcha y conserva todos sus datos.
+                    Mantenimiento fuera de temporada: en los meses inactivos no hay acceso, pero la escuela conserva todos sus datos y
+                    al volver no paga nueva puesta en marcha. Además, conserva su precio la temporada siguiente.
                 </p>
                 <p>Informes a medida: bajo consulta.</p>
             </div>

@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import {
+    DEFAULT_ACTIVE_MONTHS,
     EXTRAS,
     MAX_PRICED_MONITORS,
-    OFF_SEASON_FEE,
+    MONTHS_PER_YEAR,
     PLANS,
     cheapestPlan,
     formatEuros,
@@ -23,9 +24,10 @@ export function PricingCalculator() {
     const [sharedSchedule, setSharedSchedule] = useState(false);
     const [reports, setReports] = useState(false);
     const [extraManagers, setExtraManagers] = useState(0);
+    const [activeMonths, setActiveMonths] = useState(DEFAULT_ACTIVE_MONTHS);
 
     const plan = getPlan(planId);
-    const q = quote({ planId, monitors, extraManagers, sharedSchedule, reports });
+    const q = quote({ planId, monitors, extraManagers, sharedSchedule, reports, activeMonths });
     // Solo se pasan los extras cuyos controles estan visibles para el plan actual.
     const cheapest = cheapestPlan(monitors, {
         sharedSchedule: planId === "basico" ? sharedSchedule : false,
@@ -72,6 +74,25 @@ export function PricingCalculator() {
                     value={monitors}
                     aria-valuetext={overLimit ? `Más de ${MAX_PRICED_MONITORS}` : String(monitors)}
                     onChange={(e) => setMonitors(Number(e.target.value))}
+                    className="h-7 w-full accent-indigo-300"
+                />
+            </div>
+
+            <div className="flex flex-col gap-3">
+                <div className="flex items-baseline justify-between">
+                    <label htmlFor="calc-months" className="text-sm text-slate-300">
+                        Meses activos al año
+                    </label>
+                    <span className="text-3xl font-extrabold tabular-nums text-white">{activeMonths}</span>
+                </div>
+                <input
+                    id="calc-months"
+                    type="range"
+                    min={1}
+                    max={MONTHS_PER_YEAR}
+                    value={activeMonths}
+                    aria-valuetext={`${activeMonths} ${activeMonths === 1 ? "mes" : "meses"}`}
+                    onChange={(e) => setActiveMonths(Number(e.target.value))}
                     className="h-7 w-full accent-indigo-300"
                 />
             </div>
@@ -176,7 +197,9 @@ export function PricingCalculator() {
                         </dd>
                     </div>
                     <div className="flex justify-between text-slate-300">
-                        <dt>Temporada (5 meses)</dt>
+                        <dt>
+                            Temporada ({q.activeMonths} {q.activeMonths === 1 ? "mes" : "meses"})
+                        </dt>
                         <dd data-testid="total-season">{formatEuros(q.season)}</dd>
                     </div>
                     <div className="flex justify-between gap-4 text-slate-300">
@@ -185,9 +208,16 @@ export function PricingCalculator() {
                             {formatEuros(q.firstSeason)}
                         </dd>
                     </div>
+                    {q.inactiveMonths > 0 && (
+                        <div className="flex justify-between gap-4 text-slate-300">
+                            <dt>
+                                Mantenimiento opcional ({q.inactiveMonths} x {formatEurosCompact(plan.maintenanceFee)})
+                            </dt>
+                            <dd data-testid="total-maintenance">{formatEuros(q.maintenance)}</dd>
+                        </div>
+                    )}
                 </dl>
             )}
-
 
             <a
                 href="#contacto"
@@ -197,9 +227,8 @@ export function PricingCalculator() {
                 Quiero este plan
             </a>
             <p className="text-xs text-slate-400">
-                Importes sin IVA. Precios de la temporada 2026-2027. Sin permanencia. Si mantienes la escuela de mayo a noviembre (
-                {formatEurosCompact(OFF_SEASON_FEE)} al mes), la siguiente temporada no pagas nueva puesta en marcha y conservas todos
-                tus datos.
+                Importes sin IVA. Precios de la temporada 2026-2027. Sin permanencia. Con mantenimiento en los meses inactivos no
+                hay acceso, pero conservas todos tus datos y la siguiente temporada no pagas nueva puesta en marcha.
             </p>
         </div>
     );

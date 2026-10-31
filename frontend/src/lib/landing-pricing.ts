@@ -1,5 +1,6 @@
 /**
- * Tarifas publicas de la temporada 2026-2027 (importes sin IVA, por mes de temporada)
+ * Tarifas publicas de la temporada 2026-2027 (importes sin IVA, por mes activo).
+ * La escuela elige los meses que activa; el resto del ano puede pagar mantenimiento para conservar los datos.
  */
 
 export type PlanId = "basico" | "escuela" | "grande";
@@ -13,6 +14,8 @@ export interface Plan {
     includedManagers: number;
     extraManagerFee: number;
     managers: string;
+    /** Cuota por mes inactivo: sin acceso, los datos se conservan. */
+    maintenanceFee: number;
     modulesIncluded: boolean;
     recommended: boolean;
 }
@@ -20,37 +23,40 @@ export interface Plan {
 export const PLANS: readonly Plan[] = [
     {
         id: "basico",
-        name: "Básico",
+        name: "Pista Verde",
         monthly: 129,
         includedMonitors: 10,
         extraMonitorFee: 9,
         includedManagers: 1,
         extraManagerFee: 50,
         managers: "1 responsable",
+        maintenanceFee: 15,
         modulesIncluded: false,
         recommended: false,
     },
     {
         id: "escuela",
-        name: "Escuela",
+        name: "Pista Azul",
         monthly: 249,
         includedMonitors: 25,
         extraMonitorFee: 7,
         includedManagers: 2,
         extraManagerFee: 50,
         managers: "2 responsables",
+        maintenanceFee: 20,
         modulesIncluded: true,
         recommended: true,
     },
     {
         id: "grande",
-        name: "Grande",
+        name: "Pista Roja",
         monthly: 399,
         includedMonitors: 50,
         extraMonitorFee: 0,
         includedManagers: Infinity,
         extraManagerFee: 0,
         managers: "Responsables ilimitados",
+        maintenanceFee: 30,
         modulesIncluded: true,
         recommended: false,
     },
@@ -59,8 +65,9 @@ export const PLANS: readonly Plan[] = [
 /** Modulos opcionales; solo se cobran en el plan Basico. */
 export const EXTRAS = { sharedSchedule: 5, reports: 15 } as const;
 export const SETUP_FEE = 150;
-export const OFF_SEASON_FEE = 20;
-export const SEASON_MONTHS = 5;
+/** Meses activos de ejemplo (una temporada de diciembre a abril). */
+export const DEFAULT_ACTIVE_MONTHS = 5;
+export const MONTHS_PER_YEAR = 12;
 export const MAX_PRICED_MONITORS = 50;
 
 export function getPlan(id: PlanId): Plan {
@@ -80,6 +87,8 @@ export interface QuoteInput {
     sharedSchedule?: boolean;
     /** Informes; ignorado si el plan lo incluye. */
     reports?: boolean;
+    /** Meses activos en el ano, de 1 a 12; por defecto DEFAULT_ACTIVE_MONTHS. */
+    activeMonths?: number;
 }
 
 export interface Quote {
@@ -91,8 +100,14 @@ export interface Quote {
     extraManagersCost: number;
     extras: number;
     monthly: number;
+    activeMonths: number;
+    /** Cuota de los meses activos. */
     season: number;
+    /** Temporada mas la puesta en marcha. */
     firstSeason: number;
+    inactiveMonths: number;
+    /** Mantenimiento opcional de los meses inactivos; no se suma a firstSeason. */
+    maintenance: number;
 }
 
 /** Entero no negativo: no finito o menor que 0 se convierte en 0; los decimales se truncan. */
@@ -117,7 +132,9 @@ export function quote(input: QuoteInput): Quote | null {
     const extraMonitorsCost = extraMonitors * plan.extraMonitorFee;
     const extraManagersCost = extraManagers * plan.extraManagerFee;
     const monthly = plan.monthly + extraMonitorsCost + extraManagersCost + extras;
-    const season = monthly * SEASON_MONTHS;
+    const activeMonths = Math.min(MONTHS_PER_YEAR, Math.max(1, normalizeCount(input.activeMonths ?? DEFAULT_ACTIVE_MONTHS)));
+    const inactiveMonths = MONTHS_PER_YEAR - activeMonths;
+    const season = monthly * activeMonths;
 
     return {
         planId: plan.id,
@@ -128,8 +145,11 @@ export function quote(input: QuoteInput): Quote | null {
         extraManagersCost,
         extras,
         monthly,
+        activeMonths,
         season,
         firstSeason: season + SETUP_FEE,
+        inactiveMonths,
+        maintenance: inactiveMonths * plan.maintenanceFee,
     };
 }
 

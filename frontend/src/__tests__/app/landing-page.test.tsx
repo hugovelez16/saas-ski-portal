@@ -84,9 +84,26 @@ describe("LandingPage", () => {
         expect(text).toContain("Mantenimiento fuera de temporada");
     });
 
+    it("la cabecera de precios no fija los meses de temporada ni explica los nombres de pista", () => {
+        const { text } = renderPage();
+        expect(screen.getByRole("heading", { level: 2, name: "Pagas solo los meses que abres" })).toBeInTheDocument();
+        expect(text).not.toMatch(/diciembre a abril|mayo a noviembre/);
+        expect(text).not.toContain("se llaman como las pistas");
+    });
+
     it('contiene "Sin permanencia" (sin distinguir mayusculas)', () => {
         const { text } = renderPage();
         expect(text).toMatch(/sin permanencia/i);
+    });
+
+    it("presenta el problema tras el hero, antes de la comparativa", () => {
+        const { text } = renderPage();
+        expect(screen.getByRole("heading", { level: 2, name: "Cada fin de mes, horas sumando clases de monitores a mano" })).toBeInTheDocument();
+        expect(text).toContain("¿Te suena?");
+        expect(text).toContain("avisas a cada monitor uno a uno");
+        expect(text).toContain("repasas las retenciones a mano");
+        expect(text).toContain("toca buscar clase por clase");
+        expect(text.indexOf("¿Te suena?")).toBeLessThan(text.indexOf("Hoy, a mano"));
     });
 
     it("la cabecera es sticky y tiene el enlace Acceder a /login", () => {
@@ -111,6 +128,13 @@ describe("LandingPage", () => {
         const { container } = renderPage();
         for (const id of ["contacto", "precios", "preguntas", "funciones"]) {
             expect(container.querySelector(`#${id}`), `ancla #${id} ausente`).not.toBeNull();
+        }
+    });
+
+    it("nombra los planes como pistas: Pista Verde, Pista Azul, Pista Roja y Pista Negra", () => {
+        const { text } = renderPage();
+        for (const name of ["Pista Verde", "Pista Azul", "Pista Roja", "Pista Negra"]) {
+            expect(text, `nombre de pista ausente: ${name}`).toContain(name);
         }
     });
 
