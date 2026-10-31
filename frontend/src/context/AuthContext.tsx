@@ -52,6 +52,13 @@ function isPlatformAdminUser(u: UserProfile | null | undefined): boolean {
   return Boolean(u?.isPlatformAdmin || u?.role === 'admin');
 }
 
+// Pantalla de inicio tras iniciar sesion, segun el rol.
+export function homePathFor(u: UserProfile | null | undefined): string {
+    if (isPlatformAdminUser(u)) return '/admin/companies';
+    if (u?.isManager) return '/manager/daily-reports';
+    return '/dashboard';
+}
+
 // Un PA no tiene empresa recordada: su contexto es neutro.
 function rememberActiveCompany(u: UserProfile | null | undefined) {
   if (!u || isPlatformAdminUser(u) || !u.activeCompanyId) return;
@@ -65,7 +72,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const fetchUser = async (retryDev: boolean = true): Promise<UserProfile | null> => {
         try {
-            const response = await api.get<UserProfile>('/users/me');
+            // En la landing la comprobacion de sesion es silenciosa: un visitante no debe ver errores del backend.
+            const onLanding = typeof window !== 'undefined' && window.location.pathname === '/';
+            const response = await api.get<UserProfile>('/users/me', { meta: { silent: onLanding } });
             setUser(response.data);
             identifyUser(response.data);
             rememberActiveCompany(response.data);
@@ -85,7 +94,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 console.error("Failed to fetch user:", error);
             } else {
                 const path = typeof window !== 'undefined' ? window.location.pathname : '';
-                const publicPaths = ['/login', '/forgot-password', '/reset-password'];
+                const publicPaths = ['/', '/login', '/forgot-password', '/reset-password'];
                 if (!publicPaths.includes(path)) {
                     logout();
                 } else {
@@ -116,13 +125,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setAuthToken(tokenData.accessToken);
             const userData = await fetchUser();
 
-            if (userData?.role === 'admin' || userData?.isPlatformAdmin) {
-                router.push('/admin/companies');
-            } else if (userData?.isManager) {
-                router.push('/manager/daily-reports');
-            } else {
-                router.push('/dashboard');
-            }
+            router.push(homePathFor(userData));
             return { requires2FA: false };
         } catch (error) {
             console.error("Error en bypass de inicio de sesión en desarrollo:", error);
@@ -179,13 +182,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         const userData = await fetchUser();
 
-        if (userData?.role === 'admin' || userData?.isPlatformAdmin) {
-            router.push('/admin/companies');
-        } else if (userData?.isManager) {
-            router.push('/manager/daily-reports');
-        } else {
-            router.push('/dashboard');
-        }
+        router.push(homePathFor(userData));
         return { requires2FA: false };
     };
 

@@ -273,7 +273,7 @@ function ManagerDailyReportInner() {
                                         {hours.map(h => (
                                             <div
                                                 key={h}
-                                                className="flex-1 border-r border-slate-100 last:border-r-0 hover:bg-blue-50/50 cursor-pointer transition-colors"
+                                                className="flex-1 min-w-[50px] border-r border-slate-100 last:border-r-0 hover:bg-blue-50/50 cursor-pointer transition-colors"
                                                 onClick={() => setCreateLogState({
                                                     open: true,
                                                     data: {

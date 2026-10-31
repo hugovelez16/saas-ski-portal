@@ -505,6 +505,37 @@ describe("AuthContext", () => {
     });
   });
 
+  describe("comprobacion de sesion silenciosa en la landing", () => {
+    const renderOn = async (pathname: string) => {
+      const originalLocation = window.location;
+      delete (window as any).location;
+      (window as any).location = { ...originalLocation, pathname };
+      vi.mocked(api.get).mockRejectedValueOnce({ response: { status: 502 } });
+      try {
+        render(
+          <AuthProvider>
+            <TestComponent />
+          </AuthProvider>
+        );
+        await waitFor(() => {
+          expect(screen.getByTestId("loading")).toHaveTextContent("ready");
+        });
+      } finally {
+        (window as any).location = originalLocation;
+      }
+    };
+
+    it("en / pide /users/me sin notificar errores", async () => {
+      await renderOn("/");
+      expect(api.get).toHaveBeenCalledWith("/users/me", { meta: { silent: true } });
+    });
+
+    it("fuera de la landing mantiene las notificaciones de error", async () => {
+      await renderOn("/dashboard");
+      expect(api.get).toHaveBeenCalledWith("/users/me", { meta: { silent: false } });
+    });
+  });
+
   describe("company scope (lastCompanyId)", () => {
     const LAST_KEY = "lastCompanyId";
 

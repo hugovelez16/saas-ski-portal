@@ -106,6 +106,14 @@ Cada punto se hara en rama propia con plan previo, segun `CLAUDE.md`.
 7. Eliminacion de empresa para la opcion "sin mantenimiento", con copia previa.
 8. Unificar la fuente de modulos (suscripciones) y usar `require_module` en backend.
 9. Avisos al asignar o cambiar una clase.
+10. Unificar el nombre del producto (no prioritario; cuando la app este estable). Nombre: "Clases Vesotel", siempre con el descriptor "Gestion de escuelas de esqui" (titulo: "Clases Vesotel · Gestion de escuelas de esqui"). Vesotel es la empresa; esto es un producto suyo. Variantes actuales a sustituir:
+    - "Vesotel Jornadas": landing (`frontend/src/app/page.tsx`) y mensajes de contacto (`frontend/src/lib/landing-contact.ts`).
+    - "Clases Vesotel" sin descriptor: pestana (`frontend/src/app/layout.tsx`) y `login/page.tsx`.
+    - "Ski Vesotel": menu lateral (`components/ui/sidebar.tsx`) e informes (`components/reports/PrintableReport.tsx`, `PDFReport.tsx`).
+    - "Vesotel Work": `login/page.tsx` y `reset-password/page.tsx`.
+    - "Vesotel Gestor" y "Vesotel Team": correos (`backend/email_utils.py`) y `backend/main.py`.
+    - "Vesotel System": `backend/auth.py`. Comprobar antes si es un identificador interno (emisor del token); si lo es, cambiarlo invalidaria las sesiones abiertas.
+    - No tocar "Vesotel Ski" de `backend/seed.py` y `backend/dev_seed.py`: es el nombre de la escuela de prueba.
 
 ## Decisiones abiertas
 
