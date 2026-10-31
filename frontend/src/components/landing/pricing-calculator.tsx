@@ -23,7 +23,11 @@ export function PricingCalculator() {
     const [monitors, setMonitors] = useState(20);
     const [sharedSchedule, setSharedSchedule] = useState(false);
     const [reports, setReports] = useState(false);
-    const [extraManagers, setExtraManagers] = useState(0);
+    // Texto del campo aparte del numero: el usuario puede vaciarlo mientras escribe; vacio cuenta como 0.
+    const [extraManagersInput, setExtraManagersInput] = useState("0");
+    const extraManagers = extraManagersInput === "" ? 0 : Number(extraManagersInput);
+    const setExtraManagers = (value: number) =>
+        setExtraManagersInput(String(Math.min(MAX_EXTRA_MANAGERS, Math.max(0, Math.floor(value) || 0))));
     const [activeMonths, setActiveMonths] = useState(DEFAULT_ACTIVE_MONTHS);
 
     const plan = getPlan(planId);
@@ -121,19 +125,40 @@ export function PricingCalculator() {
                     <label htmlFor="calc-managers" className="text-sm text-slate-300">
                         Responsables adicionales ({formatEurosCompact(plan.extraManagerFee)} al mes cada uno)
                     </label>
-                    <input
-                        id="calc-managers"
-                        type="number"
-                        inputMode="numeric"
-                        min={0}
-                        max={MAX_EXTRA_MANAGERS}
-                        step={1}
-                        value={extraManagers}
-                        onChange={(e) =>
-                            setExtraManagers(Math.min(MAX_EXTRA_MANAGERS, Math.max(0, Math.floor(Number(e.target.value) || 0))))
-                        }
-                        className="min-h-11 w-full rounded-[10px] bg-white px-3 text-slate-900"
-                    />
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            aria-label="Quitar un responsable"
+                            onClick={() => setExtraManagers(extraManagers - 1)}
+                            disabled={extraManagers <= 0}
+                            className="h-12 w-12 flex-none rounded-[10px] border border-slate-500 text-2xl font-bold hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-transparent"
+                        >
+                            −
+                        </button>
+                        <input
+                            id="calc-managers"
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={MAX_EXTRA_MANAGERS}
+                            step={1}
+                            value={extraManagersInput}
+                            onChange={(e) =>
+                                e.target.value === "" ? setExtraManagersInput("") : setExtraManagers(Number(e.target.value))
+                            }
+                            onBlur={() => setExtraManagers(extraManagers)}
+                            className="h-12 w-full min-w-0 rounded-[10px] bg-white px-3 text-center text-lg font-semibold text-slate-900"
+                        />
+                        <button
+                            type="button"
+                            aria-label="Añadir un responsable"
+                            onClick={() => setExtraManagers(extraManagers + 1)}
+                            disabled={extraManagers >= MAX_EXTRA_MANAGERS}
+                            className="h-12 w-12 flex-none rounded-[10px] border border-slate-500 text-2xl font-bold hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-transparent"
+                        >
+                            +
+                        </button>
+                    </div>
                 </div>
             )}
 

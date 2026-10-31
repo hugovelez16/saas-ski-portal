@@ -133,6 +133,41 @@ describe("PricingCalculator", () => {
         expect(screen.getByText("Plan más barato para 40 monitores: Pista Azul")).toBeInTheDocument();
     });
 
+    it("responsables adicionales: el campo se puede vaciar (cuenta como 0) y al salir vuelve a 0", () => {
+        render(<PricingCalculator />);
+        const input = screen.getByLabelText(/Responsables adicionales/) as HTMLInputElement;
+
+        fireEvent.change(input, { target: { value: "" } });
+        expect(input.value).toBe("");
+        expect(totalMonthly()).toBe("249,00 €");
+
+        fireEvent.change(input, { target: { value: "3" } });
+        expect(totalMonthly()).toBe("399,00 €");
+
+        fireEvent.change(input, { target: { value: "" } });
+        fireEvent.blur(input);
+        expect(input.value).toBe("0");
+    });
+
+    it("responsables adicionales: los botones + y - suman y restan, con limites 0 y 20", () => {
+        render(<PricingCalculator />);
+        const input = screen.getByLabelText(/Responsables adicionales/) as HTMLInputElement;
+        const minus = screen.getByRole("button", { name: "Quitar un responsable" });
+        const plus = screen.getByRole("button", { name: "Añadir un responsable" });
+
+        expect(minus).toBeDisabled();
+        fireEvent.click(plus);
+        fireEvent.click(plus);
+        expect(input.value).toBe("2");
+        expect(totalMonthly()).toBe("349,00 €");
+
+        fireEvent.click(minus);
+        expect(input.value).toBe("1");
+
+        fireEvent.change(input, { target: { value: "20" } });
+        expect(plus).toBeDisabled();
+    });
+
     it("Pista Roja: oculta el campo de responsables, muestra ilimitados y total 399 € con 20 monitores", () => {
         render(<PricingCalculator />);
 

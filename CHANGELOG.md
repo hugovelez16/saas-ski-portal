@@ -33,6 +33,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - **`src/components/landing/`**: calculadora de cuota, tarjetas de plan, formulario de contacto y apartado para monitores. El formulario abre WhatsApp o el correo del usuario con los datos rellenados; no hay endpoint en el backend.
 - **`public/landing/`**: capturas de la aplicacion con una escuela de demostracion (datos ficticios).
 - **Meses activos a elegir**: la escuela paga solo los meses que activa, sin temporada fija. La calculadora incluye un selector de meses activos y el mantenimiento opcional de los meses inactivos (15, 20 o 30 € al mes segun el plan). Con mantenimiento, la escuela conserva su precio la temporada siguiente.
+- **Calculadora**: el campo de responsables adicionales se puede vaciar y tiene botones de sumar y restar.
 - **`docs/planes-y-precios.md`**: condiciones comerciales de los planes publicos: meses activos, puesta en marcha, mantenimiento, precio garantizado, cambio de plan y recuento de monitores.
 
 ### Corregido
