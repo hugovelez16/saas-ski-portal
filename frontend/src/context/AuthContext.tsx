@@ -72,7 +72,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const fetchUser = async (retryDev: boolean = true): Promise<UserProfile | null> => {
         try {
-            const response = await api.get<UserProfile>('/users/me');
+            // En la landing la comprobacion de sesion es silenciosa: un visitante no debe ver errores del backend.
+            const onLanding = typeof window !== 'undefined' && window.location.pathname === '/';
+            const response = await api.get<UserProfile>('/users/me', { meta: { silent: onLanding } });
             setUser(response.data);
             identifyUser(response.data);
             rememberActiveCompany(response.data);
