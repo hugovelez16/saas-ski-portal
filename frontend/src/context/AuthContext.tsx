@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import api, { setAuthToken } from "@/lib/api";
 import { UserProfile } from "@/lib/types";
 import { getLastCompanyId, setLastCompanyId, LAST_COMPANY_KEY } from "@/lib/last-company";
+import { LEGAL_LINKS } from "@/lib/legal-config";
 import { useRouter } from 'next/navigation';
 import posthog from 'posthog-js';
 
@@ -59,6 +60,10 @@ export function homePathFor(u: UserProfile | null | undefined): string {
     return '/dashboard';
 }
 
+// Rutas que un visitante sin sesion puede abrir: un 401 en ellas no cierra sesion ni redirige a /login.
+const VISITOR_PATHS: string[] = ['/', ...LEGAL_LINKS.map((link) => link.href)];
+const PUBLIC_PATHS: string[] = [...VISITOR_PATHS, '/login', '/forgot-password', '/reset-password'];
+
 // Un PA no tiene empresa recordada: su contexto es neutro.
 function rememberActiveCompany(u: UserProfile | null | undefined) {
   if (!u || isPlatformAdminUser(u) || !u.activeCompanyId) return;
@@ -72,9 +77,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const fetchUser = async (retryDev: boolean = true): Promise<UserProfile | null> => {
         try {
-            // En la landing la comprobacion de sesion es silenciosa: un visitante no debe ver errores del backend.
-            const onLanding = typeof window !== 'undefined' && window.location.pathname === '/';
-            const response = await api.get<UserProfile>('/users/me', { meta: { silent: onLanding } });
+            // En la landing y en las paginas legales la comprobacion de sesion es silenciosa: un visitante no debe ver errores del backend.
+            const onVisitorPage = typeof window !== 'undefined' && VISITOR_PATHS.includes(window.location.pathname);
+            const response = await api.get<UserProfile>('/users/me', { meta: { silent: onVisitorPage } });
             setUser(response.data);
             identifyUser(response.data);
             rememberActiveCompany(response.data);
@@ -94,8 +99,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 console.error("Failed to fetch user:", error);
             } else {
                 const path = typeof window !== 'undefined' ? window.location.pathname : '';
-                const publicPaths = ['/', '/login', '/forgot-password', '/reset-password'];
-                if (!publicPaths.includes(path)) {
+                if (!PUBLIC_PATHS.includes(path)) {
                     logout();
                 } else {
                     setAuthToken(null);

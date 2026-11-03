@@ -503,6 +503,33 @@ describe("AuthContext", () => {
         (window as any).location = originalLocation;
       }
     });
+
+    it.each(["/aviso-legal", "/privacidad", "/cookies", "/terminos"])(
+      "no cierra sesion ni redirige con 401 en la pagina legal %s",
+      async (pathname) => {
+        const originalLocation = window.location;
+        delete (window as any).location;
+        (window as any).location = { ...originalLocation, pathname };
+
+        vi.mocked(api.get).mockRejectedValueOnce({ response: { status: 401 } });
+
+        try {
+          render(
+            <AuthProvider>
+              <TestComponent />
+            </AuthProvider>
+          );
+
+          await waitFor(() => {
+            expect(screen.getByTestId("loading")).toHaveTextContent("ready");
+          });
+
+          expect(api.post).not.toHaveBeenCalledWith("/logout");
+        } finally {
+          (window as any).location = originalLocation;
+        }
+      }
+    );
   });
 
   describe("comprobacion de sesion silenciosa en la landing", () => {
@@ -527,6 +554,11 @@ describe("AuthContext", () => {
 
     it("en / pide /users/me sin notificar errores", async () => {
       await renderOn("/");
+      expect(api.get).toHaveBeenCalledWith("/users/me", { meta: { silent: true } });
+    });
+
+    it("en una pagina legal pide /users/me sin notificar errores", async () => {
+      await renderOn("/privacidad");
       expect(api.get).toHaveBeenCalledWith("/users/me", { meta: { silent: true } });
     });
 

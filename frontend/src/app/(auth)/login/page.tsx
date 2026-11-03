@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { useAuth } from "@/context/AuthContext"
 import { getLastCompanyId, LAST_COMPANY_KEY } from "@/lib/last-company"
 import { Button } from "@/components/ui/button"
@@ -18,6 +19,7 @@ import {
 import { Loader2, Terminal } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { CONTACT_EMAIL } from "@/lib/config"
+import { LegalFooter } from "@/components/legal-footer"
 
 // Mensaje de error segun el estado devuelto por /verify-2fa
 function twoFactorErrorMessage(err: unknown): string {
@@ -236,6 +238,12 @@ export default function LoginPage() {
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isLoading ? "Signing in..." : isDevMode ? "Entrar como Administrador (Dev)" : "Sign In"}
             </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Consulta los{" "}
+              <Link href="/terminos" className="underline underline-offset-4 hover:text-foreground">términos de uso</Link>{" "}
+              y la{" "}
+              <Link href="/privacidad" className="underline underline-offset-4 hover:text-foreground">política de privacidad</Link>.
+            </p>
             {/* Request Access Button */}
             <Dialog>
               <DialogTrigger asChild>
@@ -260,8 +268,9 @@ export default function LoginPage() {
             </Dialog>
           </form>
         </CardContent>
-        <CardFooter className="flex justify-center text-xs text-muted-foreground">
-          Vesotel Work Management © 2026
+        <CardFooter className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
+          <span>Vesotel Work Management © 2026</span>
+          <LegalFooter />
         </CardFooter>
       </Card>
     </div>

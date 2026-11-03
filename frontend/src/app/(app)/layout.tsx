@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Suspense } from "react";
 import { useModules } from "@/hooks/useModules";
 import { ViewAsBanner } from "@/components/view-as-banner";
+import { LegalFooter } from "@/components/legal-footer";
 import { CONTACT_EMAIL } from "@/lib/config";
 import { SUSPENDED_COMPANY_MESSAGE } from "@/lib/api";
 
@@ -301,11 +302,14 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 <Sidebar
                     navGroups={navGroups}
                 />
-                <main className="flex-1 overflow-x-hidden">
+                <main className="flex flex-1 flex-col overflow-x-hidden">
                     <ViewAsBanner />
-                    <div className="p-4 md:p-8">
+                    <div className="flex-1 p-4 md:p-8">
                         {children}
                     </div>
+                    <footer className="border-t border-slate-200 px-4 py-3 md:px-8">
+                        <LegalFooter />
+                    </footer>
                 </main>
 
             </div>

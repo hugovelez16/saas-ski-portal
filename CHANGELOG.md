@@ -19,6 +19,26 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.27.0] - 2026-11-03
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Paginas legales publicas (aviso legal, privacidad, cookies y terminos), enlaces legales en el pie de login, area autenticada y landing, y plantilla del contrato de encargado del tratamiento (art. 28 RGPD). Los textos son una base que debe validar un abogado o DPO.
+
+### Anadido
+
+- **`src/app/(legal)/`**: grupo de rutas publico con `/aviso-legal`, `/privacidad`, `/cookies` y `/terminos`. La politica de cookies describe las cookies reales de sesion (`access_token`, `refresh_token`), el almacenamiento local tecnico y PostHog (sin cookies, solo si esta activado).
+- **`src/lib/legal-config.ts`**: unico sitio con los datos del titular (Vesotel Soporte y Telecomunicaciones, S.L., tomados de vesotel.com) y las categorias de proveedores. Solo el minimo del art. 10 LSSI, con enlace a vesotel.com; el correo sale de `NEXT_PUBLIC_CONTACT_EMAIL` o, si falta, `hola@vesotel.com`.
+- **`src/components/legal-footer.tsx`** y **`src/components/legal-contact-email.tsx`**: enlaces legales reutilizables y correo de contacto de las paginas, con pruebas.
+- **Login**: aviso con enlaces a los terminos de uso y a la politica de privacidad.
+- **`docs/legal/`**: plantilla del contrato de encargado del tratamiento e indice con los puntos a validar por el asesor.
+
+### Corregido
+
+- **`src/context/AuthContext.tsx`**: las paginas legales se tratan como publicas; un visitante sin sesion ya no es redirigido a `/login` ni ve errores de la comprobacion de sesion.
+
+---
+
 ## [0.26.0] - 2026-10-29
 
 ### Tipo de Cambio SemVer
