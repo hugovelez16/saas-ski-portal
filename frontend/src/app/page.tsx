@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ContactForm } from "@/components/landing/contact-form";
+import { LegalFooter } from "@/components/legal-footer";
 import { MonitorSection } from "@/components/landing/monitor-section";
 import { PlanCards } from "@/components/landing/plan-cards";
 import { PricingCalculator } from "@/components/landing/pricing-calculator";
@@ -414,6 +415,7 @@ export default function LandingPage() {
             <footer className="border-t border-slate-800 bg-slate-900 py-7 text-sm text-slate-400">
                 <div className={`${container} flex flex-wrap items-center justify-between gap-4`}>
                     <span>Vesotel Jornadas</span>
+                    <LegalFooter className="text-sm text-slate-400 [&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center [&_a:hover]:text-white" />
                     <Link href="/login" className="p-3 text-slate-300 hover:text-white">
                         Acceder
                     </Link>

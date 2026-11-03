@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Loader2, KeyRound, CheckCircle2 } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { resetPassword } from "@/lib/api/users"
+import { LegalFooter } from "@/components/legal-footer"
 
 function ResetPasswordForm() {
   const router = useRouter()
@@ -156,8 +157,9 @@ export default function ResetPasswordPage() {
             <ResetPasswordForm />
           </Suspense>
         </CardContent>
-        <CardFooter className="flex justify-center text-xs text-muted-foreground">
-          Vesotel Work Management © 2026
+        <CardFooter className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
+          <span>Vesotel Work Management © 2026</span>
+          <LegalFooter />
         </CardFooter>
       </Card>
     </div>
