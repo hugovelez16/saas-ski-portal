@@ -122,6 +122,13 @@
   }
 }
 
+/* Landing: los enlaces internos se desplazan con animacion, salvo que el usuario pida menos movimiento */
+@media (prefers-reduced-motion: no-preference) {
+  html:has([data-landing]) {
+    scroll-behavior: smooth;
+  }
+}
+
 /* Custom Scrollbar for Sidebar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;

@@ -13,16 +13,22 @@ import { format, parseISO } from "date-fns";
 import { Pencil, Trash2, Sparkles, Moon } from "lucide-react";
 import type { WorkLog, Company } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { usePermissions } from "@/hooks/use-permissions";
 
 interface WorkLogsTableProps {
     data: WorkLog[];
     companies: Company[];
     onUpdate: () => void;
     isLoading?: boolean;
-    user?: { id: string; firstName?: string | null; lastName?: string | null; defaultCompanyId?: string | null; activeCompanyId?: string | null };
+    /** Si la carga fallo: se muestra este texto en vez de una lista vacia. */
+    error?: string | null;
+    user?: { id: string; firstName?: string | null; lastName?: string | null; activeCompanyId?: string | null };
     showUserColumn?: boolean;
     readOnly?: boolean;
     fixedCompanyId?: string;
+    /** Modo controlado opcional: el padre fija la empresa seleccionada y recibe los cambios. */
+    companyId?: string;
+    onCompanyChange?: (companyId: string) => void;
 }
 
 export function WorkLogsTable({
@@ -30,15 +36,32 @@ export function WorkLogsTable({
     companies,
     onUpdate,
     isLoading,
+    error,
     user,
     showUserColumn = false,
     readOnly = false,
     fixedCompanyId,
+    companyId,
+    onCompanyChange,
 }: WorkLogsTableProps) {
     const { toast } = useToast();
-    const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
+    const isControlled = companyId !== undefined && onCompanyChange !== undefined;
+    const [internalCompanyId, setInternalCompanyId] = useState<string>(
         fixedCompanyId || (companies.length > 0 ? companies[0].id : "all")
     );
+    const selectedCompanyId = isControlled && companyId !== undefined ? companyId : internalCompanyId;
+    const setSelectedCompanyId = (id: string) => {
+        if (isControlled && onCompanyChange) {
+            onCompanyChange(id);
+        } else {
+            setInternalCompanyId(id);
+        }
+    };
+    // Permisos de la empresa seleccionada; con "todas las empresas" no hay empresa de referencia
+    const tableCompany = selectedCompanyId !== "all" ? companies.find(c => c.id === selectedCompanyId) ?? null : null;
+    const { canEditWorkLog, role, isManaged } = usePermissions(tableCompany);
+    const showManagedNotice = role === 'worker' && isManaged && !readOnly;
+
     const [viewLog, setViewLog] = useState<WorkLog | null>(null);
     const [editLog, setEditLog] = useState<WorkLog | null>(null);
 
@@ -113,7 +136,7 @@ export function WorkLogsTable({
             toast({ title: "Parte eliminado" });
             onUpdate();
         } catch (error) {
-            toast({ title: "Error al eliminar", variant: "destructive" });
+            console.error("Error deleting work log:", error);
         }
     };
 
@@ -243,20 +266,22 @@ export function WorkLogsTable({
                 id: "actions",
                 header: "",
                 cell: ({ row }) => (
-                    <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => setEditLog(row.original)}>
-                            <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteClick(row.original.id)}>
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                    </div>
+                    canEditWorkLog(row.original) ? (
+                        <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => setEditLog(row.original)}>
+                                <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteClick(row.original.id)}>
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    ) : null
                 )
             });
         }
 
         return columns;
-    }, [companies, dynamicExtraKeys, fieldDefinitions, selectedCompanyId, fixedCompanyId, showUserColumn, readOnly]);
+    }, [companies, dynamicExtraKeys, fieldDefinitions, selectedCompanyId, fixedCompanyId, showUserColumn, readOnly, canEditWorkLog]);
 
     const activeUser = user || (editLog?.userId ? { id: editLog.userId } : { id: "" });
 
@@ -279,15 +304,27 @@ export function WorkLogsTable({
                 </div>
             )}
 
+            {showManagedNotice && (
+                <p className="text-sm text-muted-foreground italic">
+                    En esta empresa los turnos los registra el equipo gestor
+                </p>
+            )}
+
             {/* Standard Data Table */}
-            <DataTable
-                columns={logColumns}
-                data={filteredData}
-                searchKey="type"
-                searchPlaceholder="Buscar por tipo..."
-                isLoading={isLoading}
-                onRowClick={(log) => setViewLog(log)}
-            />
+            {error ? (
+                <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-6 text-center text-sm text-destructive">
+                    {error}
+                </p>
+            ) : (
+                <DataTable
+                    columns={logColumns}
+                    data={filteredData}
+                    searchKey="type"
+                    searchPlaceholder="Buscar por tipo..."
+                    isLoading={isLoading}
+                    onRowClick={(log) => setViewLog(log)}
+                />
+            )}
 
             {/* View Details Dialog */}
             <WorkLogDetailsDialog

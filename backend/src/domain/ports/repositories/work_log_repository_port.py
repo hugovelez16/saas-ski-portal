@@ -1,50 +1,13 @@
 """
-Puertos de Repositorio para Company, CompanyMember y WorkLog.
+Puerto de Repositorio para WorkLog.
+Los puertos de Company y CompanyMember viven en company_repository_port.py.
 """
 
 from abc import ABC, abstractmethod
 from datetime import date
 from typing import List, Optional
 
-from domain.entities.company import Company
-from domain.entities.company_member import CompanyMember
 from domain.entities.work_log import WorkLog
-
-
-class CompanyRepositoryPort(ABC):
-    @abstractmethod
-    async def get_by_id(self, company_id: str) -> Optional[Company]:
-        pass
-
-    @abstractmethod
-    async def get_by_name(self, name: str) -> Optional[Company]:
-        pass
-
-    @abstractmethod
-    async def list_companies(self) -> List[Company]:
-        pass
-
-    @abstractmethod
-    async def save(self, company: Company) -> Company:
-        pass
-
-
-class CompanyMemberRepositoryPort(ABC):
-    @abstractmethod
-    async def get_membership(self, user_id: str, company_id: str) -> Optional[CompanyMember]:
-        pass
-
-    @abstractmethod
-    async def list_members_by_company(self, company_id: str) -> List[CompanyMember]:
-        pass
-
-    @abstractmethod
-    async def list_companies_by_user(self, user_id: str) -> List[CompanyMember]:
-        pass
-
-    @abstractmethod
-    async def save(self, member: CompanyMember) -> CompanyMember:
-        pass
 
 
 class WorkLogRepositoryPort(ABC):

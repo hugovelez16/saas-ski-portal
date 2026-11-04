@@ -5,12 +5,19 @@ This module defines the Pydantic models used for request validation and response
 It ensures that data sent to and received from the API conforms to the expected structure.
 """
 
+import json
 from datetime import date as dt_date
-from datetime import datetime, time
-from typing import Annotated, Any
+from datetime import datetime, time, timedelta
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
+from contracts import (
+    MEMBER_SETTINGS_ALLOWED_KEYS,
+    CompanySettings,
+    TaxConfig,
+    WorklogDefinitions,
+)
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 def to_camel(string: str) -> str:
@@ -38,21 +45,92 @@ class WorkLogBase(CamelModel):
     extra_data: dict[str, Any] | None = Field(default={}, alias="extraData")
     description: str | None = None
     company_id: UUID | None = Field(None, alias="companyId")
-    group_id: UUID | None = Field(None, alias="groupId")
 
 
-class WorkLogCreate(WorkLogBase):
-    """Schema for creating a new WorkLog entry."""
+MIN_WORKLOG_DATE = dt_date(2000, 1, 1)
+MAX_WORKLOG_FUTURE_DAYS = 730
+
+
+def _validate_worklog_dates(start: dt_date | None, end: dt_date | None) -> None:
+    """Rango de fechas de un turno: ordenadas y entre 2000-01-01 y hoy + 730 dias."""
+    max_date = dt_date.today() + timedelta(days=MAX_WORKLOG_FUTURE_DAYS)
+    for value in (start, end):
+        if value is not None and not (MIN_WORKLOG_DATE <= value <= max_date):
+            raise ValueError(f"Las fechas deben estar entre {MIN_WORKLOG_DATE.isoformat()} y {max_date.isoformat()}")
+    if start is not None and end is not None and start > end:
+        raise ValueError("start_date no puede ser posterior a end_date")
+
+
+class WorkLogInput(WorkLogBase):
+    """Reglas de entrada de turnos. No se aplican a WorkLogResponse para no romper la lectura de turnos antiguos."""
+
+    duration: float | None = Field(None, ge=0)
+    net_amount: float | None = Field(None, alias="netAmount", ge=0)
+    gross_amount: float | None = Field(None, alias="grossAmount", ge=0)
+    amount: float | None = Field(None, ge=0)  # Allow manual amount override
+
+    @model_validator(mode="after")
+    def _check_dates(self):
+        _validate_worklog_dates(self.start_date, self.end_date)
+        return self
+
+    @model_validator(mode="after")
+    def _check_company(self):
+        if self.company_id is None:
+            raise ValueError("company_id es obligatorio")
+        return self
+
+
+class WorkLogCreate(WorkLogInput):
+    """Schema for creating a new WorkLog entry. El `groupId` del cliente se ignora (lo genera el backend)."""
 
     user_id: UUID
-    amount: float | None = None  # Allow manual amount override
 
 
-class WorkLogBulkCreate(WorkLogBase):
+class WorkLogBulkCreate(WorkLogInput):
     """Schema for creating multiple WorkLog entries at once."""
 
-    user_ids: list[UUID] = Field(..., alias="userIds")
-    amount: float | None = None
+    user_ids: list[UUID] = Field(..., alias="userIds", min_length=1, max_length=500)
+
+
+class WorkLogUpdate(CamelModel):
+    """Edicion de un turno: campos opcionales. `user_id` y `company_id` solo se aceptan si no cambian."""
+
+    type: str | None = None
+    start_date: dt_date | None = Field(None, alias="startDate")
+    end_date: dt_date | None = Field(None, alias="endDate")
+    start_time: time | None = Field(None, alias="startTime")
+    end_time: time | None = Field(None, alias="endTime")
+    duration: float | None = Field(None, ge=0)
+    net_amount: float | None = Field(None, alias="netAmount", ge=0)
+    gross_amount: float | None = Field(None, alias="grossAmount", ge=0)
+    amount: float | None = Field(None, ge=0)
+    extra_data: dict[str, Any] | None = Field(None, alias="extraData")
+    description: str | None = None
+    user_id: UUID | None = Field(None, alias="userId")
+    company_id: UUID | None = Field(None, alias="companyId")
+
+    @model_validator(mode="after")
+    def _check_required_not_null(self):
+        # Un null explicito en un campo obligatorio del turno no es una edicion valida
+        for name in ("type", "start_date", "end_date"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} no puede ser nulo")
+        return self
+
+    @model_validator(mode="after")
+    def _check_dates(self):
+        _validate_worklog_dates(self.start_date, self.end_date)
+        return self
+
+
+class WorkLogWarning(CamelModel):
+    """Aviso no bloqueante sobre un turno guardado (p. ej. solape con otro turno del mismo trabajador)."""
+
+    code: str
+    message: str
+    conflicting_log_ids: list[UUID] = []
+    user_id: UUID | None = None
 
 
 class WorkLogResponse(WorkLogBase):
@@ -62,12 +140,24 @@ class WorkLogResponse(WorkLogBase):
     user_id: UUID
     amount: float | None = None
     gross_amount: float | None = Field(None, alias="grossAmount")
+    group_id: UUID | None = Field(None, alias="groupId")
+    warnings: list[WorkLogWarning] = []
 
     # SaaS Evolution: Historical snapshot (includes rate_applied inside snapshot["rate_applied"])
     calculation_snapshot: dict[str, Any] | None = Field(None, alias="calculationSnapshot")
 
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def _fill_group_id(self):
+        """El grupo vive en extra_data, no es columna."""
+        if self.group_id is None and self.extra_data and self.extra_data.get("group_id"):
+            try:
+                self.group_id = UUID(str(self.extra_data["group_id"]))
+            except ValueError:
+                pass
+        return self
 
 
 # UserDeviceResponse removed. Use SessionResponse instead.
@@ -103,7 +193,8 @@ class UserResponse(UserBase):
     is_platform_admin: bool = False
     active_company_id: UUID | None = None
     active_role: str | None = None
-    default_company_id: UUID | None = None
+    view_as: str | None = None
+    is_read_only_view: bool = False
     created_at: datetime
 
     class Config:
@@ -114,15 +205,13 @@ class UserUpdate(CamelModel):
     first_name: str | None = None
     last_name: str | None = None
     email: EmailStr | None = None
-    role: str | None = None
+    role: Literal["admin", "user"] | None = None
     is_active: bool | None = None
-    default_company_id: UUID | None = None
 
 
 class UserSelfUpdate(CamelModel):
     first_name: str | None = None
     last_name: str | None = None
-    default_company_id: UUID | None = None
 
 
 class PasswordChange(CamelModel):
@@ -158,42 +247,75 @@ class UserCompanyRateResponse(UserCompanyRate):
     user: UserResponse | None = None
 
 
-class UpdateCompanyMembersOrder(CamelModel):
-    user_ids: list[UUID] = Field(..., max_length=500)
+COMPANY_NAME_MAX = 120
+
+
+def normalize_company_name(v: str | None) -> str:
+    """Quita los espacios sobrantes y exige entre 1 y COMPANY_NAME_MAX caracteres."""
+    if v is None:
+        raise ValueError("El nombre de la empresa es obligatorio")
+    name = v.strip()
+    if not 1 <= len(name) <= COMPANY_NAME_MAX:
+        raise ValueError(f"El nombre debe tener entre 1 y {COMPANY_NAME_MAX} caracteres")
+    return name
+
+
+# Tope del JSON de `settings` y `worklog_definitions`: cada edicion se copia entera a la auditoria.
+COMPANY_JSON_MAX_BYTES = 65536
+
+
+def limit_company_json(v: dict[str, Any] | None) -> dict[str, Any] | None:
+    if v is not None and len(json.dumps(v, default=str).encode("utf-8")) > COMPANY_JSON_MAX_BYTES:
+        raise ValueError(f"El contenido supera el maximo de {COMPANY_JSON_MAX_BYTES} bytes")
+    return v
 
 
 class CompanyBase(CamelModel):
     name: str
-    fiscal_id: str | None = None
-    tax_config: dict[str, float] | None = Field(default={"social_security": 0.0, "irpf_base": 0.0}, alias="taxConfig")
+    # Obligatorio y estricto en escritura ({} es valido). Las respuestas lo relajan en `Company`.
+    tax_config: TaxConfig = Field(alias="taxConfig")
 
-    # SaaS Evolution: Dynamic shift definitions
-    worklog_definitions: dict[str, Any] | None = Field(default={}, alias="worklogDefinitions")
+    # SaaS Evolution: Dynamic shift definitions. Las respuestas lo leen de forma tolerante en `Company`.
+    worklog_definitions: WorklogDefinitions = Field(
+        default_factory=lambda: WorklogDefinitions({}), alias="worklogDefinitions"
+    )
 
     is_active: bool = Field(default=True, alias="isActive")
     is_managed: bool = Field(default=False, alias="isManaged")
 
-    settings: dict[str, Any] | None = None
+    settings: CompanySettings | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        return normalize_company_name(v)
 
 
-class CompanyCreate(CompanyBase):
-    pass
-
-
-class CompanyUpdate(CamelModel):
-    name: str | None = None
-    fiscal_id: str | None = None
-    tax_config: dict[str, float] | None = Field(None, alias="taxConfig")
-    worklog_definitions: dict[str, Any] | None = Field(None, alias="worklogDefinitions")
-    is_active: bool | None = Field(None, alias="isActive")
-    is_managed: bool | None = Field(None, alias="isManaged")
-    settings: dict[str, Any] | None = None
+def read_company_settings(raw: Any) -> dict[str, Any]:
+    """
+    Settings para respuestas de empresa: lectura tolerante con defaults aplicados.
+    Las claves de miembro (lista blanca) se conservan porque la vista de empresa de la API v2 las fusiona aqui.
+    """
+    source = raw if isinstance(raw, dict) else {}
+    member_part = {key: value for key, value in source.items() if key in MEMBER_SETTINGS_ALLOWED_KEYS}
+    company_part = {key: value for key, value in source.items() if key not in MEMBER_SETTINGS_ALLOWED_KEYS}
+    return {**CompanySettings.from_db(company_part).model_dump(mode="json"), **member_part}
 
 
 class Company(CompanyBase):
+    # Lectura tolerante: filas existentes con tax_config NULL o cualquier dict.
+    tax_config: dict[str, float] | None = Field(None, alias="taxConfig")
+    # Lectura tolerante: settings con defaults aplicados; worklog_definitions tal cual esta en BD.
+    settings: dict[str, Any] | None = None
+    worklog_definitions: dict[str, Any] | None = Field(default={}, alias="worklogDefinitions")
     id: UUID
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("settings", mode="before")
+    @classmethod
+    def _read_settings(cls, v: Any) -> dict[str, Any]:
+        return read_company_settings(v)
 
     class Config:
         from_attributes = True
@@ -205,39 +327,6 @@ class CompanyResponse(Company):
     rates_config: dict[str, Any] | None = Field(None, alias="ratesConfig")
 
 
-def default_role(v: Any) -> str:
-    return v or "worker"
-
-
-def default_is_active(v: Any) -> bool:
-    return v if v is not None else True
-
-
-class CompanyMemberBase(CamelModel):
-    role: Annotated[str, BeforeValidator(default_role)] = "worker"
-    is_active: Annotated[bool, BeforeValidator(default_is_active)] = True
-    rates_config: dict[str, Any] | None = None
-    settings: dict[str, Any] | None = None
-
-
-class CompanyMemberUpdate(CamelModel):
-    role: str | None = None
-    is_active: bool | None = None
-    rates_config: dict[str, Any] | None = None
-    settings: dict[str, Any] | None = None
-
-
-class CompanyMemberResponse(CompanyMemberBase):
-    user_id: UUID
-    company_id: UUID
-    joined_at: datetime
-    user: UserResponse | None = None
-
-
-class CompanyWithMembers(CompanyResponse):
-    members: list[CompanyMemberResponse] = []
-
-
 class Token(CamelModel):
     access_token: str
     token_type: str
@@ -246,6 +335,14 @@ class Token(CamelModel):
 
 class Verify2FA(CamelModel):
     code: str
+    company_id: UUID | None = None
+
+
+class SwitchScopeRequest(CamelModel):
+    """Cuerpo de POST /auth/switch-scope. El rol de la membresia se lee de BD; no se acepta del cliente."""
+
+    company_id: UUID | None = None
+    view_as: Literal["worker", "manager"] | None = None
 
 
 class TOTPSetupResponse(CamelModel):
@@ -264,8 +361,6 @@ class TOTPDisable(CamelModel):
 class TokenData(CamelModel):
     user_id: str | None = None
     company_id: str | None = None
-    company_role: str | None = None
-    is_platform_admin: bool = False
     scope: str = "full"
     email: EmailStr | None = None
     admin_user_id: str | None = None
@@ -292,6 +387,11 @@ class PasswordResetConfirm(CamelModel):
 # ─── Módulos y Suscripciones ───────────────────────────────────────────────
 
 
+ModuleTargetScope = Literal["company", "user", "both"]
+SubscriptionScopeValue = Literal["company", "user"]
+SubscriptionStatusValue = Literal["active", "trial", "cancelled", "expired"]
+
+
 class AppModuleCreate(CamelModel):
     """Schema para crear un módulo en el catálogo (solo Platform Admin)."""
 
@@ -299,7 +399,7 @@ class AppModuleCreate(CamelModel):
     name: str
     description: str | None = None
     is_active: bool = True
-    target_scope: str = "both"  # "company" | "user" | "both"
+    target_scope: ModuleTargetScope = "both"
     price_monthly: float | None = None
 
 
@@ -309,7 +409,7 @@ class AppModuleUpdate(CamelModel):
     name: str | None = None
     description: str | None = None
     is_active: bool | None = None
-    target_scope: str | None = None
+    target_scope: ModuleTargetScope | None = None
     price_monthly: float | None = None
 
 
@@ -333,16 +433,25 @@ class ModuleSubscriptionCreate(CamelModel):
     module_id: UUID = Field(..., alias="moduleId")
     company_id: UUID | None = Field(None, alias="companyId")
     user_id: UUID | None = Field(None, alias="userId")
-    scope: str  # "company" | "user"
-    status: str = "active"  # "active" | "trial" | "cancelled" | "expired"
+    scope: SubscriptionScopeValue
+    status: SubscriptionStatusValue = "active"
     expires_at: datetime | None = Field(None, alias="expiresAt")
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def _scope_matches_target(self):
+        """El scope exige su destino y excluye el otro."""
+        if self.scope == "company" and (self.company_id is None or self.user_id is not None):
+            raise ValueError("Una suscripción de empresa requiere companyId y no admite userId.")
+        if self.scope == "user" and (self.user_id is None or self.company_id is not None):
+            raise ValueError("Una suscripción de usuario requiere userId y no admite companyId.")
+        return self
 
 
 class ModuleSubscriptionUpdate(CamelModel):
     """Schema para actualizar el estado de una suscripción."""
 
-    status: str | None = None
+    status: SubscriptionStatusValue | None = None
     expires_at: datetime | None = Field(None, alias="expiresAt")
     notes: str | None = None
 
@@ -363,6 +472,65 @@ class ModuleSubscriptionResponse(CamelModel):
     module: AppModuleResponse | None = None
     company: CompanyResponse | None = None
     user: UserResponse | None = None
+
+
+class CompanyBriefResponse(CamelModel):
+    id: UUID
+    name: str
+
+
+class ModuleSubscriptionManagerResponse(ModuleSubscriptionResponse):
+    """Suscripcion para no-PA (PR-13): la empresa embebida solo lleva `id` y `name`."""
+
+    company: CompanyBriefResponse | None = None
+
+
+# ─── Parte diario (PR-14) ──────────────────────────────────────────────────
+
+
+class DailyReportMember(CamelModel):
+    user_id: UUID
+    first_name: str | None = None
+    last_name: str | None = None
+    role: str
+    is_active: bool
+    sort_order: int
+
+
+class DailyReportLogWorker(CamelModel):
+    """Turno del parte diario sin importes: es el que recibe el worker [P-14]."""
+
+    id: UUID
+    user_id: UUID
+    company_id: UUID | None = None
+    type: str
+    start_date: dt_date
+    end_date: dt_date
+    start_time: time | None = None
+    end_time: time | None = None
+    duration: float | None = None
+    description: str | None = None
+
+
+class DailyReportLogFull(DailyReportLogWorker):
+    net_amount: float | None = None
+    gross_amount: float | None = None
+
+
+class DailyReportWorkerResponse(CamelModel):
+    company_id: UUID
+    date: dt_date
+    members: list[DailyReportMember]
+    work_types: dict[str, dict[str, Any]]
+    logs: list[DailyReportLogWorker]
+
+
+class DailyReportFullResponse(CamelModel):
+    company_id: UUID
+    date: dt_date
+    members: list[DailyReportMember]
+    work_types: dict[str, dict[str, Any]]
+    logs: list[DailyReportLogFull]
 
 
 class BillingSummaryItemResponse(CamelModel):
@@ -448,3 +616,71 @@ class DashboardSummaryResponse(CamelModel):
     type_breakdown: list[DashboardTypeBreakdown] = []
     daily_breakdown: list[DashboardDailyBreakdown] = []
     workers_summary: list[DashboardWorkerSummary] = []
+
+
+# --- Agregados de turnos (PR-07): GET /work-logs/summary ---
+
+
+class WorkLogTotals(CamelModel):
+    logs_count: int
+    total_hours: float
+    total_net: float
+    total_gross: float
+    unique_days: int
+    active_users: int
+
+
+class WorkLogTypeTotals(CamelModel):
+    type: str
+    logs_count: int
+    hours: float
+    net: float
+    gross: float
+
+
+class WorkLogDayTotals(CamelModel):
+    date: dt_date
+    logs_count: int
+    hours: float
+    net: float
+    gross: float
+
+
+class WorkLogUserTotals(CamelModel):
+    user_id: UUID
+    first_name: str | None
+    last_name: str | None
+    email: str | None
+    logs_count: int
+    hours: float
+    net: float
+    gross: float
+    unique_days: int
+
+
+class WorkLogSummaryResponse(CamelModel):
+    start_date: dt_date
+    end_date: dt_date
+    totals: WorkLogTotals
+    by_type: list[WorkLogTypeTotals]
+    by_day: list[WorkLogDayTotals]
+    by_user: list[WorkLogUserTotals]
+
+
+class AuditLogItem(CamelModel):
+    id: UUID
+    action: str
+    created_at: datetime
+    actor_user_id: UUID | None
+    actor_email: str | None
+    company_id: UUID | None
+    target_user_id: UUID | None
+    old_value: dict[str, Any] | None
+    new_value: dict[str, Any] | None
+    reason: str | None
+    extra_data: dict[str, Any] | None
+
+
+class AuditLogPage(CamelModel):
+    total: int
+    items: list[AuditLogItem]

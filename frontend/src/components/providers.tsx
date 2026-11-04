@@ -7,6 +7,8 @@ import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
 
 import { Toaster } from "@/components/ui/toaster";
+import { useToast } from "@/hooks/use-toast";
+import { setErrorNotifier } from "@/lib/api";
 
 type CaptureResult = {
   uuid: string;
@@ -147,6 +149,17 @@ function PostHogInit({ children }: { children: React.ReactNode }) {
   );
 }
 
+function ApiErrorNotifier() {
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setErrorNotifier(toast);
+    return () => setErrorNotifier(null);
+  }, [toast]);
+
+  return null;
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   // NOTE: Avoid useState for QueryClient in Next.js App Router if you encounter SSR issues.
   // Instead, use the singleton pattern or useMemo with careful checks.
@@ -156,6 +169,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <PostHogInit>
       <QueryClientProvider client={queryClient}>
         {children}
+        <ApiErrorNotifier />
         <Toaster />
         <SonnerToaster />
       </QueryClientProvider>

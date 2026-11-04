@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { WorkLog } from "@/lib/types";
+import { DashboardWorkerSummary } from "@/lib/types";
 import { Search, ChevronRight, UserCheck } from "lucide-react";
 
 export interface TeamMemberStats {
@@ -27,34 +27,30 @@ export interface TeamMemberStats {
     uniqueDays: number;
     totalLogs: number;
     totalAmount: number;
+    isActive?: boolean;
 }
 
 interface DashboardTeamTableProps {
     companyId: string;
     members: any[];
     orderedMemberIds?: string[];
-    workLogs: WorkLog[];
+    workersSummary: DashboardWorkerSummary[];
     isLoading?: boolean;
 }
 
 export function DashboardTeamTable({
-    companyId,
     members,
     orderedMemberIds = [],
-    workLogs,
+    workersSummary,
     isLoading
 }: DashboardTeamTableProps) {
     const [searchQuery, setSearchQuery] = useState("");
 
     // Aggregate stats strictly adhering to manager member order
     const teamStats = useMemo<TeamMemberStats[]>(() => {
-        // 1. Group logs by userId
-        const logsByUser = new Map<string, WorkLog[]>();
-        workLogs.forEach(log => {
-            const userLogs = logsByUser.get(log.userId) || [];
-            userLogs.push(log);
-            logsByUser.set(log.userId, userLogs);
-        });
+        // 1. Index backend aggregates by userId (no sums in the browser)
+        const summaryByUser = new Map<string, DashboardWorkerSummary>();
+        workersSummary.forEach(worker => summaryByUser.set(worker.userId, worker));
 
         // 2. Build rows following members list
         const rows: TeamMemberStats[] = members.map(m => {
@@ -64,27 +60,7 @@ export function DashboardTeamTable({
             const initials = `${(user.firstName?.[0] || fullName[0] || 'M')}${(user.lastName?.[0] || '')}`.toUpperCase();
             const role = m.role || 'worker';
 
-            const userLogs = logsByUser.get(userId) || [];
-            let totalHours = 0;
-            let totalAmount = 0;
-            const distinctDays = new Set<string>();
-
-            userLogs.forEach(log => {
-                if (log.duration) {
-                    totalHours += Number(log.duration);
-                } else if (log.startTime && log.endTime) {
-                    const [sh, sm] = log.startTime.split(':').map(Number);
-                    const [eh, em] = log.endTime.split(':').map(Number);
-                    const diff = (eh * 60 + em - (sh * 60 + sm)) / 60;
-                    if (diff > 0) totalHours += diff;
-                }
-
-                if (log.startDate) {
-                    distinctDays.add(log.startDate.split('T')[0]);
-                }
-
-                totalAmount += Number(log.netAmount || log.grossAmount || log.amount || 0);
-            });
+            const worker = summaryByUser.get(userId);
 
             return {
                 userId,
@@ -92,10 +68,11 @@ export function DashboardTeamTable({
                 email: user.email || '',
                 role,
                 initials,
-                totalHours,
-                uniqueDays: distinctDays.size,
-                totalLogs: userLogs.length,
-                totalAmount
+                totalHours: worker?.totalHours ?? 0,
+                uniqueDays: worker?.uniqueDays ?? 0,
+                totalLogs: worker?.logsCount ?? 0,
+                totalAmount: worker?.totalNet ?? 0,
+                isActive: worker?.isActive
             };
         });
 
@@ -115,7 +92,7 @@ export function DashboardTeamTable({
         }
 
         return rows;
-    }, [members, orderedMemberIds, workLogs]);
+    }, [members, orderedMemberIds, workersSummary]);
 
     const filteredRows = useMemo(() => {
         if (!searchQuery.trim()) return teamStats;
@@ -207,9 +184,16 @@ export function DashboardTeamTable({
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant="outline" className="capitalize text-[10px] px-1.5 h-5">
-                                            {row.role}
-                                        </Badge>
+                                        <div className="flex items-center gap-1.5">
+                                            <Badge variant="outline" className="capitalize text-[10px] px-1.5 h-5">
+                                                {row.role}
+                                            </Badge>
+                                            {row.isActive === false && (
+                                                <Badge variant="outline" className="text-[10px] px-1.5 h-5 text-muted-foreground">
+                                                    Inactivo
+                                                </Badge>
+                                            )}
+                                        </div>
                                     </TableCell>
                                     <TableCell className="text-right font-medium">
                                         {row.totalHours.toFixed(1)} h
@@ -225,7 +209,7 @@ export function DashboardTeamTable({
                                     </TableCell>
                                     <TableCell className="text-right pr-3">
                                         <Button asChild variant="ghost" size="icon" className="h-7 w-7">
-                                            <Link href={`/manager/users/${row.userId}?companyId=${companyId}`}>
+                                            <Link href={`/manager/users/${row.userId}`}>
                                                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
                                             </Link>
                                         </Button>

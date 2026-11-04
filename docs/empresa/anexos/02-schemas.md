@@ -1,0 +1,41 @@
+# 02 - Schemas de empresa (backend/schemas.py)
+
+Repo analizado: /home/usuario/00_datos/saas-ski-portal (solo lectura). Rama: develop.
+Rutas: backend/schemas.py, backend/models.py, backend/crud.py, backend/routers/companies.py, backend/routers/users.py.
+
+| Pregunta | Respuesta | Evidencia | Nota |
+|---|---|---|---|
+| 1. Campos de CompanyBase | name, fiscal_id, tax_config (alias taxConfig), worklog_definitions (alias worklogDefinitions), is_active (isActive), is_managed (isManaged), settings | schemas.py:165-176 | name y settings no tienen alias explicito; to_camel da el mismo nombre |
+| 1. Campos de CompanyCreate | Hereda CompanyBase sin campos nuevos | schemas.py:179-180 | Ningun campo es obligatorio salvo name |
+| 1. Campos de CompanyUpdate | Todos opcionales (None): name, fiscal_id, tax_config, worklog_definitions, is_active, is_managed, settings | schemas.py:183-190 | Sin alias explicitos en name, fiscal_id, settings |
+| 1. Campos de Company | Hereda CompanyBase + id, created_at (createdAt), updated_at (updatedAt) | schemas.py:193-199 | Alias generados por CamelModel |
+| 1. Campos de CompanyResponse | Hereda Company + is_active_member (isActiveMember, default True), role, rates_config (ratesConfig) | schemas.py:202-205 | role y rates_config no son columnas de Company |
+| 1. Campos de CompanyWithMembers | CompanyResponse + members: list[CompanyMemberResponse] = [] | schemas.py:237-238 | Lista de miembros incluye user: UserResponse (schemas.py:234) |
+| 1. Alias camelCase | Generados por to_camel (guion bajo a camel) mediante CamelModel, con populate_by_name=True y from_attributes=True | schemas.py:16-22 | Respuestas y requests en camelCase; los routers usan los nombres snake_case en Python |
+| 2. Longitud de name | Sin validacion: str sin min_length ni strip | schemas.py:166, 184 | Ausencia. Admite cadena vacia |
+| 2. Formato de fiscal_id | Ausencia total: str | schemas.py:167, 185 | Sin regex, longitud ni checksum NIF/CIF. Columna String nullable en migracion baseline |
+| 2. Validadores en el modulo | Ninguno: no hay field_validator, validator ni model_validator en schemas.py | grep de schemas.py (sin resultados) | Solo BeforeValidator en CompanyMemberBase (schemas.py:217-218) |
+| 2. Rangos de tax_config | Solo tipo dict[str, float]: valores numericos, sin claves permitidas, sin min/max; negativos admitidos | schemas.py:168, 186 | Ausencia de rangos y de claves. Default schema {social_security: 0.0, irpf_base: 0.0} |
+| 2. Estructura de worklog_definitions | dict[str, Any] sin schema. Estructura solo documentada en comentario | schemas.py:171, 187; models.py:92 | Ausencia de validacion (unit, label, fields no se comprueban) |
+| 2. Estructura de rates_config (miembro) | dict[str, Any] sin schema. Estructura solo en comentario | schemas.py:219, 226; models.py:121 | Ausencia de validacion |
+| 2. Validacion de settings | dict[str, Any] sin schema | schemas.py:176, 190 | Ausencia |
+| 2. Validacion de name en PUT | name: str or None permite null explicito; crud asigna None sin filtrar | schemas.py:184; crud.py:832-848 | Columna name es nullable=False (models.py:83). Null produce fallo de BD (probable 500, NO verificado con test) |
+| 2. Validacion de is_active/is_managed en PUT | bool or None permite null explicito | schemas.py:188-189 | Columnas nullable=False (models.py:94-95). Mismo riesgo que name (NO verificado) |
+| 3. CompanyUpdate permite cambiar is_active | Si a nivel de schema. A nivel de endpoint solo lo permite platform admin | schemas.py:188; routers/companies.py:72-79 | Manager no admin recibe 403 si la clave aparece en model_dump(exclude_unset=True) |
+| 3. CompanyUpdate permite cambiar is_managed | Igual que is_active: schema si, endpoint solo platform admin | schemas.py:189; routers/companies.py:72-79 | El chequeo mira solo claves snake_case (is_active, is_managed) porque model_dump usa by_alias=False; claves camel no llegarian (en la practica no afecta, pues pydantic mapea a snake) |
+| 3. CompanyUpdate permite cambiar tax_config, worklog_definitions, settings | Si. Un manager de la empresa (no admin) puede cambiarlos; la unica restriccion es is_active/is_managed | routers/companies.py:53-83 | Requiere revisar is_manager_of_company (no revisado en detalle). Un manager puede alterar configuracion fiscal |
+| 3. Quien puede llamar PUT /companies/{id} | Platform admin o manager (is_manager_of_company). Empresa inactiva bloquea a no admin | routers/companies.py:53-83 | Otros roles no se evaluan en el endpoint |
+| 4. CompanyResponse en GET /companies/{id} | Si: cualquier miembro activo recibe fiscal_id, tax_config, worklog_definitions, settings, is_managed | routers/companies.py:268-299 | No hay filtro por rol: worker recibe la misma respuesta completa |
+| 4. CompanyResponse en GET /companies (lista) | Si: cualquier usuario con membresia activa de empresa activa | routers/companies.py:19-38 | Mismo nivel de exposicion |
+| 4. Exposicion en GET /users/me/companies | Si: crud.get_user_companies devuelve tax_config, fiscal_id y settings efectivos (merge company+member) | crud.py:673-686; routers/users.py:64-82 | Admin de plataforma recibe dict sin is_active/is_managed (ver fila 6) |
+| 4. Exposicion en GET /companies/detailed | Supervisores (manager/admin) o miembros con modulo worker_daily_report: CompanyWithMembers con todos los miembros | routers/companies.py:85-138 | Lista de miembros con UserResponse. Un trabajador con ese modulo ve datos de otros miembros (NO evaluado UserResponse) |
+| 4. Exposicion en GET /users/{user_id}/companies | Decorador con response_model=list[CompanyResponse] | routers/users.py:282 | Cuerpo no revisado: NO DEFINIDO quien puede consultarlo |
+| 4. Clasificacion de settings como sensible | NO DEFINIDO: no hay evidencia de secretos en settings de empresa; el contenido real no se ha inspeccionado (seed usa fiscal_id ficticio B00000000) | backend/seed.py:53 | Decidir clasificacion de datos con el responsable |
+| 5. JSONB acepta dict libre | Si para settings (models.py:97), worklog_definitions (models.py:91), rates_config (models.py:120), settings de miembro (models.py:123). En schema solo tax_config tiene tipo dict[str, float] | models.py:87, 91, 97, 120, 123; schemas.py:168, 171, 176 | No se ha confirmado en el modelo ningun CheckConstraint sobre estas columnas (migraciones no revisadas en detalle) |
+| 5. Restriccion de tax_config en BD | Ninguna visible en models.py; sin CheckConstraint | models.py:87 | NO DEFINIDO si la migracion 2a7a9561abfa o 32a6a8b2c9ff añade restricciones |
+| 6. Default tax_config: schema vs modelo | Schema: {social_security: 0.0, irpf_base: 0.0}. Modelo: {social_security: 0.0648}. Divergen en claves y valor | schemas.py:168; models.py:87-88 (comentario sugiere irpf_base 0.15) | Creacion por API usa el default del schema (crud.py:817 company.dict() pasa todos los valores), por lo que el default del modelo no se aplica |
+| 6. Default settings en creacion | CompanyCreate.settings = None se envia explicito; el default del modelo ({}) no aplica a None | schemas.py:176; crud.py:817; models.py:97 | Puede guardarse NULL en settings. Probable, NO verificado |
+| 6. Desalineacion de nulabilidad | Schema permite null en name, is_active, is_managed (PUT); modelo los define NOT NULL | schemas.py:184, 188-189; models.py:83, 94-95 | Ver filas de validacion en PUT |
+| 6. Campos de membresia en CompanyResponse | role, is_active_member y rates_config no son columnas de Company. Solo se rellenan en get_user_companies; en GET /companies/{id} quedan en null o en default | schemas.py:203-205; crud.py:680-686; models.py:79-107 | Mezcla de contexto empresa y membresia en el mismo schema |
+| 6. Platform admin en /me/companies | El dict construido omite is_active e is_managed; el schema les asigna default (True y False) aunque la empresa este inactiva o gestionada | routers/users.py:70-82; schemas.py:173-174 | Inconsistencia real: un admin de plataforma puede ver empresas inactivas como activas |
+| 6. Instancias de Company en CompanyBase | Company (dominio) define tax_config, worklog_definitions y settings como dict vacio; el schema usa default distinto para tax_config | src/domain/entities/company.py:15-17; schemas.py:168 | Tercera fuente de defaults; NO DEFINIDO cual es la fuente de verdad |

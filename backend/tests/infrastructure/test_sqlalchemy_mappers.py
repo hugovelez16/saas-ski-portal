@@ -2,14 +2,18 @@
 Pruebas para mapeadores de persistencia SQLAlchemy.
 """
 
+from datetime import datetime
 from decimal import Decimal
 
+import models
 from domain.entities.company import Company
+from domain.entities.company_member import CompanyRole
 from domain.entities.user import User, UserRole
 from domain.entities.work_log import WorkLog
 from domain.value_objects.money import Money
 from infrastructure.persistence.sqlalchemy.mappers.company_mapper import SqlAlchemyCompanyMapper
 from infrastructure.persistence.sqlalchemy.mappers.user_mapper import (
+    SqlAlchemyCompanyMemberMapper,
     SqlAlchemyUserMapper,
 )
 from infrastructure.persistence.sqlalchemy.mappers.work_log_mapper import SqlAlchemyWorkLogMapper
@@ -42,18 +46,48 @@ def test_company_mapper_bidirectional():
     comp = Company(
         id="comp-123",
         name="Escuela Sierra Nevada",
-        fiscal_id="B12345678",
         tax_config={"irpf_base": 0.15},
+        settings={"timezone": "Europe/Madrid"},
+        is_active=False,
+        is_managed=True,
+        updated_at=datetime(2026, 3, 1, 10, 30),
     )
 
     orm_comp = SqlAlchemyCompanyMapper.to_orm(comp)
     assert orm_comp.name == "Escuela Sierra Nevada"
     assert orm_comp.tax_config == {"irpf_base": 0.15}
+    assert orm_comp.settings == {"timezone": "Europe/Madrid"}
+    assert orm_comp.is_active is False
+    assert orm_comp.is_managed is True
+    assert orm_comp.updated_at == datetime(2026, 3, 1, 10, 30)
 
     domain_comp = SqlAlchemyCompanyMapper.to_domain(orm_comp)
     assert domain_comp.id == comp.id
     assert domain_comp.name == comp.name
-    assert domain_comp.fiscal_id == "B12345678"
+    assert domain_comp.settings == {"timezone": "Europe/Madrid"}
+    assert domain_comp.is_active is False
+    assert domain_comp.is_managed is True
+    assert domain_comp.updated_at == datetime(2026, 3, 1, 10, 30)
+
+
+def test_company_member_mapper_maps_settings_and_updated_at():
+    orm_member = models.CompanyMember(
+        user_id="usr-1",
+        company_id="comp-1",
+        role=models.CompanyRole.manager,
+        is_active=True,
+        sort_order=1,
+        rates_config={},
+        settings={"view": "compact"},
+        joined_at=datetime(2026, 2, 1, 8, 0),
+        updated_at=datetime(2026, 3, 2, 9, 15),
+    )
+
+    domain_member = SqlAlchemyCompanyMemberMapper.to_domain(orm_member)
+
+    assert domain_member.role == CompanyRole.MANAGER
+    assert domain_member.settings == {"view": "compact"}
+    assert domain_member.updated_at == datetime(2026, 3, 2, 9, 15)
 
 
 def test_work_log_mapper_bidirectional():

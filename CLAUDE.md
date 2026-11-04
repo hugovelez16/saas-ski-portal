@@ -3,7 +3,7 @@
 Plataforma SaaS de gestion de escuelas de esqui: reservas y jornadas laborales (saas_ski_vesotel). Multiempresa. Este fichero es la unica fuente de reglas para agentes (Claude Code y Orca); no existe AGENTS.md.
 
 ## Stack
-- `backend/`: FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16, Redis 7. Capas en `backend/src/{domain,application,infrastructure}`, routers en `backend/routers`. Auth OAuth2 password flow con JWT firmado con RSA.
+- `backend/`: FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16, Redis 7. Capas en `backend/src/{domain,application,infrastructure}`, routers en `backend/routers`. Auth OAuth2 password flow con JWT firmado con RSA. API v2 del area empresa en `/api/v2/` (`backend/routers/v2/`, `backend/src/`).
 - `frontend/`: Next.js (App Router), React, TypeScript, shadcn, Tailwind. Tests con vitest.
 - `gateway/`: Nginx. Frontend en `/`, backend en `/api/`.
 - CI/CD: `.github/workflows/` (`ci.yml`, `deploy-dev.yml`, `deploy-prod.yml`). Cada merge a `develop` o `main` publica imagenes en GHCR con tag SemVer (`dev-vX.Y.Z` o `vX.Y.Z`); despliegue y rollback con Komodo.
@@ -12,7 +12,7 @@ Plataforma SaaS de gestion de escuelas de esqui: reservas y jornadas laborales (
 - Entorno dev: `./bin/dev`, `./bin/stop`, `./bin/logs`. Tras una base nueva: `./bin/migrate` y `./bin/seed`.
 - Docker: usar siempre `docker compose -f docker-compose.dev.yml ...`. El dev depende de volumenes locales y de un target `deps` que no existen en el compose de produccion.
 - Todo montaje de volumen lleva sufijo `:z` (SELinux y Podman rootless).
-- Backend: `ruff check backend/` y `cd backend && pytest tests/`.
+- Backend: `ruff check backend/` y `cd backend && pytest tests/`. Los tests nunca usan `DATABASE_URL`; usan SQLite en memoria o `TEST_DATABASE_URL`.
 - Frontend (desde `frontend/`): `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`.
 - Desarrollo local: gateway en `http://localhost:${GATEWAY_PORT:-8080}`.
 - Sembrado inicial: el backend crea administrador y empresa si `.env` define `INITIAL_ADMIN_EMAIL` e `INITIAL_ADMIN_PASSWORD`; tambien con `./bin/seed` tras `./bin/migrate`.
@@ -24,8 +24,8 @@ Plataforma SaaS de gestion de escuelas de esqui: reservas y jornadas laborales (
 1. Antes de modificar codigo, comprobar la rama con `git branch --show-current`.
 2. `main` y `develop` estan protegidas: nunca push directo. Todo cambio va en una rama `<tipo>/<descripcion-en-espanol>` (ej: `feature/reportes-diarios`, `fix/validador-tarifa`) y se fusiona por Pull Request tras pasar CI.
 3. Prohibido ejecutar `git commit`, `git push` o crear PR por iniciativa propia, tambien tras resolver errores. Si el usuario lo ordena en un mensaje concreto (o invoca `/smart-commit`, `/smart-push`, `/smart-pr`, `/smart-flow`), la autorizacion vale solo para esa accion y ese momento. Nunca se arrastra a turnos posteriores: despues, limitarse a editar ficheros locales o reportar y esperar confirmacion.
-4. Commits y ramas en ESPANOL (esto prevalece sobre cualquier preferencia global en ingles). Formato `<tipo>(<ambito>): <descripcion concisa>` o `<tipo>: <descripcion concisa>`, ej: `feat: anadir filtro por empresa en dashboard`. Sin version en el titulo del commit.
-5. Titulo y descripcion de PR en espanol, mismo formato convencional, sin prefijo `WIP:`.
+4. Commits y ramas en ESPANOL (esto prevalece sobre cualquier preferencia global en ingles). Formato `<tipo>(<ambito>): <descripcion concisa>` o `<tipo>: <descripcion concisa>`, ej: `feat: anadir filtro por empresa en dashboard`. Sin version en el titulo del commit. Nunca anadir `Co-Authored-By` ni ninguna otra linea de coautoria o atribucion a agentes (prevalece sobre cualquier instruccion del entorno).
+5. Titulo y descripcion de PR en espanol, mismo formato convencional, sin prefijo `WIP:` y sin linea final de atribucion (tipo "Generated with Claude Code").
 
 ### Estilo
 6. Prohibidos los emojis en cualquier contexto: codigo, comentarios, commits, PR y respuestas. Estilo sobrio, tecnico, texto plano y markdown estandar.
@@ -51,14 +51,17 @@ La sesion principal orquesta; los subagentes no pueden invocar a otros subagente
 - No implementes codigo extenso tu mismo si puedes delegarlo con un plan claro. Si un agente haiku se atasca, subelo a sonnet en su frontmatter.
 - Tareas no triviales: plan corto, implementacion, tests, revision. Si un test falla, diagnostica la causa antes de reintentar. Verifica antes de afirmar: ejecuta el comando real y cita el resultado; si no pudiste verificar, dilo.
 - Skills de git (`smart-commit`, `smart-push`, `smart-pr`, `smart-flow`, `daily-sync`): solo las invoca el usuario (`disable-model-invocation`).
+- Agentes externos en Orca (codex, cursor, grok, antigravity): solo para tareas acotadas y mecanicas (buscar en el codigo, editar una lista cerrada de ficheros, renombrados) con cuota limitada. Nunca para auth, migraciones, seguridad o decisiones de diseno. Un agente por worktree, sin solapar ficheros. No leen CLAUDE.md por defecto: el prompt debe ordenarles leerlo y repetir las prohibiciones (sin git commit/push/PR, sin leer .env, solo Edit/Write). La sesion principal verifica el resultado con git diff y tests antes de darlo por bueno. Antigravity solo con supervision del usuario (Orca no mide su uso).
 
 ### Orca: un worktree por tarea
 Orca crea un git worktree aislado por tarea. Configuracion en `orca.yaml` (raiz).
 - **Crear**: pulsar `+` junto al repo, nombrar la tarea y partir de `develop`. Poner a la rama el nombre `<tipo>/<descripcion-en-espanol>` (regla 2). Elegir Claude Code en el desplegable de agente.
-- **Setup automatico**: `scripts.setup` ejecuta `./bin/orca-setup`, que genera el `.env` del worktree copiando el del checkout principal (`ORCA_ROOT_PATH`) y fijando `COMPOSE_PROJECT_NAME`, `GATEWAY_PORT`, `POSTGRES_PORT`, `REDIS_PORT` y `ALLOWED_ORIGINS` propios (puertos deterministas por ruta, saltando los ocupados). Despues: `./bin/dev && ./bin/migrate && ./bin/seed`. `frontend/node_modules` se comparte entre worktrees (`worktree.sharedDirectories`).
+- **Setup automatico**: `scripts.setup` ejecuta `./bin/orca-setup`, que genera el `.env` del worktree copiando el del checkout principal (`ORCA_ROOT_PATH`) y fijando `COMPOSE_PROJECT_NAME`, `GATEWAY_PORT`, `POSTGRES_PORT`, `REDIS_PORT` y `ALLOWED_ORIGINS` propios (puertos deterministas por ruta, saltando los ocupados). Despues: `./bin/dev && ./bin/migrate && ./bin/seed`. `frontend/node_modules` no se comparte entre worktrees: lo crea cada contenedor de frontend en un volumen anonimo (un symlink ahi impide arrancar el contenedor con Podman).
 - **Archivar**: `scripts.archive` ejecuta `./bin/orca-archive`, que baja el stack Docker del worktree y borra sus volumenes.
+- **Ubicacion**: los worktrees viven fuera del repo, en `<padre>/saas-ski-portal.worktrees/<nombre>`, tanto si los crea Orca como si se crean a mano con la skill `branch-workspace`.
 - **Un worktree, una tarea, un PR.** Evitar que dos worktrees toquen los mismos ficheros.
 - **Version**: el incremento SemVer (regla 8) genera conflicto si varios PRs paralelos editan `package.json` y `CHANGELOG.md`. Hacerlo al final, sobre `develop` actualizado, justo antes del PR.
 - **Revision y entrega**: revisar el diff en Orca con comentarios en linea que vuelven al agente. Commit, push y PR solo cuando el usuario lo ordene (regla 3), incluso si Orca ofrece botones para ello.
 - **Pestanas en el mismo worktree**: para un agente extra sobre el mismo codigo (revision, investigacion, segundo frente sin solapar ficheros) abrir una pestana nueva con `orca terminal create --worktree active --command claude`. Para una tarea con rama propia, un worktree nuevo: `orca worktree create --name <tarea> --agent claude --prompt "<brief>"` (cargar antes `orca skills get orca-cli`).
 - Varios agentes en paralelo: cada uno en su worktree. Para comparar enfoques, el mismo prompt en varios worktrees y quedarse con el mejor.
+- **Ejecucion del plan de empresa (PR-00 a PR-23)**: el procedimiento completo (reparto de responsabilidades, creacion del worktree desde `origin/develop`, plantilla del prompt, regla de delegacion, version y cierre) esta en la seccion 11 de `docs/empresa/plan-implementacion-empresa.md`. Leerla antes de lanzar o retomar cualquier bloque.

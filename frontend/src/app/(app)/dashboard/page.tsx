@@ -15,7 +15,6 @@ import { getWorkLogs } from "@/lib/api/work-logs"
 import { WorkLogDetailsDialog } from "@/components/work-log/details-dialog"
 import { UserCreateWorkLogDialog } from "@/components/work-log/user-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { NotificationsSection } from "@/components/notifications-section"
 import { useState } from "react"
 
 // V3 Components
@@ -104,8 +103,6 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-
-      <NotificationsSection user={user} />
 
       <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="bg-slate-100 p-1 rounded-lg">

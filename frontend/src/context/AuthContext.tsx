@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api, { setAuthToken } from "@/lib/api";
 import { UserProfile } from "@/lib/types";
+import { getLastCompanyId, setLastCompanyId, LAST_COMPANY_KEY } from "@/lib/last-company";
+import { LEGAL_LINKS } from "@/lib/legal-config";
 import { useRouter } from 'next/navigation';
 import posthog from 'posthog-js';
 
@@ -11,10 +13,10 @@ interface AuthContextType {
     loading: boolean;
     login: (email: string, password: string) => Promise<{ requires2FA: boolean }>;
     devLogin: () => Promise<{ requires2FA: boolean }>;
-    verify2FA: (code: string) => Promise<void>;
+    verify2FA: (code: string, companyId?: string) => Promise<void>;
     logout: () => void;
     stopImpersonation: () => Promise<void>;
-    switchScope: (companyId: string, role: string) => Promise<void>;
+    switchScope: (companyId: string | null, viewAs?: 'manager' | 'worker') => Promise<void>;
     checkAuth: () => Promise<void>;
 }
 
@@ -47,6 +49,27 @@ function resetAnalytics() {
   posthog.reset();
 }
 
+function isPlatformAdminUser(u: UserProfile | null | undefined): boolean {
+  return Boolean(u?.isPlatformAdmin || u?.role === 'admin');
+}
+
+// Pantalla de inicio tras iniciar sesion, segun el rol.
+export function homePathFor(u: UserProfile | null | undefined): string {
+    if (isPlatformAdminUser(u)) return '/admin/companies';
+    if (u?.isManager) return '/manager/daily-reports';
+    return '/dashboard';
+}
+
+// Rutas que un visitante sin sesion puede abrir: un 401 en ellas no cierra sesion ni redirige a /login.
+const VISITOR_PATHS: string[] = ['/', ...LEGAL_LINKS.map((link) => link.href)];
+const PUBLIC_PATHS: string[] = [...VISITOR_PATHS, '/login', '/forgot-password', '/reset-password'];
+
+// Un PA no tiene empresa recordada: su contexto es neutro.
+function rememberActiveCompany(u: UserProfile | null | undefined) {
+  if (!u || isPlatformAdminUser(u) || !u.activeCompanyId) return;
+  setLastCompanyId(LAST_COMPANY_KEY, u.activeCompanyId);
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
@@ -54,9 +77,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const fetchUser = async (retryDev: boolean = true): Promise<UserProfile | null> => {
         try {
-            const response = await api.get<UserProfile>('/users/me');
+            // En la landing y en las paginas legales la comprobacion de sesion es silenciosa: un visitante no debe ver errores del backend.
+            const onVisitorPage = typeof window !== 'undefined' && VISITOR_PATHS.includes(window.location.pathname);
+            const response = await api.get<UserProfile>('/users/me', { meta: { silent: onVisitorPage } });
             setUser(response.data);
             identifyUser(response.data);
+            rememberActiveCompany(response.data);
             return response.data;
         } catch (error: any) {
             if (error.response?.status === 401 && retryDev && process.env.NEXT_PUBLIC_DEV_LOGIN_BYPASS === 'true') {
@@ -73,8 +99,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 console.error("Failed to fetch user:", error);
             } else {
                 const path = typeof window !== 'undefined' ? window.location.pathname : '';
-                const publicPaths = ['/login', '/forgot-password', '/reset-password'];
-                if (!publicPaths.includes(path)) {
+                if (!PUBLIC_PATHS.includes(path)) {
                     logout();
                 } else {
                     setAuthToken(null);
@@ -104,13 +129,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setAuthToken(tokenData.accessToken);
             const userData = await fetchUser();
 
-            if (userData?.role === 'admin' || userData?.isPlatformAdmin) {
-                router.push('/admin/companies');
-            } else if (userData?.isManager) {
-                router.push('/manager/daily-reports');
-            } else {
-                router.push('/dashboard');
-            }
+            router.push(homePathFor(userData));
             return { requires2FA: false };
         } catch (error) {
             console.error("Error en bypass de inicio de sesión en desarrollo:", error);
@@ -124,9 +143,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         formData.append('password', password);
 
         // Add Device Token if exists
-        const deviceToken = localStorage.getItem('device_token');
+        let deviceToken: string | null = null;
+        try {
+            deviceToken = localStorage.getItem('device_token');
+        } catch {
+            deviceToken = null;
+        }
         if (deviceToken) {
             formData.append('device_token', deviceToken);
+        }
+
+        // Sugerencia de empresa; el backend valida la membresia
+        const lastCompanyId = getLastCompanyId(LAST_COMPANY_KEY);
+        if (lastCompanyId) {
+            formData.append('company_id', lastCompanyId);
         }
 
         const response = await api.post('/token', formData, {
@@ -146,24 +176,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setAuthToken(tokenData.accessToken);
         // If device token returned (e.g. rotated), update it
         if (tokenData.deviceToken) {
-            localStorage.setItem('device_token', tokenData.deviceToken);
+            try {
+                localStorage.setItem('device_token', tokenData.deviceToken);
+            } catch {
+                // Storage no disponible: el device token no se persiste
+            }
         }
 
 
         const userData = await fetchUser();
 
-        if (userData?.role === 'admin' || userData?.isPlatformAdmin) {
-            router.push('/admin/companies');
-        } else if (userData?.isManager) {
-            router.push('/manager/daily-reports');
-        } else {
-            router.push('/dashboard');
-        }
+        router.push(homePathFor(userData));
         return { requires2FA: false };
     };
 
-    const verify2FA = async (code: string) => {
-        const response = await api.post('/verify-2fa', { code });
+    const verify2FA = async (code: string, companyId?: string) => {
+        const body: { code: string; companyId?: string } = { code };
+        if (companyId) {
+            body.companyId = companyId;
+        }
+        const response = await api.post('/verify-2fa', body);
         // Backend returns snake_case
         const tokenData = response.data;
         // setAuthToken handles the 'cookie' signal
@@ -207,17 +239,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     };
 
-    const switchScope = async (companyId: string, role: string) => {
+    const switchScope = async (companyId: string | null, viewAs?: 'manager' | 'worker') => {
         try {
-            await api.post('/auth/switch-scope', { companyId: companyId, companyRole: role });
-            await fetchUser();
+            await api.post('/auth/switch-scope', { companyId, viewAs });
+            // fetchUser guarda activeCompanyId en el navegador (no aplica a PA)
+            const userData = await fetchUser();
             // Force a full page reload to clear all caches and ensure everything (Sidebar, etc) reflects the new context
             if (!companyId) {
                 window.location.href = '/admin/companies';
-            } else if (role === 'manager') {
-                window.location.href = `/manager/dashboard?companyId=${companyId}`;
+            } else if (isPlatformAdminUser(userData) && !viewAs) {
+                window.location.href = `/admin/companies/${companyId}`;
+            } else if (userData?.activeRole === 'manager') {
+                window.location.href = '/manager/dashboard';
             } else {
-                window.location.href = `/dashboard?companyId=${companyId}`;
+                window.location.href = '/dashboard';
             }
         } catch (error) {
             console.error("Failed to switch scope:", error);

@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { useAuth } from "@/context/AuthContext"
+import { getLastCompanyId, LAST_COMPANY_KEY } from "@/lib/last-company"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
@@ -16,6 +18,8 @@ import {
 } from "@/components/ui/dialog"
 import { Loader2, Terminal } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { CONTACT_EMAIL } from "@/lib/config"
+import { LegalFooter } from "@/components/legal-footer"
 
 // Mensaje de error segun el estado devuelto por /verify-2fa
 function twoFactorErrorMessage(err: unknown): string {
@@ -78,7 +82,7 @@ export default function LoginPage() {
 
     try {
       if (showTwoFactor) {
-        await verify2FA(twoFactorCode);
+        await verify2FA(twoFactorCode, getLastCompanyId(LAST_COMPANY_KEY) ?? undefined);
       } else if (isDevMode && (!email || !password || email === devEmail)) {
         await devLogin();
       } else {
@@ -199,7 +203,7 @@ export default function LoginPage() {
                         } else if (val && index === 5 && newCodeStr.length === 6) {
                           setIsLoading(true);
                           // Small delay to allow state update? passed directly
-                          verify2FA(newCodeStr)
+                          verify2FA(newCodeStr, getLastCompanyId(LAST_COMPANY_KEY) ?? undefined)
                             .catch((err) => {
                               setError(twoFactorErrorMessage(err));
                               setTwoFactorCode("");
@@ -234,6 +238,12 @@ export default function LoginPage() {
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isLoading ? "Signing in..." : isDevMode ? "Entrar como Administrador (Dev)" : "Sign In"}
             </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Consulta los{" "}
+              <Link href="/terminos" className="underline underline-offset-4 hover:text-foreground">términos de uso</Link>{" "}
+              y la{" "}
+              <Link href="/privacidad" className="underline underline-offset-4 hover:text-foreground">política de privacidad</Link>.
+            </p>
             {/* Request Access Button */}
             <Dialog>
               <DialogTrigger asChild>
@@ -246,16 +256,21 @@ export default function LoginPage() {
                   <DialogTitle>Request Access</DialogTitle>
                   <DialogDescription>
                     Please contact the administrator to request access to the platform.
-                    <br /><br />
-                    Email: hugo@vesotel.com
+                    {CONTACT_EMAIL && (
+                      <>
+                        <br /><br />
+                        Email: {CONTACT_EMAIL}
+                      </>
+                    )}
                   </DialogDescription>
                 </DialogHeader>
               </DialogContent>
             </Dialog>
           </form>
         </CardContent>
-        <CardFooter className="flex justify-center text-xs text-muted-foreground">
-          Vesotel Work Management © 2026
+        <CardFooter className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
+          <span>Vesotel Work Management © 2026</span>
+          <LegalFooter />
         </CardFooter>
       </Card>
     </div>

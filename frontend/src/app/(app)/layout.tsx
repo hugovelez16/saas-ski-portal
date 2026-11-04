@@ -1,16 +1,20 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getMyCompanies } from "@/lib/api/companies";
 import { CompanyResponse } from "@/lib/types";
 import { useAuth } from "@/context/AuthContext";
-import { LayoutDashboard, FileText, Calendar, Users, Building2, Banknote, CalendarDays, Package, LucideIcon } from "lucide-react";
+import { LayoutDashboard, FileText, Calendar, Users, Building2, Banknote, CalendarDays, Package, ScrollText, LucideIcon } from "lucide-react";
 import { Sidebar, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Suspense } from "react";
 import { useModules } from "@/hooks/useModules";
+import { ViewAsBanner } from "@/components/view-as-banner";
+import { LegalFooter } from "@/components/legal-footer";
+import { CONTACT_EMAIL } from "@/lib/config";
+import { SUSPENDED_COMPANY_MESSAGE } from "@/lib/api";
 
 interface SidebarNavItem {
     href: string;
@@ -48,14 +52,13 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const { user, loading, logout } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
-    const searchParams = useSearchParams();
-    const currentCompanyId = searchParams.get("companyId");
 
     const adminNavItems = [
         { href: "/admin/companies", label: "Gestión de Empresas", icon: Building2 },
         { href: "/admin/daily-reports", label: "Parte Diario", icon: FileText },
         { href: "/admin/users", label: "Usuarios", icon: Users },
         { href: "/admin/modules", label: "Módulos", icon: Package },
+        { href: "/admin/audit-logs", label: "Auditoría", icon: ScrollText },
     ];
 
     const workerNavItems = [
@@ -77,9 +80,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     // ... (managedCompanies removed as legacy switcher is gone)
 
-    // Determine target company ID for links (persist current -> session context -> default to first)
-    const targetCompanyId = currentCompanyId || user?.activeCompanyId || (myCompanies.length > 0 ? myCompanies[0].id : null);
-    const querySuffix = targetCompanyId ? `?companyId=${targetCompanyId}` : "";
+    // Empresa activa: sale del token (user.activeCompanyId); sin ella, la primera del usuario
+    const targetCompanyId = user?.activeCompanyId || (myCompanies.length > 0 ? myCompanies[0].id : null);
     const { modules = [], isLoading: loadingModules } = useModules(targetCompanyId || undefined);
 
     // Build Nav Groups
@@ -95,13 +97,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 const config = MODULE_SIDEBAR_REGISTRY[mod.codeName];
                 if (!config || !config.allowedRoles.includes(role)) return null;
 
-                // Dynamic worker daily report path mapping
-                const finalHref = role === "worker" && mod.codeName === "worker_daily_report"
-                    ? `/manager/daily-reports?companyId=${targetCompanyId}`
-                    : `${config.href}${querySuffix}`;
-
                 return {
-                    href: finalHref,
+                    href: config.href,
                     label: role === "worker" && mod.codeName === "reports" ? "Informes Personales" : config.label,
                     icon: config.icon,
                     codeName: mod.codeName
@@ -126,8 +123,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             const activeModuleItems = getActiveModuleItems("manager");
 
             const managerItems = [
-                { href: `/manager/dashboard${querySuffix}`, label: "Dashboard", icon: LayoutDashboard },
-                { href: `/manager/calendar${querySuffix}`, label: "Calendario", icon: Calendar },
+                { href: "/manager/dashboard", label: "Dashboard", icon: LayoutDashboard },
+                { href: "/manager/calendar", label: "Calendario", icon: Calendar },
             ];
 
             const dailyReportItem = activeModuleItems.find(item => item.codeName === "worker_daily_report");
@@ -136,8 +133,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             }
 
             managerItems.push(
-                { href: `/manager/users${querySuffix}`, label: "Usuarios", icon: Users },
-                { href: `/manager/shifts${querySuffix}`, label: "Turnos", icon: CalendarDays }
+                { href: "/manager/users", label: "Usuarios", icon: Users },
+                { href: "/manager/shifts", label: "Turnos", icon: CalendarDays }
             );
 
             const billingItem = activeModuleItems.find(item => item.codeName === "billing");
@@ -195,8 +192,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             const activeModuleItems = getActiveModuleItems("manager");
 
             const managerItems = [
-                { href: `/manager/dashboard${querySuffix}`, label: "Dashboard", icon: LayoutDashboard },
-                { href: `/manager/calendar${querySuffix}`, label: "Calendario", icon: Calendar },
+                { href: "/manager/dashboard", label: "Dashboard", icon: LayoutDashboard },
+                { href: "/manager/calendar", label: "Calendario", icon: Calendar },
             ];
 
             const dailyReportItem = activeModuleItems.find(item => item.codeName === "worker_daily_report");
@@ -205,8 +202,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             }
 
             managerItems.push(
-                { href: `/manager/users${querySuffix}`, label: "Usuarios", icon: Users },
-                { href: `/manager/shifts${querySuffix}`, label: "Turnos", icon: CalendarDays }
+                { href: "/manager/users", label: "Usuarios", icon: Users },
+                { href: "/manager/shifts", label: "Turnos", icon: CalendarDays }
             );
 
             const billingItem = activeModuleItems.find(item => item.codeName === "billing");
@@ -257,12 +254,15 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                         Para poder acceder al sistema, tu usuario debe estar vinculado a al menos una empresa.
                         Por favor, ponte en contacto con el administrador para solicitar acceso.
                     </p>
-                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 mb-8">
-                        <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">Contacto Administrador</p>
-                        <a href="mailto:hugo@vesotel.com" className="text-indigo-600 font-bold hover:underline">
-                            hugo@vesotel.com
-                        </a>
-                    </div>
+                    <p className="text-sm text-slate-500 mb-8">{SUSPENDED_COMPANY_MESSAGE}</p>
+                    {CONTACT_EMAIL && (
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 mb-8">
+                            <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">Contacto Administrador</p>
+                            <a href={`mailto:${CONTACT_EMAIL}`} className="text-indigo-600 font-bold hover:underline">
+                                {CONTACT_EMAIL}
+                            </a>
+                        </div>
+                    )}
                     <Button 
                         variant="outline" 
                         onClick={() => {
@@ -302,10 +302,14 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 <Sidebar
                     navGroups={navGroups}
                 />
-                <main className="flex-1 overflow-x-hidden">
-                    <div className="p-4 md:p-8">
+                <main className="flex flex-1 flex-col overflow-x-hidden">
+                    <ViewAsBanner />
+                    <div className="flex-1 p-4 md:p-8">
                         {children}
                     </div>
+                    <footer className="border-t border-slate-200 px-4 py-3 md:px-8">
+                        <LegalFooter />
+                    </footer>
                 </main>
 
             </div>

@@ -19,6 +19,564 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ---
 
+## [0.27.0] - 2026-11-03
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Paginas legales publicas (aviso legal, privacidad, cookies y terminos), enlaces legales en el pie de login, area autenticada y landing, y plantilla del contrato de encargado del tratamiento (art. 28 RGPD). Los textos son una base que debe validar un abogado o DPO.
+
+### Anadido
+
+- **`src/app/(legal)/`**: grupo de rutas publico con `/aviso-legal`, `/privacidad`, `/cookies` y `/terminos`. La politica de cookies describe las cookies reales de sesion (`access_token`, `refresh_token`), el almacenamiento local tecnico y PostHog (sin cookies, solo si esta activado).
+- **`src/lib/legal-config.ts`**: unico sitio con los datos del titular (Vesotel Soporte y Telecomunicaciones, S.L., tomados de vesotel.com) y las categorias de proveedores. Solo el minimo del art. 10 LSSI, con enlace a vesotel.com; el correo sale de `NEXT_PUBLIC_CONTACT_EMAIL` o, si falta, `hola@vesotel.com`.
+- **`src/components/legal-footer.tsx`** y **`src/components/legal-contact-email.tsx`**: enlaces legales reutilizables y correo de contacto de las paginas, con pruebas.
+- **Login**: aviso con enlaces a los terminos de uso y a la politica de privacidad.
+- **`docs/legal/`**: plantilla del contrato de encargado del tratamiento e indice con los puntos a validar por el asesor.
+
+### Corregido
+
+- **`src/context/AuthContext.tsx`**: las paginas legales se tratan como publicas; un visitante sin sesion ya no es redirigido a `/login` ni ve errores de la comprobacion de sesion.
+
+---
+
+## [0.26.0] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Landing publica en `/` orientada a escuelas de esqui, con funciones, capturas reales, tres planes (Pista Verde, Pista Azul y Pista Roja) para la temporada 2026-2027, calculadora de cuota, preguntas frecuentes, formulario de contacto y apartado para monitores (lista de espera). Incluye la correccion del desfase horario del Parte Diario del responsable.
+
+### Anadido
+
+- **`src/app/page.tsx`**: la raiz deja de redirigir a `/login` y muestra la landing. "Acceder" lleva a `/login`.
+- **`src/lib/landing-pricing.ts`**: modelo de los tres planes (cuota mensual, monitores incluidos, monitor y responsable adicionales, modulos, puesta en marcha y mantenimiento), calculo de la cuota y sugerencia del plan mas barato, con pruebas de los cruces entre planes.
+- **`src/lib/landing-contact.ts`**: validacion del formulario y construccion del mensaje, del enlace de WhatsApp y del correo.
+- **`src/components/landing/`**: calculadora de cuota, tarjetas de plan, formulario de contacto y apartado para monitores. El formulario abre WhatsApp o el correo del usuario con los datos rellenados; no hay endpoint en el backend.
+- **`public/landing/`**: capturas de la aplicacion con una escuela de demostracion (datos ficticios).
+- **Meses activos a elegir**: la escuela paga solo los meses que activa, sin temporada fija. La calculadora incluye un selector de meses activos y el mantenimiento opcional de los meses inactivos (15, 20 o 30 € al mes segun el plan). Con mantenimiento, la escuela conserva su precio la temporada siguiente.
+- **Calculadora**: el campo de responsables adicionales se puede vaciar y tiene botones de sumar y restar.
+- **`docs/planes-y-precios.md`**: condiciones comerciales de los planes publicos: meses activos, puesta en marcha, mantenimiento, precio garantizado, cambio de plan y recuento de monitores.
+
+### Corregido
+
+- **Parte Diario del responsable**: con rangos horarios amplios (por ejemplo 0:00 a 24:00) las clases se dibujaban horas antes de su hora real. Las celdas de la cabecera tenian ancho minimo y las de las filas no, asi que la cabecera se desbordaba y dejaba de coincidir con la rejilla. Ahora ambas comparten `min-w-[50px]`.
+
+### Cambiado
+
+- **`AuthContext`**: `/` se trata como ruta publica, para que un visitante sin sesion no sea expulsado a `/login`.
+- **`AuthContext`**: la pantalla de inicio segun el rol pasa a la funcion exportada `homePathFor`, usada por `login` y `devLogin`. `verify2FA` conserva su logica propia.
+- **Textos de la landing**: reformulados segun `docs/auditoria-propuesta-iliberis.md`. Se retiran la promesa de arrastrar clases en el calendario, el aviso "al instante", la exportacion de datos gratuita, las copias "fuera del servidor" y la cifra de horas ahorradas sin fuente.
+- **`src/components/landing/session-redirect.tsx`**: quien entra en `/` con sesion activa (por ejemplo, desde un marcador) va directo a su pantalla de inicio sin ver la landing.
+
+---
+
+## [0.25.0] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR** (cambio incompatible en la API v1, version principal 0): PR-21, retirada de los endpoints de empresa y membresia de la API v1 (cierre de X1). Sin migracion de base de datos. Los clientes deben usar `/api/v2/`.
+
+### Cambio incompatible
+
+- Retirados de v1 (responden 404): `GET/POST /companies`, `PUT/DELETE /companies/{id}`, `GET /companies/detailed`, `GET /companies/{id}`, `GET /companies/{id}/members`, `PUT /companies/{id}/members/order`, `POST /companies/{id}/members/add`, `PUT /companies/{id}/members/{user_id}/status|role|rates|settings`, `DELETE /companies/{id}/members/{user_id}`, `GET /companies/{id}/rates-v2`, `GET /users/me/companies` y `GET /users/{id}/companies`.
+- Se mantienen en v1: `GET /companies/{id}/dashboard-summary`, `GET /companies/{id}/daily-report`, turnos, auth, usuarios, modulos y auditoria.
+- Despliegue: en produccion `main` lleva backend y frontend a la vez; durante el cambio de contenedores una pestana abierta con el frontend antiguo puede recibir 404 en los endpoints retirados (se acepta; basta refrescar la pagina).
+
+### Funcionalidades y Mejoras
+
+- Eliminadas de `crud.py` las funciones de empresa y membresia sin uso (v2 tiene su propia capa en `src/`) y de `schemas.py` los esquemas v1 asociados.
+- Tests: casos de v1 portados a `tests/routers/v2/`; borrada la paridad de empresa de `tests/parity/` (se conserva `test_calculation_parity.py`); nuevo `test_v1_company_endpoints_removed.py`.
+
+---
+
+## [0.24.1] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Frontend: `getUserCompanies` pasa de `GET /users/{id}/companies` (v1) a `GET /v2/users/{user_id}/companies` (prerrequisito de PR-21). Sin cambios de backend ni de base de datos. Las pantallas `admin/users/[userId]` y `manager/users/[userId]` siguen recibiendo los mismos campos en `camelCase`.
+
+### Funcionalidades y Mejoras
+
+- `listUserCompanies` (`lib/api/v2`) devuelve `CompanyFullWithMembership` (administrador de plataforma) o `CompanyReduced` (manager); el adaptador `fromV2Company` acepta el nuevo tipo y conserva `role`, `isActiveMember` y `ratesConfig`.
+- `getUserCompanies` devuelve `Company[]` en lugar de `any[]`. Para ello `mapMemberToLegacyRate` (`lib/utils/rates.ts`) acepta cualquier objeto con `ratesConfig` y, opcionalmente, `userId`, `companyId` y `user`; si faltan `userId` o `companyId`, devuelve `""` en lugar de `undefined`. Sin cambio para los llamadores que pasan un `CompanyMember` completo.
+- Tests de cliente v2, adaptador y `getUserCompanies`.
+
+### Notas
+
+- Deuda anotada: en `manager/users/[userId]/page.tsx` el bloque `effectiveUserSettings` (lineas 380-388) no se usa en ninguna parte y es lo que motivo relajar la firma de `mapMemberToLegacyRate`. Borrarlo en el PR que migre las pantallas a `snake_case` haria innecesario ese relajamiento.
+- PR-21 queda desbloqueado en lo que respecta a `getUserCompanies`. Sigue pendiente `lib/api/settings.ts`, que llama a `GET /companies/{id}/members/me` (no existe).
+
+---
+
+## [0.24.0] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: API v2: la vista completa de `GET /v2/users/{user_id}/companies` incluye la membresia del usuario consultado (prerrequisito de PR-21). Sin migracion de base de datos. v1 no cambia.
+
+### Funcionalidades y Mejoras
+
+- **Campos nuevos** en la vista completa (administrador de plataforma actuando): `role`, `is_active_member` y `rates_config` de la membresia del usuario objetivo en cada empresa, planos y en `snake_case`, con la misma forma que v1. Los `settings` fusionan, como en v1, las claves permitidas del miembro.
+- Esquema nuevo `CompanyFullWithMembership` (extiende `CompanyFull`). La vista reducida del manager no cambia y no expone `is_active`, `allowed_rates`, `cost_markup` ni `fiscal_id`.
+- Reglas de acceso sin cambios: administrador de plataforma todas las empresas, manager solo la interseccion con sus membresias activas, worker y "ver como" 403.
+
+### Notas
+
+- Queda pendiente el PR de frontend que migre `getUserCompanies` a `GET /v2/users/{id}/companies`; hasta entonces PR-21 sigue bloqueado.
+
+---
+
+## [0.23.1] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Cierre de E2 del plan de empresa (PR-23): se elimina la columna `companies.fiscal_id`, con migracion `b7e1a0d10006` y script de exportacion previo. El campo ya no se mostraba ni se devolvia en ninguna respuesta. **Despliegue**: requiere el paso previo de `docs/empresa/plan-implementacion-empresa.md`, seccion 10 (backup, `repair_fiscal_id.py --dry-run` y, si procede, `--apply`).
+
+### Cambiado
+
+- **Migracion `b7e1a0d10006`**: aborta con `RuntimeError` si hay empresas con `fiscal_id` real (no nulo, no vacio y distinto de `B00000000`) y `FISCAL_ID_EXPORTED` no vale `1`, o si una vista de PostgreSQL depende de la columna (la nombra). `downgrade` recrea la columna vacia: el rollback con datos es restaurar el backup.
+- **`models.Company`** sin `fiscal_id`; se retiran sus menciones en esquemas y pruebas.
+
+### Cambios Internos
+
+- `backend/scripts/repair_fiscal_id.py`: exporta `fiscal_id` a un JSON fuera del repo (`--dry-run` por defecto, `--apply` exige `--backup-dir`) sin modificar la BD.
+- Variable de entorno `FISCAL_ID_EXPORTED=1`: confirma la exportacion para que la migracion pueda borrar valores reales.
+
+---
+
+## [0.23.0] - 2026-10-29
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Frontend: migracion de las llamadas de empresa y miembros a la API v2 (PR-20 del plan de empresa; X1 cliente, X7). Sin migracion de base de datos. Los endpoints v1 de empresa siguen disponibles hasta PR-21.
+
+### Funcionalidades y Mejoras
+
+- **Cliente v2** en `frontend/src/lib/api/v2/` (`types.ts`, `companies.ts`, `members.ts`, `adapters.ts`): tipos `snake_case` y funciones `listCompanies`, `getCompany`, `createCompany`, `updateCompany`, `deleteCompany`, `listMyCompanies`, `listUserCompanies`, `listMembers`, `addMember`, `removeMember`, `setMemberStatus`, `setMemberRole`, `setMemberRates`, `setMemberSettings`, `reorderMembers` y `listRates`.
+- **Pantallas sin cambios de tipos**: `lib/api/companies.ts` delega en v2 y devuelve los tipos `camelCase` actuales mediante un adaptador temporal (`fromV2Company`, `fromV2Member`), que se eliminara cuando las pantallas pasen a `snake_case`.
+- **Listado con miembros**: `getCompaniesDetailed` usa `GET /v2/companies?include=members` para el administrador de plataforma y `GET /v2/me/companies` mas `GET /v2/companies/{id}/members` para el manager.
+- Selector de contexto, ajustes y facturacion del manager obtienen la empresa con el cliente v2 en lugar de llamadas directas a `/companies`.
+
+### Notas
+
+- Siguen en v1: `dashboard-summary`, `daily-report`, turnos, auditoria, modulos, usuarios, auth y `GET /users/{id}/companies` (la vista completa de v2 no incluye `role`, `is_active_member` ni `rates_config` de la membresia que usan las fichas de usuario).
+
+---
+
+## [0.22.0] - 2026-10-28
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: API v2: membresias, tarifas e impuestos (PR-18 del plan de empresa; X1 parte 3, X3, Q3). Sin migracion. v1 no cambia de comportamiento.
+
+### Funcionalidades y Mejoras
+
+- **Endpoints de miembros y tarifas en `/api/v2/`** (JSON en `snake_case`, politica identica a v1): `GET /v2/companies/{id}/members?is_active=`, `POST .../members` (PA; 201 si crea la membresia, 200 si ya existia), `DELETE .../members/{user_id}` (PA), `PUT .../members/{user_id}/status` (PA, cuerpo `{is_active}`), `PUT .../role` (PA), `PUT .../rates`, `PUT .../settings`, `PUT .../members/order` y `GET /v2/companies/{id}/rates` (sustituye a `rates-v2`, X3).
+- **Casos de uso de membresia** en `backend/src/application/use_cases/company/` (`add_member`, `remove_member`, `set_member_status`, `set_member_role`, `set_member_rates`, `set_member_settings`, `reorder_members`, `list_members`, `list_rates`) con las mismas reglas M1-M6, M9, eventos de auditoria y lista blanca de `settings` (M2) que v1. Sin guardia de ultimo manager (E7).
+- **Pruebas de paridad**: `test_members_parity.py` (v1/v2 por endpoint, con `KNOWN_DIFFERENCES`), `test_v2_members.py` y `test_calculation_parity.py` (rejilla de mas de 200 entradas: `crud.calculate_dynamic_work_log` y el motor de `src/` devuelven el mismo `net_amount`, `gross_amount`, `duration` y `tax_applied`).
+
+### Cambiado
+
+- **Motor de calculo de `backend/src`** alineado con `crud.calculate_dynamic_work_log` (PR-10): `TaxConfiguration` pasa de tres tasas fijas a `taxes: Dict[str, Decimal]` (equivalente a `contracts.resolve_taxes`; un valor no numerico cuenta como 0), el snapshot incluye `tax_applied` y la version `2.3-free-taxes`, y las lineas de impuestos usan el nombre libre como `code`. Semantica de `is_gross` segun P-10.
+
+### Cambios Internos
+
+- `CompanyMemberRepositoryPort`: `get_membership(for_update=)` y `reorder`; el repositorio SQLAlchemy invalida `company_rates:{id}` y la cache de acceso tras `save` y `delete`, y fuerza la escritura de `rates_config` y `settings`.
+
+---
+
+## [0.21.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: API v2: empresa y vistas (PR-17 del plan de empresa; X1 parte 2, X3, X7, Q3). Sin migracion. v1 no cambia de comportamiento.
+
+### Funcionalidades y Mejoras
+
+- **Endpoints de empresa en `/api/v2/`** (JSON en `snake_case`, politica identica a v1): `GET /v2/companies?include=members&skip&limit` (PA, respuesta `{items, total}`), `POST /v2/companies` (PA, 201), `GET /v2/companies/{id}` (vista completa para el PA actuando, reducida para el resto), `PUT /v2/companies/{id}` (PA), `DELETE /v2/companies/{id}` (PA, 204), `GET /v2/me/companies` y `GET /v2/users/{id}/companies`.
+- **Casos de uso de empresa** en `backend/src/application/use_cases/company/` (alta, edicion con un evento de auditoria por campo, borrado con motivos de bloqueo, lectura y tres listados) sobre los puertos del dominio.
+- **X3**: `include=members` unifica el listado y el detalle con miembros.
+- **Pruebas de paridad v1/v2 de empresa** (`backend/tests/parity/test_company_parity.py`) con la tabla `KNOWN_DIFFERENCES`, y matriz de permisos, validaciones, auditoria y aislamiento de v2 (`backend/tests/routers/v2/test_v2_companies.py`).
+
+### Cambiado
+
+- **Repositorio de empresa (SQLAlchemy)**: `save` y `delete` invalidan la cache de acceso (`access_cache`), igual que v1.
+- v2 rechaza `null` explicito en `tax_config`, `worklog_definitions` y `settings` en `PUT` (422), en lugar de fallar al persistir.
+
+---
+
+## [0.20.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Frontend transversal (PR-19 del plan de empresa; U1, U4, U7, U8, U10 y banner "ver como"). Sin migracion. No toca el backend.
+
+### Funcionalidades y Mejoras
+
+- **Errores de la API (U1)**: interceptor de respuesta en `lib/api.ts` que muestra un toast con el `detail` del backend en 403, 404, 409, 422 y 5xx (el `detail` en lista del 422 se une de forma legible). El 401 no notifica (lo gestiona `AuthContext`). Las peticiones con `meta: { silent: true }` no notifican.
+- **Banner "ver como"**: `components/view-as-banner.tsx` en el layout de la app; avisa del modo de solo lectura del administrador de plataforma y permite salir del modo.
+- **Empresa suspendida (U4)**: el selector de empresa y el dialogo de ambito no ofrecen empresas inactivas a worker y manager; un 403 al listar turnos se muestra como error y no como lista vacia.
+- **Tarifas del perfil (U7)**: solo son editables si la empresa es autonoma (`isManaged === false`); sin empresa cargada, solo lectura.
+- **Contacto y tipado (U10)**: toasts del alta de empresa en espanol, `updateCompany` y `tax_config` tipados sin `any`, y `json-editor` rechaza valores no finitos antes de guardar.
+
+### Cambiado
+
+- **Empresa activa (U8)**: desaparece `?companyId=` de la URL; la empresa activa sale solo de `user.activeCompanyId` y se cambia con `switchScope`. Al estar en una cookie compartida, cambiar de empresa en una pestana la cambia en todas las pestanas abiertas. `reports/print` tambien usa la empresa activa (un administrador de plataforma sin empresa activa ve todas).
+- **Correo de contacto (U10)**: el correo fijo de la pantalla sin empresa y del dialogo "Request Access" del login pasa a `CONTACT_EMAIL`, leido de `NEXT_PUBLIC_CONTACT_EMAIL`. Sin valor por defecto: si la variable no esta definida, no se muestra. Se anade como `ARG` en `frontend/Dockerfile` y como `build-arg` en `deploy-dev.yml` y `deploy-prod.yml`; requiere la variable de GitHub Actions del mismo nombre (ver `docs/empresa/tareas-manuales-release.md`).
+- **Toasts de error**: se eliminan los toasts locales que duplicaban el del interceptor.
+
+---
+
+## [0.19.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: API v2: cimientos y alineacion del dominio (PR-16 del plan de empresa; X1 parte 1, arnes de paridad de Q3). Sin migracion. v1 no cambia de comportamiento.
+
+### Funcionalidades y Mejoras
+
+- **API v2**: se monta el router `/api/v2/` (`backend/routers/v2/`) con `GET /v2/ping` (unica ruta publica), `deps.py` con fabricas de repositorios y `schemas.py` con `V2Model` (snake_case, sin alias). Los endpoints del area empresa llegan en PR-17 y PR-18.
+- **Manejador de `DomainException`**: `EntityNotFoundException` responde 404, `ConflictException` 409, `ValidationDomainException` 422 y `UnauthorizedDomainActionException` 403.
+- **Dominio y persistencia de `backend/src/`**: `Company` con `is_active`, `is_managed` y `updated_at` y sin `fiscal_id`; `CompanyMember` con `settings` y `updated_at`; nuevos puertos `CompanyRepositoryPort`, `CompanyMemberRepositoryPort` y `AuditLogPort` con sus implementaciones SQLAlchemy; `UserRepositoryPort.count_active_platform_admins`.
+- **Arnes de paridad v1/v2** en `backend/tests/parity/` (`to_snake`, `assert_parity`, `call_both`, fixture `parity_world`).
+
+### Cambiado
+
+- **`backend/Dockerfile`**: `PYTHONPATH=/app:/app/src`, para que el codigo de produccion pueda importar `backend/src/`.
+- **Repositorio de empresa**: antes no se podia importar por un puerto inexistente.
+
+---
+
+## [0.18.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Recalculo y avisos de turnos, dashboard (PR-12 del plan de empresa). Sin migracion.
+
+### Funcionalidades y Mejoras
+
+- **Recalculo al editar un turno**: editar solo campos sin efecto en el importe (por ejemplo la descripcion) ya no modifica `net_amount`, `gross_amount`, `duration` ni `calculation_snapshot`. Si cambian la hora, las fechas o las opciones del turno, se recalcula con la tarifa, la definicion y los impuestos guardados en el snapshot del turno. Si cambia el `type`, se usa la tarifa vigente del miembro (exige membresia activa, si no 422). Un turno sin tarifa ni importe manual responde 400.
+- **Turnos con importe manual**: si una edicion cambia hora, fechas, tipo o extras de un turno manual sin `netAmount` ni `recalculate_with_current_rates=true`, `PUT /work-logs/{id}` responde 409 con `detail.code = "manual_amount_choice"` y no modifica nada. El frontend pregunta: "Conservar importe" (reenvia con `keep_manual_amount=true`, cualquier rol; cada turno manual, tambien en un grupo, conserva su propio importe) o "Calcular por tarifa" (`recalculate_with_current_rates=true`, solo manager y administrador de plataforma). Un worker solo puede conservar el importe.
+- **Edicion de grupo atomica**: `PUT /work-logs/{id}?apply_to_group=true` aplica todos los turnos del grupo o ninguno; ante un error se deshace el grupo entero y el mensaje nombra al trabajador afectado.
+- **`PUT /work-logs/{id}?recalculate_with_current_rates=true`**: recalcula con la tarifa vigente. Solo manager y administrador de plataforma; un worker recibe 403.
+- **Avisos de solape**: `POST /work-logs`, `POST /work-logs/bulk` y `PUT /work-logs/{id}` devuelven `warnings` con `code: "overlap"` y los ids en conflicto cuando el turno se solapa con otro del mismo trabajador y empresa. Solo avisa, nunca rechaza. El frontend lo muestra en un aviso tras guardar.
+- **Dashboard**: `GET /companies/{id}/dashboard-summary` responde aunque Redis falle; `workersSummary` incluye a los miembros inactivos (`isActive: false`) y la tabla del equipo muestra la insignia "Inactivo".
+
+### Cambiado
+
+- **`calculate_dynamic_work_log`** sin cambios; `crud._update_single_work_log` decide cuando recalcular. Un cambio en `extraData.opciones` tambien fuerza el recalculo.
+- **`frontend/`**: se elimina el componente vacio `NotificationsSection` y su uso en el dashboard.
+
+---
+
+## [0.17.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Vista reducida y completa de empresa en v1 (PR-13 del plan de empresa; P7, P8, U11). Sin migracion. CAMBIA LA FORMA DE LAS RESPUESTAS de empresa: backend y frontend se despliegan juntos (P-1).
+
+### Funcionalidades y Mejoras
+
+- **Vista reducida**: `GET /users/me/companies`, `GET /companies/{id}`, `GET /companies/detailed` (con `members`) y `GET /users/{id}/companies` devuelven a worker, manager y platform admin en "ver como" solo `id`, `name`, `isManaged`, `role`, `isActiveMember`, `ratesConfig`, `worklogDefinitions`, `taxConfig` y `settings` de interfaz (`worker_experience`, `ui_customization`, `modules`, `business_logic.price_type`). Ya no llegan `isActive`, `createdAt`, `updatedAt` ni `allowed_rates`.
+- **Vista completa**: solo el platform admin actuando recibe la empresa completa.
+- **`GET /users/{id}/companies` (P8)**: el platform admin ve todas las empresas del usuario (incluidas inactivas); el manager solo la empresa del token, si es manager de ella y el usuario es miembro activo; el resto recibe 403. En "ver como", worker recibe 403 y manager queda limitado a la empresa del token.
+- **`GET /modules/subscriptions`**: para quien no es platform admin, la empresa embebida solo lleva `id` y `name`.
+- **`settings` de miembro**: al leer, solo se fusionan las claves de la lista blanca.
+
+### Cambiado
+
+- **`frontend/`**: `Company` pasa a vista reducida con `isActive`, `createdAt` y `updatedAt` opcionales; nuevo tipo `CompanyFull` para los endpoints solo de platform admin.
+
+---
+
+## [0.16.0] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Contratos de `settings`, tipos de turno y tarifas (PR-11 del plan de empresa). Con migracion de datos: antes de desplegar hay que hacer backup y ejecutar `backend/scripts/repair_settings_definitions.py` en `--dry-run` y despues con `--apply` (seccion 10 de `docs/empresa/plan-implementacion-empresa.md`).
+
+### Funcionalidades y Mejoras
+
+- **Rollback**: el `downgrade` de la migracion `b7e1a0d10005` es incompleto (solo restaura `is_range` a partir de `unit == "days"`; no recrea las claves retiradas ni los `settings` antiguos). El rollback de esta version requiere RESTAURAR EL BACKUP previo al despliegue (seccion 10, paso d). Los ficheros `settings_definitions_before_<ts>.json` del script permiten recuperar solo esos datos.
+- **`settings` de empresa**: contrato estricto (`CompanySettings`) con `business_logic.price_type` (por defecto `net`), `worker_experience`, `ui_customization`, `modules` y `allowed_rates`. `PUT /companies/{id}` con claves desconocidas o tipos incorrectos responde 422. Las respuestas devuelven los `settings` con los valores por defecto aplicados y la lectura de empresas existentes es tolerante (descarta claves desconocidas con aviso).
+- **Tipos de turno**: `unit` (`hours`, `days` o `fixed`) es obligatorio y `label` tiene de 1 a 60 caracteres. Un turno cuyo tipo no tiene `unit` responde 422 ("El tipo de turno no tiene unidad definida (unit)").
+- **Tarifas**: `PUT .../members/{userId}/rates` valida `base_rate`, `extras` e impuestos (finitos y mayores o iguales que 0), limita a 50 tipos y 64 KiB, y rechaza con 422 los tipos de turno nuevos que la empresa no define.
+- **`settings` de miembro**: solo admiten una lista blanca de claves (`notifications`, `ui_preferences`) con tope de 8 KiB.
+- **Valores por defecto en el frontend**: se retiran los valores propios del cliente; ahora los entrega el backend. `price_type` pasa de `gross` a `net` y `modules` queda vacio por defecto.
+
+### Cambiado
+
+- **Migracion `b7e1a0d10005`**: solo actualiza datos JSONB de `companies.settings` y `companies.worklog_definitions`, sin alterar columnas. Mapea `features` a `modules`, `billing.price_type` a `business_logic.price_type` e `input_mode` a `worker_experience.input_mode`; retira `allow_tutorial`, `allow_coordination`, `is_managed`, `business_logic.cost_markup` y `billing.cost_markup_percent`; fija `unit` a partir de `is_range` y borra `is_range`. Valida antes de escribir y aborta con `RuntimeError` si hay claves o tipos que no puede normalizar.
+- **`frontend/`**: los constructores de `settings` y tipos de turno escriben solo `unit`; se retiran `settings.is_managed`, `cost_markup` y los respaldos a claves antiguas. Se elimina `company-settings-dialog.tsx` (sin uso).
+- **`backend/seed.py`**: siembra `modules.worker_daily_report` en lugar de `features`.
+
+### Cambios Internos
+
+- **`backend/scripts/repair_settings_definitions.py`**: script de reparacion previo a la migracion (`--dry-run` por defecto, `--apply` escribe la copia de seguridad, `--apply --drop-unknown CLAVE[,CLAVE]` elimina claves desconocidas).
+- **Defaults JSONB mutables**: los `default={}` de `models.py` pasan a `default=dict`.
+- **Pendiente (O10)**: `allow_tutorial` y `allow_coordination` siguen en la lista blanca de `settings` de miembro (`MEMBER_SETTINGS_ALLOWED_KEYS` en `backend/contracts.py`) solo porque `member-settings-dialog.tsx` aun los guarda. Hay que eliminarlas de la lista cuando se retire ese dialogo.
+
+---
+
+## [0.15.1] - 2026-10-27
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Las migraciones `b7e1a0d10007` y `b7e1a0d10002` se aplican sobre bases con vistas manuales de PostgreSQL. Antes de desplegar, inventariar las vistas (paso "a bis" de la seccion 10 de `docs/empresa/plan-implementacion-empresa.md`).
+
+### Corregido
+
+- **Migracion `b7e1a0d10007`**: si la vista manual "Usuarios" lee `users.default_company_id`, se recrea sin la columna (sin `default_company_name`) conservando propietario y privilegios; si otra vista depende de la columna, aborta con `RuntimeError` que la nombra. `downgrade` restaura la columna y la definicion original de "Usuarios".
+- **Migracion `b7e1a0d10002`**: elimina y recrea todas las vistas que dependen de `companies.name` (incluidas las que dependen de otras vistas) con su definicion, propietario y privilegios, en lugar de solo "Work Logs".
+
+### Cambios Internos
+
+- **`backend/migration_helpers.py`**: utilidades reutilizables por migraciones para localizar, eliminar y recrear vistas dependientes de una columna.
+- **Pruebas**: `backend/tests/test_migration_manual_views.py` (marcador `postgres`, base desechable por prueba).
+
+---
+
+## [0.15.0] - 2026-10-26
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Impuestos con claves libres (PR-10 del plan de empresa). Con migracion de datos: antes de desplegar hay que ejecutar `backend/scripts/repair_tax_values.py` (seccion 10 de `docs/empresa/plan-implementacion-empresa.md`).
+
+### Anadido
+
+- **`backend/contracts.py`**: `TaxConfig` (nombre libre de 1 a 50 caracteres, tasa numerica de 0 a 1 con 0 permitido, maximo 20 entradas, sin duplicados tras `strip`), `validate_tax_overrides` y `resolve_taxes`.
+- **`frontend/`**: `tax-overrides-fields.tsx` y editor de pares nombre/tasa en `tax-config-builder.tsx`.
+
+### Cambiado
+
+- **`POST /companies`**: `taxConfig` es obligatorio (`{}` es valido); `null` o ausente responde 422. `PUT /companies/{id}` y `PUT .../members/{userId}/rates` validan impuestos y `tax_overrides` (422 si no son validos).
+- **Calculo de importes (`crud.calculate_dynamic_work_log`)**: los impuestos son las claves libres de la empresa mas los overrides del miembro. Con `is_gross=true` se descuentan todos del bruto; con `is_gross=false` (por defecto) la tarifa es neta y no se deduce ninguno (el bruto devuelto es informativo). El snapshot incluye `tax_applied` y su version pasa a `2.3-free-taxes`. Los turnos ya guardados no cambian.
+- **Migracion `b7e1a0d10004`**: renombra `ss` a `social_security` e `irpf` a `irpf_base` en los `tax_overrides` de las tarifas y elimina los `extra` a 0 que la empresa no define. Aborta sin cambios si hay valores no validos.
+- **`frontend/`**: los formularios de tarifas y de empresa usan impuestos libres; el control `is_gross` se rotula "Tarifa bruta (se descuentan los impuestos)" / "Tarifa neta (sin deduccion)".
+
+### Cambios Internos
+
+- **`backend/scripts/repair_tax_values.py`**: script de reparacion previo a la migracion (`--dry-run` por defecto, `--apply` explicito).
+- **Divergencia temporal**: `backend/src` conserva las tres tasas fijas hasta PR-18.
+
+---
+
+## [0.14.0] - 2026-10-25
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Consulta de logs de auditoria (PR-15 del plan de empresa). Solo lectura, sin migracion.
+
+### Anadido
+
+- **`GET /audit-logs`**: consulta paginada (`limit` 1..200, por defecto 50; `offset`) de los eventos de auditoria, solo para el administrador de plataforma (manager y worker reciben 403, el administrador en "ver como" tambien). Filtros `company_id`, `actor_user_id`, `target_user_id`, `action` (igualdad exacta), `from` y `to` (422 si `from` > `to`). Orden por fecha descendente y `total` del conjunto filtrado.
+- **`GET /audit-logs/actions`**: catalogo de acciones de auditoria.
+- **`frontend/`**: pagina `admin/audit-logs` con tabla, filtros, paginacion y detalle JSON de `oldValue`, `newValue` y `extraData`; enlace "Auditoria" en el menu del administrador; `lib/api/audit-logs.ts`.
+- **Pruebas**: `backend/tests/routers/test_audit_logs.py` y pruebas vitest de la API y de la pagina.
+
+---
+
+## [0.13.0] - 2026-10-25
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Parte diario y modulos (PR-14 del plan de empresa). Cambio incompatible en 0.y.z: el worker con el modulo `worker_daily_report` deja de ver la empresa en `GET /work-logs` y `GET /companies/detailed`; la vista de empresa pasa al nuevo endpoint del parte diario.
+
+### Anadido
+
+- **`GET /companies/{company_id}/daily-report?date=`**: miembros activos (y los inactivos con turno ese dia) y turnos del dia de toda la empresa, incluidos los que cruzan medianoche. Exige el modulo `worker_daily_report`. Manager y administrador de plataforma reciben `netAmount` y `grossAmount`; el worker, incluido el administrador en "ver como" worker, recibe un esquema sin esas claves (ausentes, no `null`). `workTypes` devuelve la definicion de cada tipo de turno y cada turno incluye `companyId`.
+- **`backend/tests/routers/test_daily_report.py`** y **`test_subscriptions.py`**: pruebas del parte diario, de la retirada de la vista de empresa y de las validaciones de suscripcion.
+
+### Cambiado
+
+- **`backend/schemas.py` y `backend/crud.py`**: `scope`, `status` y `target_scope` de modulos y suscripciones pasan a valores cerrados (422 si no son validos); `scope` exige `companyId` o `userId` coherente; el `target_scope` del modulo debe admitir el `scope`; el alta o la reactivacion de una suscripcion `active` o `trial` duplicada de la misma empresa o usuario y modulo responde 409. Solo afecta a altas nuevas; no hay migracion.
+- **`GET /work-logs` y `GET /companies/detailed`**: se elimina la rama "worker con modulo ve la empresa".
+- **`frontend/`**: `manager/daily-reports/page.tsx` y `admin/daily-reports/DailyReportPageClient.tsx` usan `getDailyReport` en lugar de `getCompaniesDetailed` y `getWorkLogs` con `limit: 2000`; la pagina de administrador muestra la empresa elegida con un selector. Nuevos `getDailyReport` y tipos del parte diario.
+
+### Cambios Internos
+
+- **Pruebas**: `test_company_access.py` y `test_work_logs_supervisor.py` pasan a esperar que el worker con modulo no vea la empresa.
+
+---
+
+## [0.12.1] - 2026-10-20
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Reglas de turnos (PR-08 del plan de empresa): membresia activa obligatoria, solo lectura del worker en empresa gestionada, turno inmutable en empresa y usuario, grupo generado por el servidor, validaciones de entrada y tope de `limit`.
+
+### Corregido
+
+- **`backend/routers/work_logs.py`**: crear un turno exige que el usuario del turno sea miembro activo de la empresa (tambien para el administrador de plataforma); `POST /work-logs/bulk` comprueba a todos los usuarios antes de crear ninguno y descarta usuarios duplicados. El worker en empresa gestionada no puede crear, editar ni borrar. `PUT /work-logs/{id}` rechaza (422) cambiar empresa o usuario del turno. Para quien no es administrador de plataforma, un turno inexistente responde 403 igual que uno ajeno.
+- **`backend/crud.py`**: `update_work_log` ya no falla con 500 en `apply_to_group` (el grupo se busca en `extra_data` y solo dentro de la misma empresa; la validacion es todo o nada). `update_work_log` y `delete_work_log` filtran por `company_id`. `create_work_log` y `create_work_log_bulk` rechazan miembros inactivos y generan siempre el `group_id` del lote; el `groupId` enviado por el cliente se ignora. Los turnos antiguos de miembros inactivos siguen siendo editables.
+- **`backend/schemas.py`**: `companyId` obligatorio al crear; fechas entre 2000-01-01 y hoy + 730 dias y `startDate <= endDate`; `duration`, `netAmount`, `grossAmount` y `amount` no negativos; `userIds` de 1 a 500; nuevo `WorkLogUpdate` con campos opcionales; `WorkLogResponse.groupId` se rellena desde `extra_data`. Las reglas de entrada no se aplican a las respuestas, para no romper la lectura de turnos antiguos.
+- **`GET /work-logs`**: `limit` limitado a 1..2000 (decision P-12); `X-Total-Count` sigue reflejando el total real.
+- **`frontend/`**: `list/page.tsx`, `calendar/page.tsx`, `work-logs-table.tsx` y `details-dialog.tsx` ocultan crear, editar y borrar turnos segun `usePermissions`; el worker en empresa gestionada ve el aviso "En esta empresa los turnos los registra el equipo gestor". `user-dialog.tsx` muestra el `detail` del 422 del backend y conserva el titular original al editar. `lib/types.ts` retira `groupId` de `WorkLogCreate`.
+
+### Cambios Internos
+
+- **Pruebas**: nuevo `backend/tests/routers/test_work_log_rules.py` y `frontend/src/__tests__/components/work-log-permissions.test.tsx`; `test_company_access.py` pasa a esperar 422 con `limit` por encima de 2000.
+- **`docs/empresa/plan-implementacion-empresa.md`**: decision sobre la carrera de `crud.remove_member` anotada en los seguimientos de PR-05.
+
+---
+
+## [0.12.0] - 2026-10-20
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Gestion de empresa solo plataforma, con migracion y script de reparacion de nombres (PR-06 del plan de empresa). Cambio incompatible en 0.y.z: manager y worker pierden los endpoints de lista, alta y edicion de empresa, y se retira `fiscalId` de las respuestas.
+
+### Anadido
+
+- **`backend/routers/companies.py`**: `DELETE /companies/{company_id}` (204) solo para el administrador de plataforma; responde 409 con los motivos si la empresa tiene miembros, turnos o suscripciones, sin cascadas.
+- **`backend/audit.py`**: eventos de empresa `company.created`, `company.updated`, `company.suspended`, `company.reactivated`, `company.managed_changed`, `company.tax_config_changed`, `company.settings_changed`, `company.worklog_definitions_changed` y `company.deleted`, con `reason` opcional al suspender o reactivar.
+- **`backend/crud.py`**: `get_company_for_actor`; `update_company` y `create_company` reciben el actor y registran auditoria.
+- **`frontend`**: confirmacion con motivo opcional antes de suspender, reactivar o cambiar `isManaged`, y edicion del nombre en el detalle de empresa.
+
+### Seguridad
+
+- **Empresa solo plataforma**: `GET`, `POST`, `PUT` y `DELETE /companies` devuelven 403 a manager, worker y administrador en modo "ver como". Un `PUT` sin cambios responde 422 (`No hay cambios que guardar`).
+- El nombre de empresa se normaliza (sin espacios sobrantes, de 1 a 120 caracteres) y `null` o vacio responde 422 en lugar de 500.
+
+### Cambiado
+
+- **`fiscalId`**: se retira de los esquemas, respuestas, seeds, dominio y frontend; la columna se conserva hasta PR-23.
+- **`frontend`**: el manager solo ve la tarjeta de modulos activos en la configuracion de empresa; la lista de empresas deja de ofrecer acciones de edicion sin permiso.
+- **`docs/empresa/analisis-entidad-empresa.md`**: una empresa sin manager es un estado valido; se documenta el procedimiento de recuperacion (E7).
+
+### Cambios Internos
+
+- **Migracion `b7e1a0d10002`**: limita `companies.name` a 120 caracteres (recrea la vista `"Work Logs"` porque depende de la columna) y aborta con `RuntimeError` si quedan nombres no validos; `downgrade` completo. Requiere el paso previo de despliegue de la seccion 10 del plan.
+- **Nuevo `backend/scripts/repair_company_names.py`** (con `repair_common.py`): obligatorio ejecutarlo en `--dry-run` y despues `--apply --backup-dir <directorio fuera del repo>` antes de desplegar (seccion 10 del plan).
+
+## [0.11.0] - 2026-10-20
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Membresias solo plataforma y endpoints de miembro, con la retirada de `users.default_company_id` (PR-05 del plan de empresa). Cambio incompatible en 0.y.z: se elimina una ruta y cambian los permisos de membresia.
+
+### Anadido
+
+- **`backend/routers/companies.py`**: endpoints `PUT /companies/{company_id}/members/{user_id}/role`, `PUT .../rates`, `PUT .../settings` y `DELETE .../members/{user_id}` (con turnos desactiva la membresia en lugar de borrarla). `GET /companies/{company_id}/members` acepta `status=active|inactive`.
+- **`backend/audit.py`**: eventos `member.added`, `member.reactivated`, `member.deactivated`, `member.removed`, `member.role_changed` y `member.rates_changed`.
+- **`frontend`**: hook `usePermissions` y funciones `updateMemberRole`, `updateMemberRates`, `updateMemberSettings` y `removeCompanyMember`.
+
+### Seguridad
+
+- **Membresias solo plataforma**: anadir miembro, cambiar estado, cambiar rol, eliminar miembro y `POST /users/{id}/reset-password-email` solo para el administrador de plataforma (403 para manager y worker, y para el administrador en modo "ver como"). Reactivar una membresia fuerza el rol `worker`. Tarifas y ajustes siguen la politica central (`can_edit_member_rates`, `can_edit_member_settings`).
+- **Administradores de plataforma (M9)**: un administrador no puede desactivarse ni degradarse a si mismo (403); un cambio que deje la plataforma sin administradores activos se rechaza (409), con bloqueo de filas para evitar la carrera entre dos cambios simultaneos.
+- **`PUT /users/me`**: ya no borra nombre y apellidos cuando no se envian o llegan nulos (M4).
+
+### Cambiado
+
+- **Ruta eliminada**: `PUT /companies/{company_id}/members/{user_id}` se sustituye por `role`, `rates` y `settings`.
+- **`backend/crud.py`**: `create_user` ya no une al usuario a la empresa "Personal" (sin empresas "Personal" en produccion, M8).
+- **`frontend`**: la interfaz oculta a quien no es administrador de plataforma el estado de membresia, el selector de rol, el alta de miembros y el reinicio de contrasena; se retira el selector de empresa por defecto del perfil y el aviso de "no hay empresa por defecto".
+
+### Cambios Internos
+
+- **Migracion `b7e1a0d10007`**: elimina `users.default_company_id`; `downgrade` la recrea nullable y sin datos (el rollback con datos es restaurar el backup). Requiere el paso previo de despliegue con backup (seccion 10 del plan). El codigo deja de leer y escribir la columna en backend v1 y v2, seeds y frontend.
+
+## [0.10.0] - 2026-10-19
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Agregados de turnos y migracion de pantallas (PR-07 del plan de empresa).
+
+### Anadido
+
+- **`backend/routers/work_logs.py`**: `GET /work-logs/summary` (totales, por tipo, por dia y por usuario sobre el rango completo, con la misma visibilidad que `GET /work-logs`; un worker solo recibe sus propios datos) y cabecera `X-Total-Count` en `GET /work-logs`, expuesta por CORS.
+- **`backend/crud.py`**: `count_work_logs` y `get_work_log_summary` con agregacion SQL y cache Redis de 300 s invalidada con `invalidate_dashboard_summary`.
+- **`frontend/src/lib/api/work-logs.ts`**: `getWorkLogsPage`, `getAllWorkLogs` (falla si el total supera `maxRows`) y `getWorkLogSummary`.
+
+### Cambiado
+
+- **`backend/crud.py`**: `get_work_logs` ordena con desempate por `id` para que la paginacion sea estable.
+- **`frontend`**: el dashboard de empresa, los informes (PDF, impresion y texto), la tabla de turnos de usuario del administrador y el calendario dejan de sumar filas de una pagina o de usar `limit` altos; los totales salen del resumen y los bloques por tipo usan las definiciones de turno de la empresa. El calendario consulta solo el rango visible.
+
+## [0.9.3] - 2026-10-19
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Token minimo, emision de contexto y "ver como" del administrador de plataforma (PR-04 del plan de empresa).
+
+### Seguridad
+
+- **`backend/auth.py`**: el access token solo lleva `sub`, `scope` y, si hay empresa activa, `cid` (mas `exp`, `iat`, `type` y `jti`); desaparecen `role`, `is_admin` y `cid` nulo. Nuevo `resolve_active_company`: la empresa del token es siempre una membresia activa de una empresa activa (sugerencia del cliente, si no la primera por `sort_order` y `joined_at`); ya no se lee `users.default_company_id`. `view_as` solo se emite para el administrador de plataforma con empresa.
+- **`backend/routers/auth.py`**: `POST /auth/switch-scope` deja de aceptar el rol del cliente y acepta `viewAs` (solo administrador de plataforma). Inexistente, ajena o sin membresia responden igual (403); empresa suspendida bloquea a worker y manager pero no al administrador. El login (`company_id` en el formulario) y `POST /verify-2fa` (`companyId`) aplican la misma regla; el token provisional de 2FA no lleva empresa. `switch-scope` se rechaza (403) con un token de impersonacion, que antes se reemitia con 30 min y sin `admin_user_id`.
+
+### Cambiado
+
+- **`frontend`**: `switchScope(companyId, viewAs?)` sin rol; el administrador de plataforma ve "Gestionar", "Ver como manager" y "Ver como worker" (solo lectura); worker y manager un unico boton "Entrar". La ultima empresa se recuerda en `localStorage` (clave `lastCompanyId`) y se envia al login y al paso 2FA.
+
+## [0.9.2] - 2026-10-18
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Politica central de permisos, cache de acceso y modo "ver como" de solo lectura (PR-03 del plan de empresa).
+
+### Seguridad
+
+- **`backend/access_policy.py`** (nuevo, modulo puro sin FastAPI ni SQLAlchemy): unico sitio que decide quien puede que sobre una empresa. Anti-enumeracion: empresa inexistente, ajena o sin membresia responden igual (403 `No tienes acceso a esta empresa`); el 404 queda solo para el administrador de plataforma.
+- **`backend/routers/deps.py`** (nuevo): `authorize`, `require_company`, `require_platform_admin`, `manages_user`, `require_active_member` y `require_module`. Un usuario que no es administrador de plataforma y tiene empresa activa en el token no accede a otra empresa hasta cambiar de scope.
+- **`backend/auth.py`**: el rol de plataforma sale de la BD (el claim `is_admin` se ignora) y el rol de empresa de la membresia activa (el claim `role` se ignora). El manager pierde "entrar como worker". El claim `view_as` solo se respeta para un administrador de plataforma con empresa activa; en ese modo todo metodo no seguro se rechaza con `Modo 'ver como' de solo lectura`.
+- **`backend/access_cache.py`** (nuevo), **`backend/crud.py`**: cache de acceso (usuario y empresa) con TTL de 60 s e invalidacion al cambiar rol o estado de membresia y estado o modo de la empresa; con Redis caido se lee de BD.
+- **`backend/routers/companies.py`, `work_logs.py`, `modules.py`, `users.py`**: los handlers usan `deps` en lugar de las comprobaciones `is_platform_admin` dispersas; los parametros `company_id`, `user_id` y `work_log_id` pasan a `UUID`.
+
+### Corregido
+
+- Una empresa suspendida bloquea para no-administradores los turnos, el billing, el dashboard y `GET /modules/me` (ignora sus suscripciones de empresa).
+- Los 403 dejan de incluir `is_manager`, `is_self` e ids.
+- **`backend/crud.py`**: `user_has_module` ignora la suscripcion de una empresa suspendida.
+- **`backend/routers/work_logs.py`**: `GET /work-logs` valida `skip >= 0` y `limit >= 1`.
+
+### Cambios Internos
+
+- **`backend/redis_config.py`**: backoff de 30 s tras un fallo de Redis para no esperar el timeout en cada llamada.
+- **`backend/schemas.py`**: `UserResponse` anade `view_as` e `is_read_only_view`.
+- Eliminados `backend/routers/utils.py` y `crud.get_subscriptions` (sin uso); los `print` de depuracion pasan a `logging`.
+- **`backend/tests/`**: nuevos `policy/` y `routers/test_company_access.py`; los tests de `governance`, `work_logs_supervisor`, `modules`, `dashboard_summary` y `billing_summary` invocan por HTTP.
+
+---
+
+## [0.9.1] - 2026-10-18
+
+### Tipo de Cambio SemVer
+
+- **PATCH**: Seguridad inmediata de autenticacion (PR-01 del plan de empresa).
+
+### Seguridad
+
+- **`backend/routers/companies.py`**: `update_member_status`, `read_company`, `read_company_rates` y `update_company_member` usan `get_verified_user`; los tokens `2fa_pending` se rechazan en los endpoints de empresa.
+- **`backend/auth.py`, `backend/routers/auth.py`**: los usuarios desactivados (`is_active` falso) no acceden con token vigente (401), no inician sesion (403) y su refresh revoca la sesion (401).
+- **`backend/routers/users.py`**: eliminado el registro publico `POST /users/`. `POST /users` sigue exigiendo administrador de plataforma.
+- **`backend/dev_seed.py`, `backend/main.py`**: el bypass de desarrollo exige `ENVIRONMENT=development` y `DEV_LOGIN_BYPASS` verdadero (`NODE_ENV` ya no cuenta). El arranque aborta si `DEV_LOGIN_BYPASS` esta activo fuera de `development`.
+- **`backend/main.py`, `backend/seed.py`**: el sembrado inicial sale del arranque; `seed_initial_data` se omite si ya existe un administrador de plataforma. La membresia sembrada en desarrollo usa el rol `manager`.
+
+### Cambios Internos
+
+- **`backend/tests/routers/test_auth_security.py`**: nuevos tests de PR-01; `test_auth_dev_bypass.py` actualizado al nuevo contrato; `conftest.py` acepta cadenas en columnas UUID bajo SQLite.
+
+---
+
+## [0.9.0] - 2026-10-18
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: Base del registro de auditoria de empresa y membresias (modelo, migracion y helper). Los eventos concretos se emiten en bloques posteriores.
+
+### Funcionalidades y Mejoras
+
+- **`backend/models.py`**: `AuditLog` admite actor, empresa, usuario objetivo, valor anterior, valor nuevo y motivo (`actor_user_id`, `company_id` sin clave foranea, `target_user_id`, `old_value`, `new_value`, `reason`); `impersonated_user_id` y `admin_user_id` pasan a nulos.
+- **`backend/migrations/versions/b7e1a0d10001_extend_audit_logs.py`**: migracion reversible que anade las columnas, rellena `actor_user_id` con `admin_user_id` y crea los indices `ix_audit_logs_company_created` e `ix_audit_logs_action`. Compatible con el codigo anterior (solo anade y relaja `NOT NULL`).
+- **`backend/audit.py`**: nuevo `AuditAction` y `record_audit`, que anade la entrada a la sesion sin confirmar la transaccion.
+- **`backend/routers/users.py`, `backend/routers/work_logs.py`**: las entradas `2fa_reset` y de impersonacion rellenan tambien `actor_user_id`.
+
+### Cambios Internos
+
+- **`backend/tests/test_audit.py`**: pruebas del helper y de los dos escritores existentes.
+
+---
+
 ## [0.8.1] - 2026-10-08
 
 ### Tipo de Cambio SemVer

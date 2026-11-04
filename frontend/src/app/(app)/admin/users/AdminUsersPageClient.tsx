@@ -29,9 +29,7 @@ export default function AdminUsersPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["users"] });
             toast({ title: "Estado actualizado" });
-        },
-        onError: () => toast({ title: "Error al actualizar estado", variant: "destructive" })
-    });
+        },    });
 
     const impersonateMutation = useMutation({
         mutationFn: impersonateUser,
@@ -39,9 +37,7 @@ export default function AdminUsersPage() {
             setAuthToken(data.accessToken);
             window.location.href = "/dashboard";
             toast({ title: "Simulación iniciada", description: "Ahora actúas como el usuario seleccionado." });
-        },
-        onError: () => toast({ title: "Error de impersonación", variant: "destructive" })
-    });
+        },    });
 
     const columns: ColumnDef<User>[] = [
         {

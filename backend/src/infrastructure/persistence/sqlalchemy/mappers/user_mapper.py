@@ -22,7 +22,6 @@ class SqlAlchemyUserMapper:
             role=role_enum,
             must_change_password=bool(orm_user.must_change_password),
             is_2fa_enabled=bool(orm_user.is_2fa_enabled),
-            default_company_id=str(orm_user.default_company_id) if orm_user.default_company_id else None,
             created_at=orm_user.created_at,
         )
 
@@ -38,7 +37,6 @@ class SqlAlchemyUserMapper:
             "role": role_orm,
             "must_change_password": domain_user.must_change_password,
             "is_2fa_enabled": domain_user.is_2fa_enabled,
-            "default_company_id": domain_user.default_company_id,
         }
         if hashed_password:
             kwargs["hashed_password"] = hashed_password
@@ -56,6 +54,27 @@ class SqlAlchemyCompanyMemberMapper:
             role=role_enum,
             is_active=bool(orm_member.is_active),
             sort_order=int(orm_member.sort_order or 0),
-            rates_config=orm_member.rates_config or {},
+            # Copias: el dominio no debe compartir los dict del ORM (JSONB sin deteccion de mutaciones).
+            rates_config=dict(orm_member.rates_config or {}),
             joined_at=orm_member.joined_at,
+            settings=dict(orm_member.settings or {}),
+            updated_at=orm_member.updated_at,
         )
+
+    @staticmethod
+    def to_orm(domain_member: CompanyMember) -> models.CompanyMember:
+        kwargs = {
+            "user_id": domain_member.user_id,
+            "company_id": domain_member.company_id,
+            "role": models.CompanyRole(domain_member.role.value),
+            "is_active": domain_member.is_active,
+            "sort_order": domain_member.sort_order,
+            "rates_config": domain_member.rates_config,
+            "settings": domain_member.settings,
+        }
+        # Un None explicito sobrescribiria el default de la columna en el INSERT.
+        if domain_member.joined_at is not None:
+            kwargs["joined_at"] = domain_member.joined_at
+        if domain_member.updated_at is not None:
+            kwargs["updated_at"] = domain_member.updated_at
+        return models.CompanyMember(**kwargs)

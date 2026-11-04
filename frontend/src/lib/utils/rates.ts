@@ -17,14 +17,19 @@ export function getPrimaryRateEntry(ratesConfig: DynamicRateConfig | null | unde
 /**
  * Maps a CompanyMember (new SaaS JSONB) to the legacy UserCompanyRate (flat) structure.
  * Useful for interoperability during migration.
+ *
+ * Accepts partial objects (e.g. a company view that only carries `ratesConfig`).
+ * `userId` and `companyId` are "" when not available; do not match on them in that case.
  */
-export function mapMemberToLegacyRate(member: CompanyMember): UserCompanyRate {
+export function mapMemberToLegacyRate(
+    member: Pick<CompanyMember, "ratesConfig"> & Partial<Pick<CompanyMember, "userId" | "companyId" | "user">>
+): UserCompanyRate {
     const primary = getPrimaryRateEntry(member.ratesConfig);
     const entry = primary?.entry;
 
     return {
-        userId: member.userId,
-        companyId: member.companyId,
+        userId: member.userId ?? "",
+        companyId: member.companyId ?? "",
         user: member.user,
         hourlyRate: member.ratesConfig?.tutorial?.base_rate || 0,
         dailyRate: member.ratesConfig?.particular?.base_rate || 0,

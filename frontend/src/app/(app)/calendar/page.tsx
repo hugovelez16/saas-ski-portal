@@ -19,10 +19,12 @@ import { getUserRates } from "@/lib/api/settings";
 
 import { useAuth } from "@/context/AuthContext";
 import { UserCreateWorkLogDialog } from "@/components/work-log/user-dialog";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function CalendarPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { canCreateWorkLog, role, isManaged } = usePermissions();
   const [selectedLogs, setSelectedLogs] = useState<any[]>([]);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -102,6 +104,7 @@ export default function CalendarPage() {
   };
 
   const handleDateClick = (date: Date) => {
+    if (!canCreateWorkLog) return;
     setSelectedDate(date);
     setIsCreateOpen(true);
   };
@@ -112,7 +115,12 @@ export default function CalendarPage() {
     <div className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 h-full">
       <div className="flex items-center justify-between">
         <h1 className="font-semibold text-lg md:text-2xl">Calendar (Calendario)</h1>
-        <Button onClick={() => setIsCreateOpen(true)}>Add Work Log</Button>
+        {canCreateWorkLog && <Button onClick={() => setIsCreateOpen(true)}>Add Work Log</Button>}
+        {!canCreateWorkLog && role === 'worker' && isManaged && (
+          <p className="text-sm text-muted-foreground italic">
+            En esta empresa los turnos los registra el equipo gestor
+          </p>
+        )}
       </div>
       <div className="flex-1 min-h-0 h-full">
         <EventCalendar
@@ -135,15 +143,17 @@ export default function CalendarPage() {
         }
       />
 
-      <UserCreateWorkLogDialog
-        open={isCreateOpen}
-        onOpenChange={setIsCreateOpen}
-        user={user}
-        initialDate={selectedDate}
-        onLogUpdate={() => refetchWorkLogs()}
-      >
-        <span className="hidden" />
-      </UserCreateWorkLogDialog>
+      {canCreateWorkLog && (
+        <UserCreateWorkLogDialog
+          open={isCreateOpen}
+          onOpenChange={setIsCreateOpen}
+          user={user}
+          initialDate={selectedDate}
+          onLogUpdate={() => refetchWorkLogs()}
+        >
+          <span className="hidden" />
+        </UserCreateWorkLogDialog>
+      )}
     </div>
   );
 }

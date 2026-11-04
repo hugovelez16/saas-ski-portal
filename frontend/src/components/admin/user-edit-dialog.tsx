@@ -33,6 +33,7 @@ import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { updateUser, resetUser2fa } from "@/lib/api/users";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Pencil } from "lucide-react";
 import { User } from "@/lib/types";
 
@@ -53,6 +54,8 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
     const [open, setOpen] = useState(false);
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    const { isPlatformAdmin, isReadOnlyView } = usePermissions();
+    const canResetPassword = isPlatformAdmin && !isReadOnlyView;
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -88,13 +91,6 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
             toast({
                 title: "User updated",
                 description: "User details have been updated.",
-            });
-        },
-        onError: (error: any) => {
-            toast({
-                title: "Error",
-                description: error.response?.data?.detail || "Failed to update user.",
-                variant: "destructive",
             });
         },
     });
@@ -166,6 +162,7 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
                             )}
                         />
 
+                        {canResetPassword && (
                         <div className="flex justify-end -mt-2 mb-2">
                             <Button
                                 type="button"
@@ -179,7 +176,7 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
                                         await resetPasswordEmail(user.id);
                                         toast({ title: "Email Sent", description: "New password sent to user's email." });
                                     } catch (e) {
-                                        toast({ title: "Error", description: "Failed to send email.", variant: "destructive" });
+                                        console.error("Error sending password reset email:", e);
                                     }
                                 }}
                             >
@@ -187,6 +184,7 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
                                 Generate & Email Password
                             </Button>
                         </div>
+                        )}
                         {user.is2faEnabled && (
                             <div className="flex justify-end -mt-2 mb-2">
                                 <Button
@@ -201,7 +199,7 @@ export function UserEditDialog({ user, trigger }: UserEditDialogProps) {
                                             queryClient.invalidateQueries({ queryKey: ["users"] });
                                             toast({ title: "2FA reset", description: "The user can enable 2FA again from their profile." });
                                         } catch (e) {
-                                            toast({ title: "Error", description: "Failed to reset 2FA.", variant: "destructive" });
+                                            console.error("Error resetting 2FA:", e);
                                         }
                                     }}
                                 >

@@ -2,11 +2,10 @@
 export const dynamic = "force-dynamic";
 
 
-import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getCompaniesDetailed } from "@/lib/api/companies";
 import { useAuth } from "@/context/AuthContext";
-import api from "@/lib/api";
+import api, { describeLoadError } from "@/lib/api";
 import { useState, useMemo } from "react";
 import {
     Table,
@@ -25,7 +24,6 @@ import { WorkLog } from "@/lib/types";
 
 export default function ManagerShiftsPage() {
     const { user } = useAuth();
-    const searchParams = useSearchParams();
     const queryClient = useQueryClient();
     const [filters, setFilters] = useState<Record<string, any>>({});
 
@@ -35,10 +33,9 @@ export default function ManagerShiftsPage() {
         queryKey: ["companiesDetailed"],
     });
 
-    const companyIdFromUrl = searchParams.get("companyId");
-    const selectedCompanyId = companyIdFromUrl || (companies.length > 0 ? companies[0].id : null);
+    const selectedCompanyId = user?.activeCompanyId || null;
 
-    const { data: workLogs = [], isLoading: loadingLogs } = useQuery({
+    const { data: workLogs = [], isLoading: loadingLogs, error: logsError } = useQuery({
         queryFn: async () => {
             if (!selectedCompanyId) return [];
             const res = await api.get<WorkLog[]>(`/work-logs?company_id=${selectedCompanyId}`);
@@ -126,6 +123,7 @@ export default function ManagerShiftsPage() {
                         queryClient.invalidateQueries({ queryKey: ["companyWorkLogs", selectedCompanyId] });
                     }}
                     isLoading={loadingLogs}
+                    error={logsError ? describeLoadError(logsError, "No se pudieron cargar los turnos.") : null}
                 />
 
                 <div className="text-xs text-muted-foreground text-right">

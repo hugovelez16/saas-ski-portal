@@ -55,10 +55,38 @@ describe('Users API Client', () => {
     });
 
     describe('getUserCompanies', () => {
-        it('should GET /users/:id/companies', async () => {
+        it('should GET /v2/users/:id/companies', async () => {
             (mockedApi.get as any).mockResolvedValue({ data: [] });
             await getUserCompanies('u-1');
-            expect(mockedApi.get).toHaveBeenCalledWith('/users/u-1/companies');
+            expect(mockedApi.get).toHaveBeenCalledWith('/v2/users/u-1/companies');
+        });
+
+        it('should return camelCase companies with the user membership', async () => {
+            (mockedApi.get as any).mockResolvedValue({
+                data: [
+                    {
+                        id: 'c-1',
+                        name: 'Escuela Sierra',
+                        is_active: true,
+                        is_managed: false,
+                        tax_config: { iva: 21 },
+                        worklog_definitions: {},
+                        settings: {},
+                        created_at: null,
+                        updated_at: null,
+                        role: 'manager',
+                        is_active_member: false,
+                        rates_config: { particular: { base_rate: 10 } },
+                    },
+                ],
+            });
+            const result = await getUserCompanies('u-1');
+            expect(result).toHaveLength(1);
+            expect(result[0].role).toBe('manager');
+            expect(result[0].isActiveMember).toBe(false);
+            expect(result[0].ratesConfig).toEqual({ particular: { base_rate: 10 } });
+            expect(result[0].taxConfig).toEqual({ iva: 21 });
+            expect(result[0]).not.toHaveProperty('is_active_member');
         });
     });
 

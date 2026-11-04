@@ -399,7 +399,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
                                                         <SelectContent>
                                                             {companies.map(c => (
                                                                 <SelectItem key={c.id} value={c.id}>
-                                                                    {c.name} {c.fiscalId ? `(${c.fiscalId})` : ""}
+                                                                    {c.name}
                                                                 </SelectItem>
                                                             ))}
                                                         </SelectContent>

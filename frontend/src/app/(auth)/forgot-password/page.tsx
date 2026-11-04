@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Loader2, ArrowLeft, MailCheck } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { forgotPassword } from "@/lib/api/users"
+import { LegalFooter } from "@/components/legal-footer"
 
 export default function ForgotPasswordPage() {
   const router = useRouter()
@@ -94,7 +95,7 @@ export default function ForgotPasswordPage() {
             </div>
           )}
         </CardContent>
-        <CardFooter className="flex justify-center">
+        <CardFooter className="flex flex-col items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
@@ -103,6 +104,7 @@ export default function ForgotPasswordPage() {
           >
             <ArrowLeft className="h-3 w-3" /> Volver al Login
           </Button>
+          <LegalFooter />
         </CardFooter>
       </Card>
     </div>

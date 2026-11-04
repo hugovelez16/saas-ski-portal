@@ -1,23 +1,25 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import api from "@/lib/api";
+import { getCompany } from "@/lib/api/companies";
 import { CompanyConfigurationTab } from "@/components/admin/company-configuration-tab";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function ManagerSettingsPage() {
     const { user, loading: authLoading } = useAuth();
-    const searchParams = useSearchParams();
-    const selectedCompanyId = searchParams.get("companyId") || user?.activeCompanyId || user?.defaultCompanyId;
+    const selectedCompanyId = user?.activeCompanyId;
 
     const { data: company, isLoading: isLoadingCompany } = useQuery({
         queryKey: ["company", selectedCompanyId],
-        queryFn: async () => (await api.get(`/companies/${selectedCompanyId}`)).data,
+        queryFn: () => getCompany(selectedCompanyId as string),
         enabled: !!selectedCompanyId,
     });
+
+    // Con null no se consulta la empresa activa; solo interesa el rol de plataforma.
+    const { isPlatformAdmin } = usePermissions(company ?? null);
 
     if (authLoading || (isLoadingCompany && selectedCompanyId)) {
         return (
@@ -56,7 +58,9 @@ export default function ManagerSettingsPage() {
             <div>
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Configuración de Escuela</h1>
                 <p className="text-muted-foreground text-sm">
-                    Gestiona los turnos, tarifas, reglas de negocio y opciones del panel para tu escuela.
+                    {isPlatformAdmin
+                        ? "Gestiona los turnos, tarifas, reglas de negocio y opciones del panel para tu escuela."
+                        : "La configuración de la empresa la gestiona el administrador de la plataforma."}
                 </p>
             </div>
 

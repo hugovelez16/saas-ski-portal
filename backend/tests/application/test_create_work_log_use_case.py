@@ -7,15 +7,13 @@ from decimal import Decimal
 
 import pytest
 from application.use_cases.work_logs.create_work_log_use_case import CreateWorkLogUseCase
+from contracts import MissingWorklogUnitError
 from domain.entities.company import Company
 from domain.entities.company_member import CompanyMember, CompanyRole
 from domain.entities.work_log import WorkLog
 from domain.exceptions.domain_exceptions import InactiveMembershipException
-from domain.ports.repositories.work_log_repository_port import (
-    CompanyMemberRepositoryPort,
-    CompanyRepositoryPort,
-    WorkLogRepositoryPort,
-)
+from domain.ports.repositories.company_repository_port import CompanyMemberRepositoryPort, CompanyRepositoryPort
+from domain.ports.repositories.work_log_repository_port import WorkLogRepositoryPort
 
 
 class InMemoryCompanyRepo(CompanyRepositoryPort):
@@ -28,23 +26,36 @@ class InMemoryCompanyRepo(CompanyRepositoryPort):
     async def get_by_name(self, name: str):
         return next((c for c in self.companies.values() if c.name == name), None)
 
-    async def list_companies(self):
-        return list(self.companies.values())
+    async def list_companies(self, *, skip: int = 0, limit: int = 100):
+        return list(self.companies.values())[skip : skip + limit]
+
+    async def count_companies(self):
+        return len(self.companies)
 
     async def save(self, company: Company):
         self.companies[company.id] = company
         return company
+
+    async def delete(self, company_id: str):
+        self.companies.pop(company_id, None)
+
+    async def count_dependencies(self, company_id: str):
+        return {"members": 0, "work_logs": 0, "subscriptions": 0}
 
 
 class InMemoryCompanyMemberRepo(CompanyMemberRepositoryPort):
     def __init__(self):
         self.members = {}
 
-    async def get_membership(self, user_id: str, company_id: str):
+    async def get_membership(self, user_id: str, company_id: str, *, for_update: bool = False):
         return self.members.get((user_id, company_id))
 
-    async def list_members_by_company(self, company_id: str):
-        return [m for (u, c), m in self.members.items() if c == company_id]
+    async def list_members_by_company(self, company_id: str, is_active=None):
+        return [
+            m
+            for (u, c), m in self.members.items()
+            if c == company_id and (is_active is None or m.is_active == is_active)
+        ]
 
     async def list_companies_by_user(self, user_id: str):
         return [m for (u, c), m in self.members.items() if u == user_id]
@@ -52,6 +63,18 @@ class InMemoryCompanyMemberRepo(CompanyMemberRepositoryPort):
     async def save(self, member: CompanyMember):
         self.members[(member.user_id, member.company_id)] = member
         return member
+
+    async def delete(self, user_id: str, company_id: str):
+        self.members.pop((user_id, company_id), None)
+
+    async def reorder(self, company_id: str, user_ids):
+        for position, user_id in enumerate(user_ids):
+            member = self.members.get((user_id, company_id))
+            if member is not None:
+                member.sort_order = position
+
+    async def count_work_logs(self, user_id: str, company_id: str):
+        return 0
 
 
 class InMemoryWorkLogRepo(WorkLogRepositoryPort):
@@ -90,7 +113,7 @@ async def test_create_work_log_success():
         id="comp-1",
         name="Sierra Nevada Ski School",
         tax_config={"irpf_base": 0.15, "social_security": 0.05},
-        worklog_definitions={"clase_particular": {"unit": "hours", "is_range": False}},
+        worklog_definitions={"clase_particular": {"unit": "hours", "label": "Clase particular", "fields": []}},
     )
     await company_repo.save(company)
 
@@ -127,6 +150,46 @@ async def test_create_work_log_success():
     # Bruto = 60 / (1 - 0.20) = 75.00
     assert result.gross_amount.amount == Decimal("75.00")
     assert result.duration_hours == 2.0
+
+
+@pytest.mark.anyio
+async def test_create_work_log_without_unit_raises_missing_unit_error():
+    company_repo = InMemoryCompanyRepo()
+    member_repo = InMemoryCompanyMemberRepo()
+    work_log_repo = InMemoryWorkLogRepo()
+
+    company = Company(
+        id="comp-1",
+        name="Escuela",
+        worklog_definitions={"clase_particular": {"label": "Clase particular", "fields": []}},
+    )
+    await company_repo.save(company)
+
+    member = CompanyMember(
+        user_id="user-1",
+        company_id="comp-1",
+        role=CompanyRole.WORKER,
+        is_active=True,
+        rates_config={"clase_particular": {"base_rate": 30.0, "is_gross": False}},
+    )
+    await member_repo.save(member)
+
+    use_case = CreateWorkLogUseCase(
+        work_log_repo=work_log_repo,
+        company_repo=company_repo,
+        member_repo=member_repo,
+    )
+
+    with pytest.raises(MissingWorklogUnitError, match="no tiene unidad definida"):
+        await use_case.execute(
+            user_id="user-1",
+            company_id="comp-1",
+            log_type="clase_particular",
+            start_date=date(2026, 1, 15),
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            duration_hours=2.0,
+        )
 
 
 @pytest.mark.anyio

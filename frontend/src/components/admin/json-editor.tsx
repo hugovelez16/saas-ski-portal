@@ -14,9 +14,38 @@ interface JsonEditorProps {
     rows?: number
 }
 
+/**
+ * Recorre recursivamente un valor parseado (objetos y arrays) y devuelve la ruta
+ * del primer numero no finito (NaN, Infinity, -Infinity), o null si todos son finitos.
+ * La raiz se nombra "$". Ejemplo: "$.rates[1].base_rate".
+ */
+export function findNonFiniteNumber(value: unknown): string | null {
+    const walk = (node: unknown, path: string): string | null => {
+        if (typeof node === "number") {
+            return Number.isFinite(node) ? null : path
+        }
+        if (Array.isArray(node)) {
+            for (let i = 0; i < node.length; i++) {
+                const found = walk(node[i], `${path}[${i}]`)
+                if (found !== null) return found
+            }
+            return null
+        }
+        if (node !== null && typeof node === "object") {
+            for (const [key, child] of Object.entries(node)) {
+                const found = walk(child, `${path}.${key}`)
+                if (found !== null) return found
+            }
+        }
+        return null
+    }
+    return walk(value, "$")
+}
+
 export function JsonEditor({ initialValue, onSave, label, description, rows = 12 }: JsonEditorProps) {
     const [value, setValue] = React.useState(JSON.stringify(initialValue, null, 2))
     const [error, setError] = React.useState<string | null>(null)
+    const [valueError, setValueError] = React.useState<string | null>(null)
     const [isValid, setIsValid] = React.useState(true)
 
     const initialValueString = JSON.stringify(initialValue, null, 2)
@@ -27,6 +56,7 @@ export function JsonEditor({ initialValue, onSave, label, description, rows = 12
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newVal = e.target.value
         setValue(newVal)
+        setValueError(null)
         try {
             JSON.parse(newVal)
             setError(null)
@@ -38,12 +68,21 @@ export function JsonEditor({ initialValue, onSave, label, description, rows = 12
     }
 
     const handleSave = () => {
+        let parsed: unknown
         try {
-            const parsed = JSON.parse(value)
-            onSave(parsed)
-        } catch (err) {
-            // Should not happen due to validation but safe to have
+            parsed = JSON.parse(value)
+        } catch {
+            // La sintaxis invalida ya se muestra en handleChange; no se guarda nada
+            return
         }
+        // JSON.parse no produce NaN, pero un literal como 1e400 se convierte en Infinity
+        const invalidPath = findNonFiniteNumber(parsed)
+        if (invalidPath !== null) {
+            setValueError(`El valor en ${invalidPath} no es un número finito (NaN o Infinity). Corríjalo antes de guardar.`)
+            return
+        }
+        setValueError(null)
+        onSave(parsed)
     }
 
     return (
@@ -83,6 +122,16 @@ export function JsonEditor({ initialValue, onSave, label, description, rows = 12
                     <AlertTitle className="text-xs">Error de Formato</AlertTitle>
                     <AlertDescription className="text-[10px]">
                         {error}
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {valueError && (
+                <Alert variant="destructive" className="py-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle className="text-xs">Valor no válido</AlertTitle>
+                    <AlertDescription className="text-[10px]">
+                        {valueError}
                     </AlertDescription>
                 </Alert>
             )}

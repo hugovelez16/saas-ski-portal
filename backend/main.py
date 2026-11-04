@@ -6,15 +6,31 @@ It serves as the entry point for the backend service.
 """
 
 import asyncio
+import math
 import os
 from contextlib import asynccontextmanager
 
+from access_policy import PolicyError
+from contracts import MissingWorklogUnitError
 from database import SessionLocal
+from domain.exceptions.domain_exceptions import (
+    ConflictException,
+    DomainException,
+    EntityNotFoundException,
+    InactiveMembershipException,
+    InvalidRateConfigurationException,
+    ModuleAccessDeniedException,
+    UnauthorizedDomainActionException,
+    ValidationDomainException,
+)
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 # Import modular routers
-from routers import auth, companies, modules, users, work_logs
+from routers import audit_logs, auth, companies, modules, users, v2, work_logs
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -69,6 +85,11 @@ async def lifespan(app: FastAPI):
         print("CRITICAL ERROR: ENCRYPTION_KEY environment variable is not set!")
         raise RuntimeError("ENCRYPTION_KEY environment variable is not set. Aborting startup.")
 
+    # Aborta el arranque si DEV_LOGIN_BYPASS esta activo fuera de ENVIRONMENT=development
+    import dev_seed
+
+    dev_seed.assert_dev_bypass_safe()
+
     # Database readiness check (Wait for DB)
     # Total timeout: 60 seconds (30 retries * 2 seconds)
     retries = 30
@@ -81,7 +102,6 @@ async def lifespan(app: FastAPI):
             print("Database connection established successfully.")
 
             # Inicializar usuario y empresa de desarrollo si aplica
-            import dev_seed
             if dev_seed.is_dev_mode():
                 try:
                     dev_seed.ensure_dev_admin_user(db)
@@ -98,14 +118,6 @@ async def lifespan(app: FastAPI):
                 break
             print(f"Database not ready yet. Retrying in 2 seconds... ({retries} attempts remaining)")
             await asyncio.sleep(2)
-
-    # Sembrado inicial de datos si procede
-    try:
-        from seed import seed_initial_data
-
-        seed_initial_data()
-    except Exception as seed_err:
-        print(f"[Seed] No se pudo ejecutar el sembrado inicial en arranque: {seed_err}")
 
     # Iniciar la tarea periódica de limpieza de sesiones en segundo plano
     cleanup_task = asyncio.create_task(cleanup_expired_sessions_loop())
@@ -127,6 +139,52 @@ app = FastAPI(
     root_path="/api",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(PolicyError)
+async def policy_error_handler(request: Request, exc: PolicyError):
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+DOMAIN_EXCEPTION_STATUS = (
+    (EntityNotFoundException, 404),
+    (ConflictException, 409),
+    (ValidationDomainException, 422),
+    (UnauthorizedDomainActionException, 403),
+    (InactiveMembershipException, 403),
+    (ModuleAccessDeniedException, 403),
+    (InvalidRateConfigurationException, 422),
+)
+
+
+@app.exception_handler(DomainException)
+async def domain_exception_handler(request: Request, exc: DomainException):
+    """Traduce las excepciones de dominio (v2) a HTTP; una DomainException sin mapear sale como 400."""
+    status_code = next((code for cls, code in DOMAIN_EXCEPTION_STATUS if isinstance(exc, cls)), 400)
+    return JSONResponse(status_code=status_code, content={"detail": exc.message})
+
+
+@app.exception_handler(MissingWorklogUnitError)
+async def missing_worklog_unit_error_handler(request: Request, exc: MissingWorklogUnitError):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+def _replace_non_finite(value):
+    """Sustituye NaN e infinitos por texto: JSONResponse no admite floats no finitos."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _replace_non_finite(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_replace_non_finite(item) for item in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_error_handler(request: Request, exc: RequestValidationError):
+    # Cada error incluye el valor de entrada (`input`), que puede ser NaN: se sanea para poder serializar el 422.
+    content = _replace_non_finite(jsonable_encoder(exc.errors()))
+    return JSONResponse(status_code=422, content={"detail": content})
 
 
 @app.get("/health", tags=["system"])
@@ -156,6 +214,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Count"],
 )
 
 # Include routers
@@ -164,6 +223,8 @@ app.include_router(users.router)
 app.include_router(work_logs.router)
 app.include_router(companies.router)
 app.include_router(modules.router)
+app.include_router(audit_logs.router)
+app.include_router(v2.router)
 
 if __name__ == "__main__":
     import uvicorn

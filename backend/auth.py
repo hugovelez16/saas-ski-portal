@@ -7,8 +7,10 @@ It uses OAuth2 with Password Flow and JWT tokens.
 
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta
 
+import access_policy
 import crud
 import models
 import pyotp
@@ -231,64 +233,117 @@ def consume_reset_token(token: str) -> bool:
         return False
 
 
+def _normalize_uuid(value) -> str | None:
+    """Devuelve el UUID en forma canonica, o None si el valor es vacio o mal formado."""
+    if value is None or value == "":
+        return None
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def resolve_active_company(
+    db: Session,
+    user: models.User,
+    requested_company_id,
+    *,
+    force_none: bool = False,
+) -> str | None:
+    """
+    Decide la empresa activa (`cid`) del token.
+
+    - Platform admin: devuelve la empresa pedida (la existencia la valida switch-scope; una empresa
+      suspendida se permite). Con `force_none`, o sin empresa pedida, contexto neutro (None).
+    - Resto de usuarios: `requested_company_id` es solo una sugerencia del cliente. Se acepta solo si es
+      membresia activa de una empresa activa del usuario. Si no, se usa la primera membresia activa de
+      empresa activa ordenada por `sort_order` y `joined_at`. Sin ninguna, None.
+
+    No lee `users.default_company_id` (ya no existe).
+    """
+    requested = _normalize_uuid(requested_company_id)
+
+    if user.role == models.UserRole.admin:
+        return None if force_none else requested
+
+    rows = (
+        db.query(models.CompanyMember.company_id)
+        .join(models.Company, models.Company.id == models.CompanyMember.company_id)
+        .filter(
+            models.CompanyMember.user_id == user.id,
+            models.CompanyMember.is_active == True,  # noqa: E712
+            models.Company.is_active == True,  # noqa: E712
+        )
+        .order_by(models.CompanyMember.sort_order.asc(), models.CompanyMember.joined_at.asc())
+        .all()
+    )
+    active_ids = [str(row.company_id) for row in rows]
+
+    if requested is not None and requested in active_ids:
+        return requested
+    return active_ids[0] if active_ids else None
+
+
 def generate_user_tokens(
     db: Session,
     user: models.User,
     company_id: str | None = None,
-    role: str | None = None,
-    force_none: bool = False,
     scope: str | None = None,
+    force_none: bool = False,
+    view_as: str | None = None,
 ):
     """
-    SRE: Enhanced token generation with platform and company context.
-    If company_id or role are not provided, it selects defaults based on user profile and memberships.
-    If force_none is True, it allows cid/role to be None (only for platform admins).
+    Emite access y refresh token con el contexto minimo del usuario.
+
+    El access token solo lleva `sub`, `scope` y, si hay empresa activa, `cid` (ver
+    resolve_active_company). El claim `view_as` solo se incluye si el usuario es platform admin,
+    hay `cid` y el valor esta en VIEW_AS_ROLES. El rol de la membresia no va en el token: se lee de BD
+    en cada peticion (ver _attach_context).
     """
     is_platform_admin = user.role == models.UserRole.admin
+    active_cid = resolve_active_company(db, user, company_id, force_none=force_none)
 
-    # SaaS Logic: Platform Admins start in neutral context by default unless a company is explicitly requested
-    if is_platform_admin and (force_none or not company_id):
-        active_cid = company_id
-        active_role = role
-    else:
-        active_cid = company_id or (str(user.default_company_id) if user.default_company_id else None)
-        active_role = role
-
-        # Selection logic if not explicitly provided
-        if not active_cid or not active_role:
-            # Try to find membership for default or any company
-            query = db.query(models.CompanyMember).filter(
-                models.CompanyMember.user_id == user.id, models.CompanyMember.is_active == True
-            )
-
-            if active_cid:
-                membership = query.filter(models.CompanyMember.company_id == active_cid).first()
-                if not membership:
-                    membership = query.first()
-            else:
-                membership = query.first()
-
-            if membership:
-                active_cid = str(membership.company_id)
-                if not active_role:
-                    # admin/manager roles -> manager scope
-                    if membership.role in [models.CompanyRole.admin, models.CompanyRole.manager]:
-                        active_role = "manager"
-                    else:
-                        active_role = "worker"
-
-    # Token Data
-    data = {
-        "sub": str(user.id),
-        "is_admin": is_platform_admin,
-        "cid": active_cid,
-        "role": active_role,
-        "scope": scope or "full",
-    }
+    data = {"sub": str(user.id), "scope": scope or "full"}
+    if active_cid is not None:
+        data["cid"] = active_cid
+        if is_platform_admin and view_as in access_policy.VIEW_AS_ROLES:
+            data["view_as"] = view_as
 
     access_token = create_access_token(data=data)
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
     return access_token, refresh_token
+
+
+def _attach_context(db: Session, user: models.User, token_data: schemas.TokenData, view_as_claim, request: Request | None):
+    """Fija en el usuario (transitorio) el contexto de la peticion.
+
+    El rol de plataforma sale de BD (el claim `is_admin` se ignora) y el rol activo de la
+    membresia, no del claim `role`. `view_as` solo se respeta para un PA con `cid`.
+    """
+    # Import diferido: routers.deps importa este modulo.
+    from routers import deps
+
+    user.is_platform_admin = user.role == models.UserRole.admin
+    user.active_company_id = token_data.company_id
+    user.token_scope = token_data.scope
+    user.admin_user_id = token_data.admin_user_id
+
+    user.view_as = None
+    if user.is_platform_admin and token_data.company_id and view_as_claim in access_policy.VIEW_AS_ROLES:
+        user.view_as = view_as_claim
+    if request is not None:
+        try:
+            access_policy.assert_view_as_read_only(user.view_as, request.method, request.scope["path"])
+        except access_policy.PolicyError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+    if user.is_platform_admin:
+        user.active_role = user.view_as
+    elif token_data.company_id:
+        facts = deps.load_company_facts(db, user, token_data.company_id)
+        user.active_role = facts.membership_role if facts.membership_active else None
+    else:
+        user.active_role = None
 
 
 async def get_current_user(token: str = Depends(get_token_from_request), db: Session = Depends(get_db)):
@@ -318,29 +373,27 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
         token_data = schemas.TokenData(
             user_id=user_id,
             company_id=payload.get("cid"),
-            company_role=payload.get("role"),
-            is_platform_admin=payload.get("is_admin", False),
             scope=payload.get("scope", "full"),
             admin_user_id=payload.get("admin_user_id"),
         )
+        view_as_claim = payload.get("view_as")
     except JWTError:
         raise credentials_exception
 
     user = crud.get_user(db, user_id=token_data.user_id)
     if user is None:
         raise credentials_exception
+    if user.is_active is False:
+        raise HTTPException(status_code=401, detail="Cuenta desactivada", headers={"WWW-Authenticate": "Bearer"})
 
-    # Attach active context to user object (transient)
-    user.active_company_id = token_data.company_id
-    user.active_role = token_data.company_role
-    user.is_platform_admin = token_data.is_platform_admin
-    user.token_scope = token_data.scope
-    user.admin_user_id = token_data.admin_user_id
+    _attach_context(db, user, token_data, view_as_claim, None)
 
     return user
 
 
-async def get_verified_user(token: str = Depends(get_token_from_request), db: Session = Depends(get_db)):
+async def get_verified_user(
+    request: Request, token: str = Depends(get_token_from_request), db: Session = Depends(get_db)
+):
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -380,24 +433,20 @@ async def get_verified_user(token: str = Depends(get_token_from_request), db: Se
         token_data = schemas.TokenData(
             user_id=user_id,
             company_id=payload.get("cid"),
-            company_role=payload.get("role"),
-            is_platform_admin=payload.get("is_admin", False),
             scope=payload.get("scope", "full"),
             admin_user_id=payload.get("admin_user_id"),
         )
+        view_as_claim = payload.get("view_as")
     except JWTError:
         raise credentials_exception
 
     user = crud.get_user(db, user_id=token_data.user_id)
     if user is None:
         raise credentials_exception
+    if user.is_active is False:
+        raise HTTPException(status_code=401, detail="Cuenta desactivada", headers={"WWW-Authenticate": "Bearer"})
 
-    # Attach active context to user object (transient)
-    user.active_company_id = token_data.company_id
-    user.active_role = token_data.company_role
-    user.is_platform_admin = token_data.is_platform_admin
-    user.token_scope = token_data.scope
-    user.admin_user_id = token_data.admin_user_id
+    _attach_context(db, user, token_data, view_as_claim, request)
 
     return user
 

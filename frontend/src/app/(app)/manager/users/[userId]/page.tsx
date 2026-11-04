@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getUsers, getUser, getUserCompanies } from "@/lib/api/users";
 import { getWorkLogs, deleteWorkLog } from "@/lib/api/work-logs";
-import { getMyCompanies, updateCompanyMember } from "@/lib/api/companies";
+import { getMyCompanies, updateMemberRates, updateMemberStatus } from "@/lib/api/companies";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,8 @@ import { format, subMonths, addMonths, parseISO, differenceInCalendarDays } from
 import { WorkLogsTable } from "@/components/work-log/work-logs-table";
 import { FilterBar, FilterConfig } from "@/components/ui/filter-bar";
 import { useState, useMemo, use, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { WorkLogDetailsDialog } from "@/components/work-log/details-dialog";
 import { UserCreateWorkLogDialog } from "@/components/work-log/user-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { TaxOverridesFields, compactTaxOverrides } from "@/components/admin/tax-overrides-fields";
 
 const numericSchema = z.preprocess(
     (val) => (val === "" || val === undefined || val === null ? 0 : val),
@@ -49,26 +52,15 @@ const memberConfigSchema = z.object({
     isActive: z.boolean(),
     isGross: z.boolean(),
     rates: z.record(numericSchema),
-    taxOverrides: z.object({
-        ss: z.preprocess(
-            (val) => (val === "" || val === undefined ? null : val),
-            z.coerce.number().min(0).max(100).optional().nullable()
-        ),
-        irpf: z.preprocess(
-            (val) => (val === "" || val === undefined || val === null ? 0 : val),
-            z.coerce.number().min(0).max(100)
-        ),
-        extra: z.preprocess(
-            (val) => (val === "" || val === undefined || val === null ? 0 : val),
-            z.coerce.number().min(0).max(100)
-        ),
-    })
+    // Fracciones 0..1 o null (sin override); NaN = entrada invalida en pantalla
+    taxOverrides: z.record(z.number().min(0).max(1).nullable())
 });
 
 type MemberConfigValues = z.infer<typeof memberConfigSchema>;
 
 function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, company: any, onUpdate: () => void }) {
     const { toast } = useToast();
+    const { canManageMembers } = usePermissions();
     const worklogDefinitionsStr = JSON.stringify(company.worklogDefinitions || {});
     const ratesConfigStr = JSON.stringify(company.ratesConfig || {});
 
@@ -83,11 +75,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
             isActive: company.isActiveMember ?? true,
             isGross: false,
             rates: {},
-            taxOverrides: {
-                ss: null,
-                irpf: 0,
-                extra: 0,
-            }
+            taxOverrides: {}
         }
     });
 
@@ -97,7 +85,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
         const shiftKeys = Object.keys(definitions);
         const initialRates: Record<string, number> = {};
         let isGross = false;
-        let taxOverrides: { ss: number | null, irpf: number, extra: number } = { ss: null, irpf: 0, extra: 0 };
+        let taxOverrides: Record<string, number | null> = {};
 
         let foundTaxes = false;
         for (const key of shiftKeys) {
@@ -107,11 +95,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                 if (!foundTaxes) {
                     isGross = shiftData.is_gross !== undefined ? shiftData.is_gross : false;
                     if (shiftData.tax_overrides) {
-                        taxOverrides = {
-                            ss: (shiftData.tax_overrides.ss !== undefined && shiftData.tax_overrides.ss !== null) ? parseFloat((shiftData.tax_overrides.ss * 100).toFixed(4)) : null,
-                            irpf: parseFloat(((shiftData.tax_overrides.irpf || 0) * 100).toFixed(4)),
-                            extra: parseFloat(((shiftData.tax_overrides.extra || 0) * 100).toFixed(4)),
-                        };
+                        taxOverrides = { ...shiftData.tax_overrides };
                         foundTaxes = true;
                     }
                 }
@@ -130,29 +114,26 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
     }, [company.id, company.role, company.isActiveMember, worklogDefinitionsStr, ratesConfigStr, form]);
 
     const mutation = useMutation({
-        mutationFn: (data: any) => updateCompanyMember(company.id, user.id, data),
+        mutationFn: async (data: { isActive?: boolean; ratesConfig: Record<string, any> }) => {
+            if (canManageMembers && data.isActive !== undefined && data.isActive !== (company.isActiveMember ?? true)) {
+                await updateMemberStatus(company.id, user.id, data.isActive ? "active" : "inactive");
+            }
+            return updateMemberRates(company.id, user.id, data.ratesConfig);
+        },
         onSuccess: () => {
             toast({ title: "Configuración actualizada" });
             onUpdate();
-        },
-        onError: () => toast({ title: "Error al actualizar", variant: "destructive" })
-    });
+        },    });
 
     function onSubmit(values: MemberConfigValues) {
         const newRatesConfig: Record<string, any> = {};
         const shiftKeys = Object.keys(worklogDefinitions);
 
         for (const key of shiftKeys) {
-            const ssVal = values.taxOverrides.ss;
-            const validSS = ssVal !== null && ssVal !== undefined && !isNaN(Number(ssVal)) ? Number(ssVal) / 100 : null;
             newRatesConfig[key] = {
                 base_rate: Number(values.rates[key]) || 0,
                 is_gross: values.isGross,
-                tax_overrides: {
-                    ss: validSS,
-                    irpf: !isNaN(Number(values.taxOverrides.irpf)) ? Number(values.taxOverrides.irpf) / 100 : 0,
-                    extra: !isNaN(Number(values.taxOverrides.extra)) ? Number(values.taxOverrides.extra) / 100 : 0
-                }
+                tax_overrides: compactTaxOverrides(values.taxOverrides)
             };
         }
 
@@ -205,21 +186,23 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                         </Badge>
                                     </div>
                                 </div>
-                                <FormField
-                                    control={form.control}
-                                    name="isActive"
-                                    render={({ field }) => (
-                                        <FormItem className="flex flex-row items-center justify-between rounded-md border bg-slate-50 dark:bg-slate-900 px-3 py-2">
-                                            <div className="space-y-0.5">
-                                                <FormLabel className="text-sm">Usuario Activo</FormLabel>
-                                                <FormDescription className="text-[10px]">Permitir registros</FormDescription>
-                                            </div>
-                                            <FormControl>
-                                                <Switch checked={field.value} onCheckedChange={field.onChange} />
-                                            </FormControl>
-                                        </FormItem>
-                                    )}
-                                />
+                                {canManageMembers && (
+                                    <FormField
+                                        control={form.control}
+                                        name="isActive"
+                                        render={({ field }) => (
+                                            <FormItem className="flex flex-row items-center justify-between rounded-md border bg-slate-50 dark:bg-slate-900 px-3 py-2">
+                                                <div className="space-y-0.5">
+                                                    <FormLabel className="text-sm">Usuario Activo</FormLabel>
+                                                    <FormDescription className="text-[10px]">Permitir registros</FormDescription>
+                                                </div>
+                                                <FormControl>
+                                                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                )}
                             </div>
 
                             <div className="md:col-span-2 space-y-4">
@@ -269,7 +252,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                     name="isGross"
                                     render={({ field }) => (
                                         <FormItem className="flex flex-row items-center gap-2 space-y-0">
-                                            <FormLabel className="text-xs font-bold text-muted-foreground uppercase">Sobre Bruto</FormLabel>
+                                            <FormLabel className="text-xs font-bold text-muted-foreground">{field.value ? "Tarifa bruta (se descuentan los impuestos)" : "Tarifa neta (sin deduccion)"}</FormLabel>
                                             <FormControl>
                                                 <Switch checked={field.value} onCheckedChange={field.onChange} />
                                             </FormControl>
@@ -282,61 +265,14 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                     <FormField
                                         control={form.control}
-                                        name="taxOverrides.ss"
+                                        name="taxOverrides"
                                         render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-xs font-bold text-muted-foreground">SS (%)</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="number"
-                                                        step="0.0001"
-                                                        placeholder="Defecto"
-                                                        value={field.value ?? ""}
-                                                        onChange={e => field.onChange(e.target.value === "" ? null : Number(e.target.value))}
-                                                        className="h-9"
-                                                    />
-                                                </FormControl>
-                                                <FormDescription className="text-[10px]">Vacío para usar global</FormDescription>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="taxOverrides.irpf"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-xs font-bold text-muted-foreground">IRPF (%)</FormLabel>
-                                                <FormControl>
-                                                    <Input 
-                                                        type="number" 
-                                                        step="0.0001" 
-                                                        {...field} 
-                                                        value={field.value ?? ""} 
-                                                        onChange={field.onChange}
-                                                        className="h-9" 
-                                                    />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="taxOverrides.extra"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-xs font-bold text-muted-foreground">EXTRA (%)</FormLabel>
-                                                <FormControl>
-                                                    <Input 
-                                                        type="number" 
-                                                        step="0.0001" 
-                                                        {...field} 
-                                                        value={field.value ?? ""} 
-                                                        onChange={e => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
-                                                        className="h-9" 
-                                                    />
-                                                </FormControl>
+                                            <FormItem className="sm:col-span-3">
+                                                <TaxOverridesFields
+                                                    companyTaxConfig={company.taxConfig || {}}
+                                                    value={field.value || {}}
+                                                    onChange={field.onChange}
+                                                />
                                                 <FormMessage />
                                             </FormItem>
                                         )}
@@ -361,8 +297,8 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
 export default function ManagerUserDetailsPage({ params }: { params: Promise<{ userId: string }> }) {
     const { userId } = use(params);
     const router = useRouter();
-    const searchParams = useSearchParams();
-    const companyIdParam = searchParams.get("companyId");
+    const { user: currentUser } = useAuth();
+    const activeCompanyId = currentUser?.activeCompanyId ?? null;
 
     const { toast } = useToast();
     const queryClient = useQueryClient();
@@ -406,21 +342,10 @@ export default function ManagerUserDetailsPage({ params }: { params: Promise<{ u
     });
 
     // Fetch Logged-in Manager's companies for visibility restriction
-    const { data: myCompanies = [], isSuccess: isMyCompaniesSuccess } = useQuery({
+    const { data: myCompanies = [] } = useQuery({
         queryFn: getMyCompanies,
         queryKey: ["myCompanies"],
     });
-
-    // Auto-select first company if none selected
-    useEffect(() => {
-        if (!companyIdParam && isMyCompaniesSuccess && myCompanies.length > 0 && companies.length > 0) {
-            // Find first company that is both in user's companies and manager's managed companies
-            const firstManagedCompany = companies.find((c: any) => myCompanies.some((mc: any) => mc.id === c.id));
-            if (firstManagedCompany) {
-                router.replace(`/manager/users/${userId}?companyId=${firstManagedCompany.id}`);
-            }
-        }
-    }, [companyIdParam, isMyCompaniesSuccess, myCompanies, companies, router, userId]);
 
     // Filtering Logic: Only show companies (and associated data) that the manager manages
     // Filtering Logic: Only show companies (and associated data) that the manager manages
@@ -432,13 +357,13 @@ export default function ManagerUserDetailsPage({ params }: { params: Promise<{ u
         // 1. Filter by Manager's managed companies
         let filtered = companies.filter((c: any) => myCompanies.some((mc: any) => mc.id === c.id));
 
-        // 2. Strict filtering: If a specific company is selected in the URL, ONLY show that company.
-        if (companyIdParam) {
-            filtered = filtered.filter((c: any) => c.id === companyIdParam);
+        // 2. Strict filtering: If there is an active company, ONLY show that company.
+        if (activeCompanyId) {
+            filtered = filtered.filter((c: any) => c.id === activeCompanyId);
         }
 
         return filtered;
-    }, [companies, myCompanies, companyIdParam]);
+    }, [companies, myCompanies, activeCompanyId]);
 
     // Derived lists based on visibleCompanies
     const visibleRates = useMemo(() => {

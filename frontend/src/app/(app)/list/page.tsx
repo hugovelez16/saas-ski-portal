@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 
 import { useAuth } from "@/context/AuthContext";
-import api from "@/lib/api";
+import api, { describeLoadError } from "@/lib/api";
 import { getUserRates } from "@/lib/api/settings";
 import { getMyCompanies } from "@/lib/api/companies";
 import type { WorkLog, UserCompanyRate, Company, CompanyMember } from "@/lib/types";
@@ -25,6 +25,7 @@ import { WorkLogDetailsDialog } from "@/components/work-log/details-dialog";
 import { UserCreateWorkLogDialog } from "@/components/work-log/user-dialog";
 import { ExportLogsDialog } from "@/components/work-log/export-dialog";
 import { FilterBar, FilterConfig } from "@/components/ui/filter-bar";
+import { usePermissions } from "@/hooks/use-permissions";
 
 
 import { useSearchParams } from "next/navigation";
@@ -43,10 +44,13 @@ export default function ListPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
 
-  const currentCompanyId = searchParams.get('companyId');
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const currentCompanyId = user?.activeCompanyId ?? null;
 
   const fetchLogs = async () => {
     try {
+      setLoadError(null);
       let url = "/work-logs";
       let queryParams = new URLSearchParams();
 
@@ -65,6 +69,8 @@ export default function ListPage() {
       setWorkLogs(res.data);
     } catch (error) {
       console.error("Error fetching logs", error);
+      setWorkLogs([]);
+      setLoadError(describeLoadError(error, "No se pudieron cargar los turnos."));
     } finally {
       setIsLoadingLogs(false);
     }
@@ -193,6 +199,7 @@ export default function ListPage() {
     if (!activeCompanyId) return null;
     return companies.find(c => c.id === activeCompanyId);
   }, [companies, activeCompanyId]);
+  const perms = usePermissions(activeCompany ?? null);
 
   const dynamicFields = useMemo(() => {
     const keys = new Set<string>();
@@ -299,17 +306,24 @@ export default function ListPage() {
           <p className="text-muted-foreground">All your work logs in one place.</p>
         </div>
         {user && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <ExportLogsDialog workLogs={sortedWorkLogs} />
-            <UserCreateWorkLogDialog
-              user={{ id: user.id }}
-              onLogUpdate={handleLogUpdate}
-            >
-              <Button>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add Work Log
-              </Button>
-            </UserCreateWorkLogDialog>
+            {perms.canCreateWorkLog && (
+              <UserCreateWorkLogDialog
+                user={{ id: user.id }}
+                onLogUpdate={handleLogUpdate}
+              >
+                <Button>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Add Work Log
+                </Button>
+              </UserCreateWorkLogDialog>
+            )}
+            {perms.role === 'worker' && perms.isManaged && (
+              <p className="text-sm text-muted-foreground italic">
+                En esta empresa los turnos los registra el equipo gestor
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -375,6 +389,12 @@ export default function ListPage() {
               <TableRow>
                 <TableCell colSpan={totalCols} className="text-center py-12">
                   <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                </TableCell>
+              </TableRow>
+            ) : loadError ? (
+              <TableRow>
+                <TableCell colSpan={totalCols} className="text-center py-12 text-destructive" role="alert">
+                  {loadError}
                 </TableCell>
               </TableRow>
             ) : sortedWorkLogs.length > 0 ? (
@@ -492,7 +512,7 @@ export default function ListPage() {
                         const definition = logCompany?.worklogDefinitions?.[log.type];
                         
                         if (definition) {
-                          const unit = definition.unit || (definition.is_range ? 'days' : 'hours');
+                          const unit = definition.unit;
                           if (unit === 'hours') {
                             const hours = log.duration ?? log.durationHours ?? 0;
                             return `${Number(hours).toFixed(2)} h`;
@@ -563,12 +583,16 @@ export default function ListPage() {
                     </TableCell>
                     <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingLog(log)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600" onClick={() => handleDeleteLog(log.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {perms.canEditWorkLog(log) && (
+                          <>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingLog(log)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600" onClick={() => handleDeleteLog(log.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { WorkLog, Company } from "@/lib/types";
+import { WorkLog, Company, WorkLogSummary } from "@/lib/types";
+import { WorklogDefinitions, buildTypeBlocks, blockQuantityText } from "@/lib/reports/report-types";
 
 export interface ReportContext {
     company?: Company;
@@ -8,6 +9,10 @@ export interface ReportContext {
     userId: string;
     startDate: Date;
     endDate: Date;
+    /** Totales por tipo del rango (GET /work-logs/summary). El resumen no se calcula con las filas. */
+    summary: WorkLogSummary;
+    /** Definiciones de tipos de turno de la empresa: etiqueta y unidad de cada tipo. */
+    worklogDefinitions?: WorklogDefinitions;
 }
 
 export type TextReportGenerator = (logs: WorkLog[], context: ReportContext) => string;
@@ -25,27 +30,7 @@ export const defaultTextGenerator: TextReportGenerator = (logs, context) => {
         return dateA - dateB;
     });
 
-    const summary = new Map<string, { count: number, hours: number, days: number }>();
-
     const lines = sortedLogs.map(log => {
-        // --- SUMMARY CALCULATION ---
-        const typeStr = log.type || 'Desconocido';
-        if (!summary.has(typeStr)) {
-            summary.set(typeStr, { count: 0, hours: 0, days: 0 });
-        }
-        const s = summary.get(typeStr)!;
-        s.count += 1;
-        s.hours += (log.durationHours || log.duration || 0);
-
-        if (log.startDate && log.endDate && log.startDate !== log.endDate) {
-            const start = new Date(log.startDate);
-            const end = new Date(log.endDate);
-            const diffDays = Math.round(Math.abs((end.getTime() - start.getTime()) / 86400000)) + 1;
-            s.days += diffDays;
-        } else {
-            s.days += 1;
-        }
-
         // --- LINE GENERATION ---
         let dateInfo = "";
 
@@ -72,25 +57,18 @@ export const defaultTextGenerator: TextReportGenerator = (logs, context) => {
     });
 
     lines.push("\n--- RESUMEN ---");
-    summary.forEach((data, type) => {
-        // Formatear el nombre del tipo para que se vea "bonito" (ej: fixed_shift -> Fixed Shift)
-        const typeFormatted = type
-            .replace(/_/g, ' ')
-            .split(' ')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-            .join(' ');
-            
-        const units = [];
-        
-        if (data.hours > 0) {
-            units.push(`${data.hours} horas`);
-        } else if (data.days > data.count) {
-            units.push(`${data.days} días`);
-        } else {
-            units.push(`${data.count} turnos`);
-        }
+    // Un bloque por tipo: etiqueta y unidad de la definicion de la empresa
+    buildTypeBlocks(context.summary.byType, context.worklogDefinitions).forEach(block => {
+        // Etiqueta sin definicion: formatear el type (ej: fixed_shift -> Fixed Shift)
+        const label = context.worklogDefinitions?.[block.type]?.label
+            ? block.label
+            : (block.type || 'Desconocido')
+                .replace(/_/g, ' ')
+                .split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ');
 
-        lines.push(`${typeFormatted}: ${data.count} (${units.join(', ')})`);
+        lines.push(`${label}: ${block.logsCount} (${blockQuantityText(block)})`);
     });
 
     return lines.join('\n');

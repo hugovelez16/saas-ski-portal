@@ -114,40 +114,17 @@ class WorkLogCalculationService:
             )
         )
 
-        if tax_configuration.social_security_rate > Decimal("0"):
-            ss_val = (gross_total * tax_configuration.social_security_rate).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-            display_lines.append(
-                DisplayLine(
-                    type="tax",
-                    code="ss",
-                    label=f"Seguridad Social ({round(float(tax_configuration.social_security_rate * 100), 2)}%)",
-                    value=-float(ss_val),
+        for tax_name, tax_rate in tax_configuration.taxes.items():
+            if tax_rate > Decimal("0"):
+                tax_val = (gross_total * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                display_lines.append(
+                    DisplayLine(
+                        type="tax",
+                        code=tax_name,
+                        label=f"{tax_name} ({round(float(tax_rate * 100), 2)}%)",
+                        value=-float(tax_val),
+                    )
                 )
-            )
-
-        if tax_configuration.irpf_rate > Decimal("0"):
-            irpf_val = (gross_total * tax_configuration.irpf_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            display_lines.append(
-                DisplayLine(
-                    type="tax",
-                    code="irpf",
-                    label=f"IRPF ({round(float(tax_configuration.irpf_rate * 100), 2)}%)",
-                    value=-float(irpf_val),
-                )
-            )
-
-        if tax_configuration.extra_rate > Decimal("0"):
-            extra_val = (gross_total * tax_configuration.extra_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            display_lines.append(
-                DisplayLine(
-                    type="tax",
-                    code="extra",
-                    label=f"Otros Impuestos ({round(float(tax_configuration.extra_rate * 100), 2)}%)",
-                    value=-float(extra_val),
-                )
-            )
 
         display_lines.append(
             DisplayLine(
@@ -163,13 +140,6 @@ class WorkLogCalculationService:
             rate_applied=base_rate,
             duration=duration_value,
             display_lines=display_lines,
-            metadata={
-                "unit": unit,
-                "is_gross": is_gross,
-                "tax_rates": {
-                    "irpf": float(tax_configuration.irpf_rate),
-                    "ss": float(tax_configuration.social_security_rate),
-                    "extra": float(tax_configuration.extra_rate),
-                },
-            },
+            metadata={"unit": unit, "is_gross": is_gross},
+            tax_applied=dict(tax_configuration.taxes),
         )

@@ -1,0 +1,82 @@
+"""
+Pruebas unitarias para el bypass de autenticacion y sembrado de desarrollo local.
+"""
+import os
+import unittest
+from unittest import mock
+
+import auth
+import dev_seed
+import models
+import pytest
+
+
+class TestDevAuthBypass(unittest.TestCase):
+    @pytest.fixture(autouse=True)
+    def _inject_db(self, db, client):
+        """Usa la sesion transaccional del fixture `db`: todo se revierte al terminar cada test."""
+        self.db = db
+        self.client = client
+
+    def setUp(self):
+        # patch.dict restaura el entorno original al detenerse, tras cada test.
+        env_patcher = mock.patch.dict(
+            os.environ,
+            {
+                "ENVIRONMENT": "development",
+                "DEV_LOGIN_BYPASS": "true",
+                "DEV_ADMIN_EMAIL": "admin@vesotel.com",
+                "DEV_ADMIN_PASSWORD": "admin",
+                "DEV_ADMIN_COMPANY": "Vesotel Ski School",
+            },
+            clear=False,
+        )
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
+
+    def test_is_dev_mode(self):
+        # Solo ENVIRONMENT=development Y DEV_LOGIN_BYPASS verdadero activan el modo desarrollo.
+        self.assertTrue(dev_seed.is_dev_mode())
+
+        os.environ["DEV_LOGIN_BYPASS"] = "false"
+        self.assertFalse(dev_seed.is_dev_mode())
+
+        os.environ["ENVIRONMENT"] = "production"
+        os.environ["NODE_ENV"] = "production"
+        os.environ["DEV_LOGIN_BYPASS"] = "false"
+        self.assertFalse(dev_seed.is_dev_mode())
+
+        # NODE_ENV ya no cuenta por si solo.
+        os.environ["NODE_ENV"] = "development"
+        os.environ["DEV_LOGIN_BYPASS"] = "true"
+        self.assertFalse(dev_seed.is_dev_mode())
+
+    def test_ensure_dev_admin_user_creates_and_returns_admin(self):
+        user = dev_seed.ensure_dev_admin_user(self.db)
+        self.assertIsNotNone(user)
+        self.assertEqual(user.email, "admin@vesotel.com")
+        self.assertEqual(user.role, models.UserRole.admin)
+        self.assertTrue(user.is_active)
+        self.assertFalse(user.is_2fa_enabled)
+
+        # Verificar generacion de tokens
+        access_token, refresh_token = auth.generate_user_tokens(self.db, user)
+        self.assertIsNotNone(access_token)
+        self.assertIsNotNone(refresh_token)
+
+        # El token ya no lleva claim `is_admin`: el rol de plataforma se lee de BD en /users/me.
+        payload = auth.jwt.decode(access_token, auth.PUBLIC_KEY, algorithms=[auth.ALGORITHM])
+        self.assertEqual(payload.get("sub"), str(user.id))
+        self.assertNotIn("is_admin", payload)
+
+        self.client.cookies.clear()
+        self.client.cookies.set("access_token", access_token)
+        resp = self.client.get("/users/me")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertIs(resp.json()["isPlatformAdmin"], True)
+
+    def test_dev_seed_is_idempotent(self):
+        user1 = dev_seed.ensure_dev_admin_user(self.db)
+        user2 = dev_seed.ensure_dev_admin_user(self.db)
+        self.assertEqual(user1.id, user2.id)
+        self.assertEqual(user1.email, user2.email)

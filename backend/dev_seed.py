@@ -8,12 +8,23 @@ import models
 from sqlalchemy.orm import Session
 
 
+def _dev_bypass_flag() -> bool:
+    """Indica si DEV_LOGIN_BYPASS esta activado (true, 1 o yes)."""
+    return os.getenv("DEV_LOGIN_BYPASS", "").lower() in ["true", "1", "yes"]
+
+
 def is_dev_mode() -> bool:
-    """Comprueba si el entorno actual esta en modo desarrollo o tiene activo el bypass."""
+    """Modo desarrollo: requiere ENVIRONMENT=development Y DEV_LOGIN_BYPASS activado."""
     env = os.getenv("ENVIRONMENT", "").lower()
-    node_env = os.getenv("NODE_ENV", "").lower()
-    bypass = os.getenv("DEV_LOGIN_BYPASS", "").lower()
-    return env == "development" or node_env == "development" or bypass in ["true", "1", "yes"]
+    return env == "development" and _dev_bypass_flag()
+
+
+def assert_dev_bypass_safe() -> None:
+    """Aborta el arranque si el bypass de desarrollo esta activo fuera de ENVIRONMENT=development."""
+    env = os.getenv("ENVIRONMENT", "").lower()
+    if _dev_bypass_flag() and env != "development":
+        raise RuntimeError("DEV_LOGIN_BYPASS esta activo fuera de ENVIRONMENT=development. Aborting startup.")
+
 
 def ensure_dev_admin_user(db: Session) -> models.User:
     """
@@ -34,7 +45,6 @@ def ensure_dev_admin_user(db: Session) -> models.User:
         if not company:
             company = models.Company(
                 name=admin_company_name,
-                fiscal_id="B00000000",
                 tax_config={"social_security": 0.0648},
                 worklog_definitions={},
                 settings={}
@@ -57,7 +67,6 @@ def ensure_dev_admin_user(db: Session) -> models.User:
             is_active=True,
             is_2fa_enabled=False,
             must_change_password=False,
-            default_company_id=company.id
         )
         db.add(user)
         db.commit()
@@ -75,9 +84,6 @@ def ensure_dev_admin_user(db: Session) -> models.User:
         if user.is_2fa_enabled:
             user.is_2fa_enabled = False
             updated = True
-        if not user.default_company_id and company:
-            user.default_company_id = company.id
-            updated = True
         if updated:
             db.commit()
             db.refresh(user)
@@ -93,7 +99,7 @@ def ensure_dev_admin_user(db: Session) -> models.User:
             membership = models.CompanyMember(
                 user_id=user.id,
                 company_id=company.id,
-                role=models.CompanyRole.admin,
+                role=models.CompanyRole.manager,
                 is_active=True,
                 rates_config={},
                 settings={}

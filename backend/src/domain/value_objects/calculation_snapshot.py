@@ -33,10 +33,13 @@ class CalculationSnapshot:
     duration: float
     display_lines: List[DisplayLine] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Impuestos efectivos {nombre: tasa}; vacio en un importe manual (no aplica impuestos).
+    tax_applied: Dict[str, Decimal] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "version": "2.2-structured-snapshot",
+            "version": "2.3-free-taxes",
             "lines": [line.to_dict() for line in self.display_lines],
             "metadata": self.metadata,
+            "tax_applied": {name: float(rate) for name, rate in self.tax_applied.items()},
         }

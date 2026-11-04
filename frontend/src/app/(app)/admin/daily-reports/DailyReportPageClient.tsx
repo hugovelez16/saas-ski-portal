@@ -4,8 +4,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, addDays, subDays, isSameDay, parseISO, startOfDay } from "date-fns";
 import { getUsers, getUserCompanies } from "@/lib/api/users";
-import { getWorkLogs } from "@/lib/api/work-logs";
-import { getCompaniesDetailed } from "@/lib/api/companies";
+import { getCompaniesDetailed, getDailyReport } from "@/lib/api/companies";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ManagerAddWorkLogDialog } from "@/components/work-log/manager-add-log-dialog";
 import { useQueryClient } from "@tanstack/react-query";
+import type { DailyReportLog, DailyReportMember, DailyReportWorkType } from "@/lib/types";
 
 export default function DailyReportPage() {
     const router = useRouter();
@@ -24,64 +24,62 @@ export default function DailyReportPage() {
     const [date, setDate] = useState<Date>(new Date());
     const [selectedLog, setSelectedLog] = useState<any>(null);
     const [createLogState, setCreateLogState] = useState<{ open: boolean, data?: Partial<any> }>({ open: false });
+    const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
 
-    // 1. Fetch All Companies (Admin View)
+    // 1. Lista de empresas (selector y nombres)
     const { data: companies = [], isLoading: loadingCompanies } = useQuery({
         queryFn: getCompaniesDetailed,
         queryKey: ["companies-detailed-admin"],
     });
 
-    // 2. Fetch Logs (Filtered by Date, ALL companies)
-    // We increased the limit to ensure we get logs for all companies
-    const { data: workLogs = [], isLoading: loadingLogs } = useQuery({
-        queryFn: () => getWorkLogs({
-            startDate: format(date, 'yyyy-MM-dd'),
-            endDate: format(date, 'yyyy-MM-dd'),
-            limit: 2000
-        }),
-        queryKey: ["work-logs-daily-admin", format(date, 'yyyy-MM-dd')],
+    // Empresa activa: la elegida o, por defecto, la primera de la lista
+    const activeCompanyId = selectedCompanyId || companies[0]?.id || "";
+    const activeCompany = companies.find((c) => c.id === activeCompanyId);
+    const dateKey = format(date, 'yyyy-MM-dd');
+
+    // 2. Parte diario de la empresa activa (miembros, tipos de turno y turnos del dia)
+    const { data: dailyReport, isLoading: loadingReport } = useQuery({
+        queryFn: () => getDailyReport(activeCompanyId, dateKey),
+        queryKey: ["daily-report", activeCompanyId, dateKey],
+        enabled: !!activeCompanyId,
     });
 
-    // Helper to sort users per company
-    const getSortedUsers = (company: any) => {
-        if (!company || !company.members) return [];
+    const workLogs: DailyReportLog[] = dailyReport?.logs ?? [];
+    const workTypes: Record<string, DailyReportWorkType> = dailyReport?.workTypes ?? {};
 
-        let users = company.members.map((m: any) => ({
-            ...m.user,
-            relationRole: m.role,
-            relationStatus: m.status
-        }));
+    // Activos primero por rol y estado; gestores y administradores al final
+    const sortedMembers = useMemo(() => {
+        const getPriority = (m: DailyReportMember) => {
+            if (m.role === 'manager' || m.role === 'admin') return 3;
+            if (!m.isActive) return 2;
+            return 1;
+        };
 
-        users.sort((a: any, b: any) => {
-            const getPriority = (u: any) => {
-                if (u.relationRole === 'manager' || u.relationRole === 'admin') return 3;
-                if (u.relationStatus !== 'active') return 2;
-                return 1;
-            };
-
+        return [...(dailyReport?.members ?? [])].sort((a, b) => {
             const pA = getPriority(a);
             const pB = getPriority(b);
             if (pA !== pB) return pA - pB;
 
             return (a.firstName || "").localeCompare(b.firstName || "");
         });
-        return users;
-    };
+    }, [dailyReport]);
+
+    const companyUsers = useMemo(() => {
+        return (dailyReport?.members ?? []).map((m) => ({
+            id: m.userId,
+            firstName: m.firstName,
+            lastName: m.lastName,
+        }));
+    }, [dailyReport]);
 
     const hours = Array.from({ length: 12 }, (_, i) => i + 8);
 
-    const getLogsForUserAndDate = (userId: string, companyId: string) => {
-        return workLogs.filter((log: any) => {
+    const getLogsForUserAndDate = (userId: string) => {
+        return workLogs.filter((log) => {
             if (log.userId !== userId) return false;
+            if (log.companyId !== activeCompanyId) return false;
 
-            const logCompanyId = log.companyId;
-            if (logCompanyId && logCompanyId !== companyId) return false;
-
-            const logDate = log.date ? parseISO(log.date) : (log.startDate ? parseISO(log.startDate) : null);
-            if (!logDate) return false;
-
-            const company = companies.find((c: any) => c.id === companyId);
-            const def = company?.worklogDefinitions?.[log.type];
+            const def = workTypes[log.type];
             const isCrossDay = Boolean(
                 (log.startDate && log.endDate && log.startDate !== log.endDate) ||
                 def?.unit === 'days'
@@ -94,7 +92,7 @@ export default function DailyReportPage() {
                 return currentDay >= s && currentDay <= e;
             }
 
-            return isSameDay(logDate, date);
+            return isSameDay(parseISO(log.startDate), date);
         });
     };
 
@@ -105,7 +103,7 @@ export default function DailyReportPage() {
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold">Admin Daily Report</h1>
-                    <p className="text-muted-foreground text-sm">Overview of activities across all companies.</p>
+                    <p className="text-muted-foreground text-sm">Overview of activities by company.</p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -132,23 +130,37 @@ export default function DailyReportPage() {
                 </div>
             </div>
 
-            {/* List of Companies */}
-            {companies.map((company: any) => {
-                const sortedUsers = getSortedUsers(company);
-                // Can filter out empty companies if desired: if (sortedUsers.length === 0) return null;
+            {/* Selector de empresa */}
+            {companies.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-4">
+                    <Select value={activeCompanyId} onValueChange={setSelectedCompanyId}>
+                        <SelectTrigger className="w-[280px]">
+                            <SelectValue placeholder="Selecciona una empresa" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {companies.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Badge variant="outline">{sortedMembers.length} Users</Badge>
+                    <Button size="sm" variant="secondary" onClick={() => setCreateLogState({ open: true, data: { companyId: activeCompanyId } })}>
+                        Add Log
+                    </Button>
+                </div>
+            ) : (
+                <div className="text-center py-12 text-muted-foreground border rounded bg-slate-50">
+                    No hay empresas disponibles.
+                </div>
+            )}
 
-                return (
-                    <div key={company.id} className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <h2 className="text-xl font-semibold">{company.name}</h2>
-                                <Badge variant="outline">{sortedUsers.length} Users</Badge>
-                            </div>
-                            <Button size="sm" variant="secondary" onClick={() => setCreateLogState({ open: true, data: { companyId: company.id } })}>
-                                Add Log
-                            </Button>
-                        </div>
+            {activeCompanyId && (
+                <div className="space-y-4">
+                    <h2 className="text-xl font-semibold">{activeCompany?.name}</h2>
 
+                    {loadingReport ? (
+                        <div className="p-8">Loading...</div>
+                    ) : (
                         <div className="border rounded-lg overflow-x-auto bg-card shadow-sm">
                             <div className="min-w-[1000px]">
                                 {/* Header Row */}
@@ -162,22 +174,22 @@ export default function DailyReportPage() {
                                 </div>
 
                                 {/* User Rows */}
-                                {sortedUsers.map((user: any) => {
-                                    const logs = getLogsForUserAndDate(user.id, company.id);
+                                {sortedMembers.map((member) => {
+                                    const logs = getLogsForUserAndDate(member.userId);
                                     return (
-                                        <div key={user.id} className="flex border-b last:border-b-0 hover:bg-muted/5 divide-x group">
+                                        <div key={member.userId} className="flex border-b last:border-b-0 hover:bg-muted/5 divide-x group">
                                             <div className="w-64 flex-shrink-0 p-2 flex items-center gap-2 sticky left-0 bg-background z-10 group-hover:bg-muted/10 border-r">
                                                 <div
                                                     className="cursor-pointer hover:underline truncate flex-1"
-                                                    onClick={() => router.push(`/admin/users/${user.id}`)}
+                                                    onClick={() => router.push(`/admin/users/${member.userId}`)}
                                                 >
-                                                    <span className="font-medium text-sm">{user.firstName} {user.lastName} ({logs.length})</span>
+                                                    <span className="font-medium text-sm">{member.firstName} {member.lastName} ({logs.length})</span>
                                                     <div className="flex gap-1 mt-1">
-                                                        {user.relationStatus === 'active' ?
+                                                        {member.isActive ?
                                                             <div className="w-2 h-2 rounded-full bg-green-500" title="Active" /> :
                                                             <div className="w-2 h-2 rounded-full bg-red-400" title="Inactive" />
                                                         }
-                                                        {(user.relationRole !== 'user' && user.relationRole) && <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{user.relationRole}</Badge>}
+                                                        {(member.role !== 'user' && member.role) && <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{member.role}</Badge>}
                                                     </div>
                                                 </div>
                                             </div>
@@ -191,9 +203,9 @@ export default function DailyReportPage() {
                                                         onClick={() => setCreateLogState({
                                                             open: true,
                                                             data: {
-                                                                userId: user.id,
-                                                                companyId: company.id,
-                                                                date: format(date, 'yyyy-MM-dd'),
+                                                                userId: member.userId,
+                                                                companyId: activeCompanyId,
+                                                                date: dateKey,
                                                                 startTime: `${h.toString().padStart(2, '0')}:00`,
                                                                 endTime: `${(h + 1).toString().padStart(2, '0')}:00`,
                                                                 type: 'particular'
@@ -205,7 +217,7 @@ export default function DailyReportPage() {
 
                                                 {/* Logs Overlay */}
                                                 <div className="absolute inset-0 pointer-events-none">
-                                                    {logs.map((log: any) => {
+                                                    {logs.map((log) => {
                                                         let startDecimal = 8;
                                                         let endDecimal = 19;
 
@@ -229,7 +241,6 @@ export default function DailyReportPage() {
                                                         const rawDuration = ((clampedEnd - clampedStart) / totalHours) * 100;
                                                         const offset = Math.min(rawOffset, 96);
                                                         const duration = Math.min(Math.max(rawDuration, 4), 100 - offset);
-
 
                                                         return (
                                                             <div
@@ -256,9 +267,9 @@ export default function DailyReportPage() {
                                 })}
                             </div>
                         </div>
-                    </div>
-                );
-            })}
+                    )}
+                </div>
+            )}
 
             <WorkLogDetailsDialog
                 log={selectedLog}
@@ -272,13 +283,12 @@ export default function DailyReportPage() {
                 open={createLogState.open}
                 onOpenChange={(open) => setCreateLogState(prev => ({ ...prev, open }))}
                 initialData={createLogState.data}
-                companyId={createLogState.data?.companyId || ""}
-                companyName={companies.find(c => c.id === createLogState.data?.companyId)?.name || "Company"}
-                users={
-                    companies.find((c: any) => c.id === createLogState.data?.companyId)?.members.map((m: any) => m.user) || []
-                }
+                companyId={activeCompanyId}
+                companyName={activeCompany?.name || "Company"}
+                worklogDefinitions={workTypes}
+                users={companyUsers}
                 onSuccess={() => {
-                    queryClient.invalidateQueries({ queryKey: ["work-logs-daily-admin"] });
+                    queryClient.invalidateQueries({ queryKey: ["daily-report"] });
                     setCreateLogState({ open: false });
                 }}
             >

@@ -1,5 +1,7 @@
 import api from "@/lib/api";
-import { User, Token, Session } from "@/lib/types";
+import { Company, User, Token, Session } from "@/lib/types";
+import { fromV2Company } from "@/lib/api/v2/adapters";
+import { listUserCompanies } from "@/lib/api/v2/companies";
 
 export interface CreateUserRequest {
     email: string;
@@ -32,9 +34,9 @@ export const getUser = async (userId: string): Promise<User> => {
     return response.data;
 };
 
-export const getUserCompanies = async (userId: string): Promise<any[]> => {
-    const response = await api.get(`/users/${userId}/companies`);
-    return response.data;
+export const getUserCompanies = async (userId: string): Promise<Company[]> => {
+    const companies = await listUserCompanies(userId);
+    return companies.map(fromV2Company);
 };
 
 export const createUser = async (data: CreateUserRequest): Promise<User> => {

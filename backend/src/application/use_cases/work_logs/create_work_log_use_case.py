@@ -7,13 +7,11 @@ import uuid
 from datetime import date, datetime, time, timezone
 from typing import Any, Dict, Optional
 
+from contracts import MissingWorklogUnitError
 from domain.entities.work_log import WorkLog
 from domain.exceptions.domain_exceptions import EntityNotFoundException, InactiveMembershipException
-from domain.ports.repositories.work_log_repository_port import (
-    CompanyMemberRepositoryPort,
-    CompanyRepositoryPort,
-    WorkLogRepositoryPort,
-)
+from domain.ports.repositories.company_repository_port import CompanyMemberRepositoryPort, CompanyRepositoryPort
+from domain.ports.repositories.work_log_repository_port import WorkLogRepositoryPort
 from domain.services.work_log_calculation_service import WorkLogCalculationService
 from domain.value_objects.money import Money
 from domain.value_objects.rate_definition import RateDefinition
@@ -62,7 +60,7 @@ class CreateWorkLogUseCase:
         # Determinar unidad de trabajo
         unit_str = type_def.get("unit")
         if not unit_str:
-            unit_str = "days" if type_def.get("is_range") else "hours"
+            raise MissingWorklogUnitError("El tipo de turno no tiene unidad definida (unit)")
 
         work_unit = WorkUnit(unit_str) if unit_str in ("hours", "days", "fixed") else WorkUnit.HOURS
 

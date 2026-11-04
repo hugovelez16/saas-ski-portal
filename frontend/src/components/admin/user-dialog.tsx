@@ -85,17 +85,7 @@ export function UserDialog() {
                 description: "The new user has been added to the system.",
             });
         },
-        onError: (error: any) => {
-            const detail = error.response?.data?.detail;
-            const errorMessage = Array.isArray(detail)
-                ? detail.map((err: any) => `${err.loc.join('.')}: ${err.msg}`).join(", ")
-                : (detail || "An unexpected error occurred. Please try again.");
-            toast({
-                title: "Error creating user",
-                description: errorMessage,
-                variant: "destructive",
-            });
-        },
+        // El error HTTP lo muestra el interceptor de lib/api.ts.
     });
 
     function onSubmit(values: z.infer<typeof formSchema>) {

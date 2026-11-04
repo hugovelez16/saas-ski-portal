@@ -14,11 +14,7 @@ def test_calculate_hourly_rate_net_to_gross():
     # Duracion de 2 horas con tarifa neta de 20 EUR/h e IRPF del 15%
     duration = WorkDuration(unit=WorkUnit.HOURS, value=2.0)
     rate_def = RateDefinition(base_rate=Decimal("20.00"), is_gross=False)
-    tax_config = TaxConfiguration(
-        irpf_rate=Decimal("0.15"),
-        social_security_rate=Decimal("0.00"),
-        extra_rate=Decimal("0.00"),
-    )
+    tax_config = TaxConfiguration(taxes={"IRPF": Decimal("0.15")})
 
     snapshot = WorkLogCalculationService.calculate(
         duration=duration,
@@ -42,11 +38,7 @@ def test_calculate_daily_rate_gross_to_net_with_extras():
         "dietas": RateExtra(name="dietas", value=Decimal("15.00"), per_unit=False),
     }
     rate_def = RateDefinition(base_rate=Decimal("100.00"), is_gross=True, extras=extras)
-    tax_config = TaxConfiguration(
-        irpf_rate=Decimal("0.10"),
-        social_security_rate=Decimal("0.05"),
-        extra_rate=Decimal("0.00"),
-    )
+    tax_config = TaxConfiguration(taxes={"IRPF": Decimal("0.10"), "Seguridad Social": Decimal("0.05")})
 
     options = {"transporte": True, "dietas": True}
 
@@ -69,11 +61,7 @@ def test_calculate_daily_rate_gross_to_net_with_extras():
 def test_manual_override_amount():
     duration = WorkDuration(unit=WorkUnit.HOURS, value=4.0)
     rate_def = RateDefinition(base_rate=Decimal("25.00"), is_gross=False)
-    tax_config = TaxConfiguration(
-        irpf_rate=Decimal("0.15"),
-        social_security_rate=Decimal("0.00"),
-        extra_rate=Decimal("0.00"),
-    )
+    tax_config = TaxConfiguration(taxes={"IRPF": Decimal("0.15")})
 
     snapshot = WorkLogCalculationService.calculate(
         duration=duration,
@@ -85,3 +73,58 @@ def test_manual_override_amount():
     assert snapshot.net_amount == Decimal("150.00")
     assert snapshot.gross_amount == Decimal("150.00")
     assert snapshot.metadata.get("type") == "manual_override"
+    assert snapshot.tax_applied == {}
+
+
+def test_tax_configuration_resolves_free_keys_like_resolve_taxes():
+    config = TaxConfiguration.from_dict(
+        {"IRPF": 0.15, "Seguridad Social": 0.0648},
+        {"IRPF": 0.10, "Otros": 0.02, "Seguridad Social": None},
+    )
+
+    assert config.taxes == {"IRPF": Decimal("0.1"), "Seguridad Social": Decimal("0.0648"), "Otros": Decimal("0.02")}
+    assert config.total_tax_rate == Decimal("0.1848")
+
+
+def test_tax_configuration_dirty_values_count_as_zero():
+    config = TaxConfiguration.from_dict({"A": "abc", "B": float("nan"), "C": {}, "D": "", "E": 0.1})
+
+    assert config.taxes == {
+        "A": Decimal("0"),
+        "B": Decimal("0"),
+        "C": Decimal("0"),
+        "D": Decimal("0"),
+        "E": Decimal("0.1"),
+    }
+
+
+def test_tax_configuration_empty_is_valid():
+    assert TaxConfiguration.from_dict({}, None).taxes == {}
+    assert TaxConfiguration.from_dict(None, None).total_tax_rate == Decimal("0")
+
+
+def test_gross_rate_deducts_all_free_taxes_and_reports_tax_applied():
+    rate_def = RateDefinition(base_rate=Decimal("100.00"), is_gross=True)
+    tax_config = TaxConfiguration(taxes={"A": Decimal("0.10"), "B": Decimal("0.05"), "C": Decimal("0.05")})
+
+    snapshot = WorkLogCalculationService.calculate(
+        duration=WorkDuration(unit=WorkUnit.FIXED, value=1.0), rate_definition=rate_def, tax_configuration=tax_config
+    )
+
+    assert snapshot.gross_amount == Decimal("100.00")
+    assert snapshot.net_amount == Decimal("80.00")
+    assert snapshot.tax_applied == {"A": Decimal("0.10"), "B": Decimal("0.05"), "C": Decimal("0.05")}
+    assert [line.code for line in snapshot.display_lines if line.type == "tax"] == ["A", "B", "C"]
+
+
+def test_net_rate_does_not_deduct_taxes():
+    rate_def = RateDefinition.from_dict({"base_rate": 50})
+    tax_config = TaxConfiguration(taxes={"IRPF": Decimal("0.20")})
+
+    snapshot = WorkLogCalculationService.calculate(
+        duration=WorkDuration(unit=WorkUnit.FIXED, value=1.0), rate_definition=rate_def, tax_configuration=tax_config
+    )
+
+    assert rate_def.is_gross is False
+    assert snapshot.net_amount == Decimal("50.00")
+    assert snapshot.gross_amount == Decimal("62.50")

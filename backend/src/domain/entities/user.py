@@ -23,7 +23,6 @@ class User:
     role: UserRole = UserRole.USER
     must_change_password: bool = False
     is_2fa_enabled: bool = False
-    default_company_id: Optional[str] = None
     created_at: Optional[datetime] = None
 
     @property

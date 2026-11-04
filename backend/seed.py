@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 def seed_initial_data(db: Session = None) -> bool:
     """
     Siembra los datos iniciales (empresa, usuario administrador y suscripciones a modulos).
-    Es idempotente: si el usuario ya existe, no realiza modificaciones.
+    Es idempotente: si ya existe un administrador de plataforma, no realiza modificaciones.
     """
     admin_email = os.getenv("INITIAL_ADMIN_EMAIL")
     admin_password = os.getenv("INITIAL_ADMIN_PASSWORD")
@@ -37,10 +37,9 @@ def seed_initial_data(db: Session = None) -> bool:
         should_close = True
 
     try:
-        # Verificar si la tabla de usuarios existe y si el usuario ya esta registrado
-        existing_user = db.query(models.User).filter(models.User.email == admin_email).first()
-        if existing_user:
-            print(f"[Seed] El usuario {admin_email} ya existe en la base de datos. Omitiendo sembrado.")
+        # Solo se siembra si no existe ningun administrador de plataforma
+        if db.query(models.User).filter(models.User.role == models.UserRole.admin).first():
+            print("[Seed] Ya existe un administrador de plataforma. Omitiendo sembrado.")
             return False
 
         print(f"[Seed] Creando empresa inicial '{company_name}' y usuario administrador '{admin_email}'...")
@@ -50,13 +49,12 @@ def seed_initial_data(db: Session = None) -> bool:
         if not company:
             company = models.Company(
                 name=company_name,
-                fiscal_id="B00000000",
                 tax_config={"social_security": 0.0648},
                 worklog_definitions={
                     "particular": {"unit": "hours", "label": "Clase Particular", "fields": []},
                     "colectiva": {"unit": "hours", "label": "Clase Colectiva", "fields": []},
                 },
-                settings={"features": {"worker_daily_report": True}},
+                settings={"modules": {"worker_daily_report": True}},
             )
             db.add(company)
             db.commit()
@@ -73,7 +71,6 @@ def seed_initial_data(db: Session = None) -> bool:
             is_active=True,
             is_2fa_enabled=False,
             must_change_password=False,
-            default_company_id=company.id,
         )
         db.add(admin_user)
         db.commit()

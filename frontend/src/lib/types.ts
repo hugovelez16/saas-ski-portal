@@ -16,7 +16,8 @@ export interface UserProfile {
     isPlatformAdmin?: boolean;
     activeCompanyId?: string | null;
     activeRole?: string | null;
-    defaultCompanyId?: string | null;
+    viewAs?: 'manager' | 'worker' | null;
+    isReadOnlyView?: boolean;
     createdAt: string;
 }
 
@@ -24,66 +25,82 @@ export type User = UserProfile;
 export type UserSettings = any; // Placeholder for legacy references
 
 /**
+ * Settings de empresa en la vista reducida (worker, manager, PA en "ver como").
+ * El backend no entrega allowed_rates y puede omitir cualquier clave.
+ * Ademas puede traer claves propias del miembro (notifications, ui_preferences...).
+ */
+export type CompanySettingsReduced = Partial<Omit<CompanySettings, 'allowed_rates'>> & Record<string, any>;
+
+/**
  * Company Interface
+ * Vista reducida por defecto. isActive, createdAt y updatedAt solo llegan en la vista completa (PA actuando).
  */
 export interface Company {
     id: string;
     name: string;
-    fiscalId?: string | null;
-    taxConfig: {
-        social_security: number;
-        irpf_base: number;
-        [key: string]: number;
-    };
+    taxConfig: Record<string, number>;
     worklogDefinitions?: Record<string, any>;
-    settings?: Record<string, any>;
-    createdAt: string;
-    updatedAt: string;
+    settings?: CompanySettingsReduced;
+    createdAt?: string;
+    updatedAt?: string;
 
     // UI specific
     role?: string;
     isActiveMember?: boolean;
+    ratesConfig?: DynamicRateConfig | null;
     isManaged?: boolean;
     isActive?: boolean;
 }
 
+/**
+ * Vista completa de empresa (solo PA actuando): incluye isActive, fechas y settings completo.
+ */
+export interface CompanyFull extends Company {
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+    settings?: CompanySettings & Record<string, any>;
+}
+
 export type CompanyResponse = Company;
 
+/**
+ * Payload de PUT /companies/:id (solo platform admin).
+ * Reutiliza los campos de Company. `reason` es opcional y solo se registra en auditoria.
+ */
+export type CompanyUpdatePayload = Partial<
+    Pick<Company, 'name' | 'isActive' | 'isManaged' | 'taxConfig' | 'worklogDefinitions' | 'settings'>
+> & {
+    reason?: string;
+};
+
+/**
+ * Settings de empresa (catalogo CompanySettings del backend).
+ * El backend entrega los valores por defecto aplicados.
+ */
 export interface CompanySettings {
-    modules?: Record<string, boolean>;
-    business_logic?: {
-        price_type?: 'net' | 'gross';
-        cost_markup?: number;
+    business_logic: {
+        /** Solo afecta a la vista del dashboard. net = un unico precio. */
+        price_type: 'net' | 'gross';
     };
-    worker_experience?: {
-        input_mode?: 'manual_single' | 'timer' | 'bulk';
-        allow_manual_amount?: boolean;
+    worker_experience: {
+        input_mode: 'manual_single' | 'timer' | 'bulk';
+        allow_manual_amount: boolean;
     };
-    ui_customization?: {
-        labels?: {
+    ui_customization: {
+        labels: {
             worklog?: string;
             client?: string;
         };
     };
-    // Legacy support (to be removed after complete migration)
-    /** @deprecated Use modules instead */
-    features?: Record<string, boolean>;
-    /** @deprecated Use business_logic.price_type instead */
-    billing?: {
-        price_type?: 'net' | 'gross';
-    };
-    /** @deprecated Use worker_experience.input_mode instead */
-    input_mode?: 'manual_single' | 'timer' | 'bulk';
+    modules: Record<string, boolean>;
+    allowed_rates?: string[];
 }
 
 export interface DynamicRateEntry {
     base_rate: number;
     is_gross: boolean;
-    tax_overrides: {
-        ss?: number | null;
-        irpf?: number | null;
-        extra?: number | null;
-    };
+    tax_overrides: Record<string, number | null>;
 }
 
 export type DynamicRateConfig = Record<string, DynamicRateEntry>;
@@ -99,7 +116,9 @@ export interface CompanyMember {
     status?: string;
     ratesConfig?: DynamicRateConfig | null;
     settings?: Record<string, any>;
-    joinedAt: string;
+    joinedAt: string | null;
+    sortOrder?: number;
+    updatedAt?: string | null;
     user?: UserProfile;
 }
 
@@ -107,6 +126,54 @@ export type CompanyMemberResponse = CompanyMember;
 
 export interface CompanyWithMembers extends Company {
     members: CompanyMember[];
+}
+
+/**
+ * Parte diario (GET /companies/:id/daily-report).
+ * netAmount y grossAmount solo llegan a manager y platform admin; para worker las claves estan ausentes.
+ */
+export interface DailyReportMember {
+    userId: string;
+    firstName: string | null;
+    lastName: string | null;
+    role: string;
+    isActive: boolean;
+    sortOrder: number;
+}
+
+export interface DailyReportLog {
+    id: string;
+    userId: string;
+    companyId: string;
+    type: string;
+    startDate: string;
+    endDate: string;
+    startTime: string | null;
+    endTime: string | null;
+    duration: number | null;
+    description: string | null;
+    netAmount?: number | null;
+    grossAmount?: number | null;
+}
+
+/**
+ * Definicion de un tipo de turno (misma forma que una entrada de Company.worklogDefinitions).
+ * label y unit siempre vienen; el resto de claves depende de la definicion de la empresa.
+ */
+export interface DailyReportWorkType {
+    label: string;
+    unit: string;
+    fields?: string[];
+    icon?: string;
+    [key: string]: unknown;
+}
+
+export interface DailyReportResponse {
+    companyId: string;
+    date: string;
+    members: DailyReportMember[];
+    workTypes: Record<string, DailyReportWorkType>;
+    logs: DailyReportLog[];
 }
 
 export interface WorkLogExtraData {
@@ -153,6 +220,14 @@ export interface WorkLog {
     hasNight?: boolean;
     arrivesPrior?: boolean;
     isGrossCalculation?: boolean;
+    warnings?: WorkLogWarning[];
+}
+
+export interface WorkLogWarning {
+    code: string;
+    message: string;
+    conflictingLogIds: string[];
+    userId?: string | null;
 }
 
 export interface UserDevice {
@@ -184,7 +259,6 @@ export interface WorkLogCreate {
     hasNight?: boolean;
     arrivesPrior?: boolean;
     isGrossCalculation?: boolean;
-    groupId?: string | null;
 }
 
 export interface WorkLogBulkCreate extends Omit<WorkLogCreate, 'userId'> {
@@ -366,6 +440,57 @@ export interface DashboardSummaryResponse {
     typeBreakdown: DashboardTypeBreakdown[];
     dailyBreakdown: DashboardDailyBreakdown[];
     workersSummary: DashboardWorkerSummary[];
+}
+
+/** Totales globales del rango de GET /work-logs/summary (PR-07). */
+export interface WorkLogTotals {
+    logsCount: number;
+    totalHours: number;
+    totalNet: number;
+    totalGross: number;
+    uniqueDays: number;
+    activeUsers: number;
+}
+
+/** Desglose por tipo de turno de GET /work-logs/summary. */
+export interface WorkLogTypeTotals {
+    type: string;
+    logsCount: number;
+    hours: number;
+    net: number;
+    gross: number;
+}
+
+/** Desglose por dia de GET /work-logs/summary (date en formato yyyy-MM-dd). */
+export interface WorkLogDayTotals {
+    date: string;
+    logsCount: number;
+    hours: number;
+    net: number;
+    gross: number;
+}
+
+/** Desglose por trabajador de GET /work-logs/summary. */
+export interface WorkLogUserTotals {
+    userId: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    logsCount: number;
+    hours: number;
+    net: number;
+    gross: number;
+    uniqueDays: number;
+}
+
+/** Respuesta de GET /work-logs/summary (PR-07). */
+export interface WorkLogSummary {
+    startDate: string;
+    endDate: string;
+    totals: WorkLogTotals;
+    byType: WorkLogTypeTotals[];
+    byDay: WorkLogDayTotals[];
+    byUser: WorkLogUserTotals[];
 }
 
 

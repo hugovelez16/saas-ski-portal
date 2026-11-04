@@ -83,6 +83,7 @@ jobs:
             NEXT_PUBLIC_API_URL=/api
             NEXT_PUBLIC_POSTHOG_KEY=${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
             NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com
+            NEXT_PUBLIC_CONTACT_EMAIL=${{ vars.NEXT_PUBLIC_CONTACT_EMAIL }}
           tags: |
             ${{ env.IMAGE_BASE }}/frontend:latest
             ${{ env.IMAGE_BASE }}/frontend:v${{ needs.get-version.outputs.version }}
@@ -131,7 +132,8 @@ jobs:
             exit 1
           fi
 
-          BODY="{}"
+          # Komodo valida la rama a partir de "ref"; sin ese campo descarta el webhook en silencio.
+          BODY="{\"ref\":\"${GITHUB_REF}\"}"
           if [ -n "$KOMODO_SECRET" ]; then
             SIGNATURE="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$KOMODO_SECRET" | sed 's/^.* //')"
             curl -f -s -X POST "$KOMODO_WEBHOOK" \

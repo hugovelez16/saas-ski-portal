@@ -6,14 +6,14 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, addDays, subDays, isSameDay, parseISO, startOfDay } from "date-fns";
 import { getUsers, getUserCompanies } from "@/lib/api/users";
-import { getWorkLogs, deleteWorkLog } from "@/lib/api/work-logs"; // Assuming same API, simpler to fetch all and filter
-import { getCompaniesDetailed, getMyCompanies } from "@/lib/api/companies";
+import { deleteWorkLog } from "@/lib/api/work-logs";
+import { getDailyReport, getMyCompanies } from "@/lib/api/companies";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { WorkLogDetailsDialog } from "@/components/work-log/details-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,6 +22,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { CalendarConfigProvider, useCalendarConfig } from "@/components/event-calendar/use-calendar-config";
+import type { DailyReportWorkType } from "@/lib/types";
 
 function TimeRangeSelector() {
   const { startHour, endHour, setStartHour, setEndHour } = useCalendarConfig();
@@ -60,23 +61,22 @@ function TimeRangeSelector() {
 function ManagerDailyReportInner() {
     const { user: currentUser } = useAuth();
     const router = useRouter();
-    const searchParams = useSearchParams();
-    // Allow pre-selection via URL, similar to Dashboard
-    const initialCompanyId = searchParams.get("companyId");
+    // Preseleccion con la empresa activa del usuario
+    const activeCompanyId = currentUser?.activeCompanyId;
 
     const queryClient = useQueryClient();
     const { toast } = useToast();
     const [date, setDate] = useState<Date>(new Date());
     const [selectedLog, setSelectedLog] = useState<any>(null);
-    const [selectedCompanyId, setSelectedCompanyId] = useState<string>(initialCompanyId || "");
+    const [selectedCompanyId, setSelectedCompanyId] = useState<string>(activeCompanyId || "");
     const [applyToGroup, setApplyToGroup] = useState(false);
 
-    // Sync state with URL if it changes (e.g. sidebar navigation)
+    // Sincroniza el estado local si cambia la empresa activa
     useEffect(() => {
-        if (initialCompanyId) {
-            setSelectedCompanyId(initialCompanyId);
+        if (activeCompanyId) {
+            setSelectedCompanyId(activeCompanyId);
         }
-    }, [initialCompanyId]);
+    }, [activeCompanyId]);
 
     // 1. Fetch My Managed Companies
     const { data: myCompanies = [], isLoading: loadingCompanies } = useQuery({
@@ -88,9 +88,7 @@ function ManagerDailyReportInner() {
         return myCompanies.filter((c: any) => {
             const role = (c.role || c.pivot?.role || '').toLowerCase();
             const isManager = ['manager', 'admin', 'owner'].includes(role);
-            const settings = c.settings || {};
-            // Support both new 'modules' and legacy 'features'
-            const isModuleActive = Boolean(settings.modules?.worker_daily_report ?? settings.features?.worker_daily_report ?? false);
+            const isModuleActive = Boolean(c.settings?.modules?.worker_daily_report ?? false);
             return isManager && isModuleActive;
         });
     }, [myCompanies]);
@@ -103,57 +101,34 @@ function ManagerDailyReportInner() {
     // State for Create Dialog (Controlled)
     const [createLogState, setCreateLogState] = useState<{ open: boolean, data?: Partial<any> }>({ open: false });
 
-    // 2. Fetch Users for the selected company
-    // We can use getCompaniesDetailed to get members of the selected company
-    const { data: companyDetails } = useQuery({
-        queryFn: getCompaniesDetailed,
-        queryKey: ["companiesDetailed"],
+    // 2. Parte diario de la empresa seleccionada (miembros, tipos de turno y turnos del dia)
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const { data: dailyReport, isLoading: logsLoading } = useQuery({
+        queryFn: () => getDailyReport(selectedCompanyId, dateKey),
+        queryKey: ["daily-report", selectedCompanyId, dateKey],
         enabled: !!selectedCompanyId
     });
 
-    const companyUsers = useMemo(() => {
-        if (!selectedCompanyId || !companyDetails) return [];
-        const company = companyDetails.find((c: any) => c.id === selectedCompanyId);
-        if (!company) return [];
+    const workLogs = dailyReport?.logs ?? [];
+    const workTypes: Record<string, DailyReportWorkType> = dailyReport?.workTypes ?? {};
 
-        // Members structure: { user_id, role, status, user: { ... } }
-        return company.members.map((m: any) => ({
-            ...m.user,
+    const companyUsers = useMemo(() => {
+        return (dailyReport?.members ?? []).map((m) => ({
+            id: m.userId,
+            firstName: m.firstName,
+            lastName: m.lastName,
             relationRole: m.role,
             relationIsActive: m.isActive
         }));
-    }, [companyDetails, selectedCompanyId]);
-
-    const selectedCompany = useMemo(() => {
-        return managedCompanies.find((c: any) => c.id === selectedCompanyId) ||
-               companyDetails?.find((c: any) => c.id === selectedCompanyId);
-    }, [managedCompanies, companyDetails, selectedCompanyId]);
+    }, [dailyReport]);
 
     const defaultHourlyType = useMemo(() => {
-        const defs = selectedCompany?.worklogDefinitions;
-        if (defs && typeof defs === 'object') {
-            const hourlyEntry = Object.entries(defs).find(([_, def]: [string, any]) => def?.unit === 'hours');
-            if (hourlyEntry) return hourlyEntry[0];
-            const firstEntry = Object.keys(defs)[0];
-            if (firstEntry) return firstEntry;
-        }
+        const hourlyEntry = Object.entries(workTypes).find(([_, def]) => def?.unit === 'hours');
+        if (hourlyEntry) return hourlyEntry[0];
+        const firstEntry = Object.keys(workTypes)[0];
+        if (firstEntry) return firstEntry;
         return 'particular';
-    }, [selectedCompany]);
-
-
-    // 3. Fetch Logs (We might need to fetch all and filter by companyId and date)
-    // Ideally existing API supports companyId filter.
-    // If getWorkLogs supports { companyId: ... } it's best.
-    const { data: workLogs = [], isLoading: logsLoading } = useQuery({
-        queryFn: () => getWorkLogs({
-            startDate: format(date, 'yyyy-MM-dd'),
-            endDate: format(date, 'yyyy-MM-dd'),
-            limit: 2000,
-            companyId: selectedCompanyId
-        }),
-        queryKey: ["work-logs-daily-manager", date.toISOString().split('T')[0], selectedCompanyId],
-        enabled: !!selectedCompanyId
-    });
+    }, [workTypes]);
 
 
     const { startHour: configStartHour, endHour: configEndHour } = useCalendarConfig();
@@ -168,7 +143,7 @@ function ManagerDailyReportInner() {
             const logDate = log.date ? parseISO(log.date) : (log.startDate ? parseISO(log.startDate) : null);
             if (!logDate) return false;
 
-            const def = selectedCompany?.worklogDefinitions?.[log.type];
+            const def = workTypes[log.type];
             const isCrossDay = Boolean(
                 (log.startDate && log.endDate && log.startDate !== log.endDate) ||
                 def?.unit === 'days'
@@ -298,7 +273,7 @@ function ManagerDailyReportInner() {
                                         {hours.map(h => (
                                             <div
                                                 key={h}
-                                                className="flex-1 border-r border-slate-100 last:border-r-0 hover:bg-blue-50/50 cursor-pointer transition-colors"
+                                                className="flex-1 min-w-[50px] border-r border-slate-100 last:border-r-0 hover:bg-blue-50/50 cursor-pointer transition-colors"
                                                 onClick={() => setCreateLogState({
                                                     open: true,
                                                     data: {
@@ -388,11 +363,9 @@ function ManagerDailyReportInner() {
                             await deleteWorkLog(log.id);
                             toast({ title: "Éxito", description: "Registro eliminado correctamente." });
                             setSelectedLog(null);
-                            queryClient.invalidateQueries({ queryKey: ["work-logs-daily-manager"] });
+                            queryClient.invalidateQueries({ queryKey: ["daily-report"] });
                         } catch (error) {
-                            console.error("Error deleting work log:", error);
-                            toast({ title: "Error", description: "No se pudo eliminar el registro.", variant: "destructive" });
-                        }
+                            console.error("Error deleting work log:", error);                        }
                     }
                 }}
             />
@@ -405,10 +378,10 @@ function ManagerDailyReportInner() {
                     initialData={createLogState.data}
                     companyId={selectedCompanyId || ""}
                     companyName={managedCompanies.find(c => c.id === selectedCompanyId)?.name || "Company"}
-                    worklogDefinitions={managedCompanies.find(c => c.id === selectedCompanyId)?.worklogDefinitions}
+                    worklogDefinitions={workTypes}
                     users={companyUsers}
                     onSuccess={() => {
-                        queryClient.invalidateQueries({ queryKey: ["work-logs-daily-manager"] });
+                        queryClient.invalidateQueries({ queryKey: ["daily-report"] });
                         setCreateLogState({ open: false });
                     }}
                 >
