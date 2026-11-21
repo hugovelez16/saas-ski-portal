@@ -9,7 +9,10 @@ Las reglas generales estan en [../CLAUDE.md](../CLAUDE.md).
 | [flujo/issues.md](flujo/issues.md) | Plantillas, labels, Project y criterio de "listo" | Al crear o refinar issues |
 | [flujo/orca.md](flujo/orca.md) | Ciclo con Orca y sin Orca, con los comandos | Al lanzar, reanudar o limpiar un worktree |
 | [decisiones/](decisiones/) | ADRs: el porque de cada decision (versionado, ramas y merge) | Si dudas de una decision o vas a cambiarla |
-| [empresa/logica-negocio-empresa.md](empresa/logica-negocio-empresa.md) | Comportamiento objetivo de empresa, roles, acceso, membresia y turnos | Dominio provisional: cualquier tarea de empresa, permisos o turnos. Lee solo la seccion que cite la issue |
+| [dominio/README.md](dominio/README.md) | Formato de las reglas `R-<ENT>-nn`, prefijos reservados y plantilla de fichero por entidad | Al escribir o citar reglas de dominio; despues, el fichero de la entidad que toque |
+| [glosario.md](glosario.md) | Terminos de negocio, su nombre en el codigo y donde viven | Si un termino de la issue no te es claro o no sabes donde vive en el codigo |
+| [preguntas-abiertas.md](preguntas-abiertas.md) | Decisiones de negocio sin cerrar, con ID `O<n>` | Si una regla esta `Abierto` o vas a decidir algo de negocio |
+| [empresa/logica-negocio-empresa.md](empresa/logica-negocio-empresa.md) | Comportamiento objetivo de empresa, roles, acceso, membresia y turnos | Dominio provisional: cualquier tarea de empresa, permisos o turnos cuya entidad aun no tenga fichero en `dominio/`. Lee solo la seccion que cite la issue |
 | [functional_requirements_document.md](functional_requirements_document.md) | Requisitos funcionales de la plataforma | Para entender una funcionalidad existente fuera de empresa |
 | [planes-y-precios.md](planes-y-precios.md) | Planes comerciales y cambio de plan | Tareas de landing, planes o modulos de pago |
 | [auditoria-propuesta-iliberis.md](auditoria-propuesta-iliberis.md) | Lo prometido al cliente frente a lo que hace el codigo | Antes de prometer o priorizar funcionalidades |
@@ -18,5 +21,5 @@ Las reglas generales estan en [../CLAUDE.md](../CLAUDE.md).
 | [empresa/tareas-manuales-release.md](empresa/tareas-manuales-release.md) | Variables, secretos y pasos manuales por entorno | Antes de una release |
 | [empresa/plan-implementacion-empresa.md](empresa/plan-implementacion-empresa.md) | Plan PR-00 a PR-23, ya ejecutado (salvo PR-22) | Solo como historico, o para el paso previo de despliegue de migraciones (secciones 9 y 10) |
 
-Pendiente (fase 2): `docs/dominio/` por entidad con reglas con ID, glosario,
-preguntas abiertas y paso de los planes ya ejecutados a `docs/historico/`.
+Pendiente (fase 2): un fichero de `docs/dominio/` por entidad con sus reglas
+con ID y paso de los planes ya ejecutados a `docs/historico/`.
