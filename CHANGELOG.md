@@ -32,6 +32,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - **Flujo de trabajo con agentes**: issues como unica cola de trabajo (plantillas, labels, Project "saas-ski-portal" y `scripts/project-estado.sh`), skills `issue-create`, `issue-triage`, `issue-start`, `issue-work` y `release`, hooks locales de proteccion (`proteger-ramas`, `guardas-git`, `bloquear-env`, `.githooks/pre-push`) con sus tests en `tests/hooks/`, y documentacion en `docs/flujo/`, `docs/decisiones/` (ADR-0001 versionado y ADR-0002 ramas, PR y merge) y `docs/README.md`.
 - **Versionado (ADR-0001)**: `deploy-dev` etiqueta cada despliegue como `X.Y.Z-dev.<run_number>` (imagenes `dev-v...` y tag git) en lugar de reutilizar `dev-vX.Y.Z`. Los PR dejan de subir la version.
 - **`CLAUDE.md`**: autonomia del agente de `issue-work` (commit, PR y merge commit a `develop` con checks en verde y veredicto APTO), nuevo versionado y nueva lista de subagentes.
+- **Suite del backend mas rapida**: bcrypt baja a 4 rondas solo en `backend/tests/conftest.py` (la suite en SQLite pasa de 7m20s a 52s) y el job "Backend QA" ejecuta los tests con `pytest-xdist` (`-n auto`), dejando en serie los tests que hacen DDL. Se elimina el paso muerto `pytest test_*.py || true` de `ci.yml` (#57).
 - **Delegacion en subagentes**: `CLAUDE.md` fija que el orquestador delega lo mecanico en haiku y lo que exige criterio en sonnet, prohibe los forks y exige `model` explicito al delegar cuando el frontmatter del agente no lo fija (#77).
 
 ### Corregido
