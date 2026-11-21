@@ -26,6 +26,10 @@ codigo, se indican los dos. Abreviaturas: PA = administrador de plataforma.
 | Worker | `CompanyRole.worker`, `ROLE_WORKER` | `company_members.role`, `backend/access_policy.py` | Rol en una empresa (no es una entidad). Ve sus propios turnos y su perfil. En empresa autonoma los registra y edita; en gestionada solo los consulta |
 | Admin de empresa | `CompanyRole.admin`, `normalize_member_role` | `company_members.role`, `backend/access_policy.py` | Rol reservado. No se asigna ni se emite en tokens; si aparece, el backend lo trata como manager |
 | Ver como | claim `view_as`, `VIEW_AS_ROLES` | `backend/auth.py`, `backend/access_policy.py`, `frontend/src/components/view-as-banner.tsx` | Modo del PA para ver una empresa con los permisos de un manager o un worker, en solo lectura. Las escrituras se rechazan salvo cambio de empresa, refresh y logout. No es suplantacion |
+| Contexto neutro | token sin `cid` | `backend/auth.py:resolve_active_company` | Sesion sin empresa activa. Es la del PA al iniciar sesion y la de un usuario sin membresias activas |
+| PA actuando | `acting_platform_admin` | `backend/routers/deps.py` | PA que no esta en "ver como". Solo el PA actuando tiene los permisos de PA |
+| Scope del token | claim `scope`: `full`, `2fa_pending`, `impersonated` | `backend/auth.py`, `backend/routers/auth.py` | Tipo de sesion. `2fa_pending` solo sirve para verificar el 2FA. No es un plan ni un permiso de empresa |
+| Vista completa y vista reducida | `CompanyFull`, `CompanyReduced` | `backend/routers/v2/schemas.py` | Dos respuestas de empresa: la completa solo para el PA actuando; la reducida para manager, worker y PA en "ver como" |
 | Suplantacion (impersonacion) | scope `impersonated`, `/admin/impersonate/{user_id}` | `backend/routers/auth.py` | El PA inicia sesion como un usuario concreto, para soporte (token de 10 min). Las acciones sobre turnos registran `impersonated_user_id`. Distinto de "ver como" |
 
 ## Trabajo e importes

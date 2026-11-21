@@ -25,6 +25,8 @@ con estado `Abierto` citan aqui su ID.
 | O11 | Billing avanzado | Que incluye exactamente y como se llama el modulo | 11.2; seccion 8 | Reglas de billing de `R-MOD` |
 | O12 | Plan o limites por empresa (D16) | Si cada empresa tiene un plan con limites (usuarios, turnos, modulos). Sin decision, no urgente | 11.1 | Ninguna por ahora |
 | O13 | `owner_id` de la empresa | Si se retoma, decidir a que se vincula: a un usuario de la plataforma o a la empresa | 11.1 | Ninguna por ahora |
+| O14 | Que ve el manager de la empresa y de otros usuarios | La seccion 9 dice que el manager ve `is_active` de la empresa y las empresas que comparte con otro usuario. El codigo no expone `is_active` al manager: la vista reducida no lo lleva (`backend/routers/v2/schemas.py:CompanyReduced`) y `read_user_companies` limita al manager a la empresa del token. Decidir si se cambia la regla o el codigo | 9; codigo 2026-11-21 | R-ACC-56, R-ACC-60 |
+| O15 | Vigencia de `functional_requirements_document.md` | El FRD contradice a `logica-negocio-empresa.md` y al codigo: dice que existe registro publico (`POST /users`, hoy solo PA), que el manager da de alta y promueve personal (hoy solo el PA), que el worker gestiona sus turnos sin distinguir empresa gestionada y que el admin de empresa equivale al manager en todo. Decidir si se actualiza o se marca como historico | FRD 1.2 y 2.1 | Ninguna (manda `dominio/`) |
 
 ## Cerradas
 

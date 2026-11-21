@@ -25,6 +25,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 ### Anadido
 
 - **Documentacion de dominio**: `docs/dominio/README.md` con el formato de reglas `R-<ENT>-nn`, los prefijos reservados y la plantilla por entidad, `docs/glosario.md` (termino, nombre en codigo y donde vive) y `docs/preguntas-abiertas.md` con las decisiones abiertas y cerradas de la seccion 11 de `logica-negocio-empresa.md` (#64).
+- **Reglas de acceso**: `docs/dominio/acceso.md` con las reglas `R-ACC-01` a `R-ACC-63` (token, comprobaciones por peticion, roles, empresa activa, "ver como", suplantacion y que ve cada rol), cada una con su implementacion; preguntas abiertas O14 y O15 y terminos nuevos en el glosario (#65).
 
 ### Cambiado
 
