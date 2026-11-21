@@ -22,6 +22,10 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ## [Unreleased]
 
+### Anadido
+
+- **Documentacion de dominio**: `docs/dominio/README.md` con el formato de reglas `R-<ENT>-nn`, los prefijos reservados y la plantilla por entidad, `docs/glosario.md` (termino, nombre en codigo y donde vive) y `docs/preguntas-abiertas.md` con las decisiones abiertas y cerradas de la seccion 11 de `logica-negocio-empresa.md` (#64).
+
 ### Cambiado
 
 - **Flujo de trabajo con agentes**: issues como unica cola de trabajo (plantillas, labels, Project "saas-ski-portal" y `scripts/project-estado.sh`), skills `issue-create`, `issue-triage`, `issue-start`, `issue-work` y `release`, hooks locales de proteccion (`proteger-ramas`, `guardas-git`, `bloquear-env`, `.githooks/pre-push`) con sus tests en `tests/hooks/`, y documentacion en `docs/flujo/`, `docs/decisiones/` (ADR-0001 versionado y ADR-0002 ramas, PR y merge) y `docs/README.md`.
