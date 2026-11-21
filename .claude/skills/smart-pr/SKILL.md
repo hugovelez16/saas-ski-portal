@@ -34,13 +34,11 @@ Actuas como un especialista en integracion y control de calidad de Git para saas
    - Analizar cambios en archivos: `git diff --stat origin/develop...HEAD`.
    - Identificar los cambios funcionales y de logica (ignorando formateos o comentarios triviales).
 
-5. **Verificar regla de incremento de version SemVer:**
-   - Comprueba si los cambios introducen nuevas funcionalidades, correcciones o cambios visibles en la plataforma.
-   - Si aplica incremento de version, verifica que se hayan actualizado:
-     1. `package.json` (raiz)
-     2. `frontend/package.json`
-     3. `CHANGELOG.md`
-   - Si el cambio es puramente de infraestructura local, configuracion de contenedores de desarrollo o tareas de mantenimiento (*chore*) sin impacto en la API o interfaz, confirma que no es necesario el incremento de version.
+5. **Verificar CHANGELOG y version (regla 8, ADR-0001):**
+   - El PR anade su linea en `## [Unreleased]` de `CHANGELOG.md` con `(#<n>)` si hay issue.
+   - El PR NO toca la version de `package.json` ni `frontend/package.json` (salvo los PR de la skill `release`).
+   - Si el cambio es puramente de configuracion local sin efecto en despliegue ni aplicacion, la linea de CHANGELOG no es obligatoria.
+   - Usa la plantilla `.github/pull_request_template.md` e incluye `Closes #<n>` si hay issue.
 
 ---
 
@@ -69,7 +67,7 @@ Muestra un resumen estructurado:
 - **Rama Origen:** `<rama_actual>`
 - **Rama Destino:** `develop`
 - **Titulo:** `<tipo>(<ambito>): <descripcion>`
-- **Incremento SemVer:** `<version_anterior> -> <nueva_version>` (o "No requerido por tratarse de tarea interna de infraestructura/chore")
+- **CHANGELOG:** linea en `[Unreleased]` (o "No requerida: configuracion local")
 
 #### Descripcion propuesta:
 

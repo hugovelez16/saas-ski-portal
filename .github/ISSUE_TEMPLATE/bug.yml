@@ -1,0 +1,32 @@
+name: Bug
+description: Algo no funciona como deberia.
+title: "fix(<ambito>): <descripcion>"
+labels: ["tipo/fix"]
+body:
+  - type: textarea
+    id: pasos
+    attributes:
+      label: Pasos
+      description: Pasos para reproducirlo (rol, empresa activa, pantalla o endpoint).
+    validations:
+      required: true
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Esperado
+    validations:
+      required: true
+  - type: textarea
+    id: obtenido
+    attributes:
+      label: Obtenido
+      description: Incluye el error exacto si lo hay. Sin secretos ni datos personales.
+    validations:
+      required: true
+  - type: input
+    id: entorno
+    attributes:
+      label: Entorno
+      description: local, dev o prod, y version (por ejemplo 0.28.0-dev.17).
+    validations:
+      required: true

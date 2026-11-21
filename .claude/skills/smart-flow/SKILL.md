@@ -23,7 +23,8 @@ Actuas como el guardian de calidad y orquestador integral del ciclo de entrega e
 - **Prohibicion estricta de emojis:** Redaccion 100% tecnica, sobria y profesional en texto plano y markdown estandar.
 - **Titulos de PR sin prefijo WIP:** El titulo del Pull Request debe seguir la convencion de commits en espanol (`<tipo>(<ambito>): <descripcion>` o `<tipo>: <descripcion>`) directamente sin `WIP:`.
 - **Proteccion de ramas:** Prohibido commitear o pushear directamente sobre `main` o `develop`.
-- **Incremento de Version SemVer (cuando aplique):** Verificar si el cambio requiere bump de version (`package.json`, `frontend/package.json`, `CHANGELOG.md`) o si aplica la excepcion (infraestructura local, contenedores dev, tooling o tareas *chore*).
+- **Versionado (regla 8, ADR-0001):** el PR no toca la version; solo anade su linea en `## [Unreleased]` de `CHANGELOG.md`. La version la fija la skill `release`.
+- **Flujo por issues:** si la tarea tiene issue, lo normal es `/issue-work <n>`; esta skill queda para entregas manuales ordenadas por el usuario.
 
 ---
 
@@ -48,8 +49,8 @@ Ejecuta unicamente comandos de inspeccion para recopilar el estado completo:
 4. **Verificacion de sincronizacion remota:**
    - `git status -sb` y comprobacion de upstream (`git rev-parse --abbrev-ref @{u}` si existe).
 
-5. **Evaluacion de Version SemVer:**
-   - Determina si los cambios requieren incremento de version segun las reglas de `CLAUDE.md` (`package.json`, `frontend/package.json`, `CHANGELOG.md`).
+5. **CHANGELOG:**
+   - Comprueba que hay linea en `## [Unreleased]` de `CHANGELOG.md` y que no se ha tocado la version (regla 8).
 
 ---
 
@@ -75,7 +76,7 @@ Muestra al usuario el plan unificado de entrega:
 #### 3. Propuesta de Pull Request:
 - **Rama Base:** `develop`
 - **Titulo:** `<tipo>(<ambito>): <descripcion>`
-- **Incremento SemVer:** `<version>` (o "No requerido por tratarse de tarea interna/chore")
+- **CHANGELOG:** linea en `[Unreleased]` (o "No requerida: configuracion local")
 - **Resumen:** <1-2 frases del proposito>
 - **Detalle de cambios:** <puntos principales>
 - **Validaciones:** <evidencia de tests/builds ejecutados>

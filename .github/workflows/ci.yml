@@ -99,6 +99,11 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Pruebas de los hooks de agentes
+        working-directory: ${{ github.workspace }}
+        # Sin comillas: Node 20 no expande globs en --test, lo hace el shell.
+        run: node --test tests/hooks/*.test.mjs
+
       - name: Instalar dependencias del frontend
         run: npm ci --legacy-peer-deps
 
