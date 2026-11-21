@@ -363,6 +363,9 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
         user_id: str = payload.get("sub")
         jti: str = payload.get("jti")
 
+        if payload.get("type") != "access":
+            raise credentials_exception
+
         if user_id is None:
             raise credentials_exception
 
@@ -419,6 +422,9 @@ async def get_verified_user(
         user_id: str = payload.get("sub")
         jti: str = payload.get("jti")
         scope: str = payload.get("scope", "")
+
+        if payload.get("type") != "access":
+            raise credentials_exception
 
         if user_id is None:
             raise credentials_exception
