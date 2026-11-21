@@ -37,7 +37,9 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ### Corregido
 
+- **Cierre de `issue-work`**: tras el merge a `develop` la skill cierra la issue si sigue abierta (`Closes` solo actua en la rama por defecto), la mueve a "Hecho", publica el informe en la issue y archiva su propio worktree con Orca; sin merge no archiva. `docs/flujo/orca.md` actualizado (#83).
 - **Hooks de agentes**: `proteger-ramas` expande `~`, `$HOME` y las variables asignadas en el mismo comando y deja de bloquear escrituras fuera del repo; `bloquear-env` ignora los filtros jq (#74).
+- **Hooks de agentes**: `bloquear-env` ya no falla cerrado con codigo en linea que lleva corchetes (`[-60:]`, `[z-a]`): un glob con clase de caracteres invalida se evalua como texto literal. Las clases POSIX (`[[:alpha:]]`), colaciones, equivalencias y `]` inicial (`.e[]n]v`) ya no eluden el bloqueo: se tratan como cualquier caracter (#81).
 
 ### Eliminado
 

@@ -15,7 +15,8 @@ decides tu.
 Ejecutar esta skill sobre una issue en "Listo para agente" autoriza, solo para
 esa issue y su rama: hacer commits, `git push -u origin <rama>`, abrir un PR a
 `develop`, sincronizarla con `git merge origin/develop` y hacer merge commit a
-`develop` si se cumplen las condiciones del paso 6.7.
+`develop` si se cumplen las condiciones del paso 6.7. Tras el merge, cerrar esa
+misma issue si sigue abierta y archivar su propio worktree (paso 6.8).
 
 No autoriza: push a `main` o `develop`, force-push, merge a `main`, squash o
 rebase, tocar otras ramas o issues, ejecutar `./scripts/sync_db.sh`, leer
@@ -53,7 +54,7 @@ responsabilidad es tuya.
   | Ultimo `wip` de verificacion | Paso 5 |
   | Sin `wip`, rama en el remoto | Paso 6.4 (hay PR?) |
   | PR abierta | Paso 6.5 en adelante |
-  | PR fusionada | Paso 7, informe |
+  | PR fusionada | Paso 6.8 (cierre y archivado), con el informe del paso 7 |
 
   Si el estado no encaja con ninguna fila, para y comenta en la issue.
 - **Efectos externos idempotentes.** Antes de crear un PR o un comentario,
@@ -189,16 +190,56 @@ Con `NO APTO`, corrige y vuelve al paso 4. Cada correccion cuenta como vuelta.
    Desde un worktree, `--delete-branch` puede terminar con error porque no
    puede hacer checkout de `develop` (lo ocupa el checkout principal) aunque el
    merge remoto se haya hecho. No te fies del codigo de salida: si `state` es
-   `MERGED`, sigue con `scripts/project-estado.sh <n> "Hecho"`; si no, comenta
-   el error en el PR y para.
+   `MERGED`, sigue con el paso 6.8; si no, comenta el error en el PR y para.
 
    Si no se cumplen las dos condiciones, comenta en el PR que falta y para.
    Si el PR lleva migracion con paso previo de despliegue (backup o script de
    reparacion), no hagas merge: comenta los pasos y deja la decision al
    usuario.
+8. **Cierre.** Solo con `state` `MERGED` confirmado. Si no hubo merge (`NO APTO`,
+   checks en rojo, migracion con paso previo, error), no hagas nada de esto: el
+   worktree se queda para retomarlo y lo archiva el usuario a mano.
+   1. `scripts/project-estado.sh <n> "Hecho"`.
+   2. `Closes #<n>` solo actua con merge a la rama por defecto, y aqui el merge
+      es a `develop`. Comprueba y cierra la issue si sigue abierta:
+
+      ```bash
+      gh issue view <n> --repo hugovelez16/saas-ski-portal --json state
+      gh issue close <n> --repo hugovelez16/saas-ski-portal \
+        --comment "Hecho en #<pr> (fusionado en develop)."
+      ```
+
+      El `close` solo se ejecuta si `state` no es `CLOSED`.
+   3. Publica el informe del paso 7 como comentario en la issue, firmado
+      `[issue-work #<n>] informe`, con el cuerpo en un fichero del scratchpad:
+
+      ```bash
+      gh issue comment <n> --repo hugovelez16/saas-ski-portal --body-file <fichero>
+      ```
+
+      Hazlo antes de archivar: archivar mata la terminal del agente y despues
+      ya no puedes publicar ni responder nada.
+   4. **Archivar el worktree. Es la ultima accion: no hagas nada despues y
+      ningun paso posterior puede depender del worktree.** Obten la ruta
+      absoluta con `git rev-parse --show-toplevel` y ejecuta:
+
+      ```bash
+      "${ORCA_CLI_COMMAND:-orca-ide}" worktree rm --worktree path:<ruta absoluta> \
+        --run-hooks --allow-failed-archive-hook --delete-branch --json
+      ```
+
+      Usa siempre `path:<ruta>`: Orca rechaza `--worktree current` y
+      `--worktree active` en `worktree rm`. `--run-hooks` ejecuta
+      `./bin/orca-archive` (baja el stack y borra sus volumenes) y
+      `--allow-failed-archive-hook` evita que un fallo del hook bloquee el
+      archivado. Si Orca no esta disponible, no borres nada a mano (ni
+      `git worktree remove` ni `rm`): dilo en el informe y deja que lo archive
+      el usuario.
 
 ### 7. Informe
 
 Devuelve la URL de la issue y la del PR, si se hizo merge o no y por que, la
 verificacion (comando y resultado), las issues creadas durante el trabajo y el
-veredicto de cada revisor.
+veredicto de cada revisor. Con merge, este mismo informe es el que se publica
+en la issue en el paso 6.8.3, antes de archivar. Anade si el archivado se hara
+(o si Orca no estaba disponible y lo debe hacer el usuario).
