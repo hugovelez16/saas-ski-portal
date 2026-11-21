@@ -66,6 +66,13 @@ else:
 
 TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
+# bcrypt a 4 rondas (el minimo) solo en la suite: con 12 rondas cada hash cuesta ~0.25 s y los
+# tests crean muchos usuarios. No afecta a produccion: este fichero solo lo carga pytest y el
+# cambio es sobre el CryptContext del proceso de tests.
+import auth  # noqa: E402
+
+auth.pwd_context.update(bcrypt__rounds=4)
+
 # Los tests antiguos hacen `from database import SessionLocal` al importarse; como este fichero
 # se carga antes que ellos, reciben la sesion apuntando a la BD de test.
 database.engine = engine
