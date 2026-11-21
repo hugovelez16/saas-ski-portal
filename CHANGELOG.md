@@ -33,6 +33,10 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - **Versionado (ADR-0001)**: `deploy-dev` etiqueta cada despliegue como `X.Y.Z-dev.<run_number>` (imagenes `dev-v...` y tag git) en lugar de reutilizar `dev-vX.Y.Z`. Los PR dejan de subir la version.
 - **`CLAUDE.md`**: autonomia del agente de `issue-work` (commit, PR y merge commit a `develop` con checks en verde y veredicto APTO), nuevo versionado y nueva lista de subagentes.
 
+### Corregido
+
+- **Hooks de agentes**: `proteger-ramas` expande `~`, `$HOME` y las variables asignadas en el mismo comando y deja de bloquear escrituras fuera del repo; `bloquear-env` ignora los filtros jq (#74).
+
 ### Eliminado
 
 - Subagentes `planner`, `reviewer` (fusionado en `code-reviewer`), `devops`, `b2b-monetization-strategist`, `build-error-resolver` y `e2e-runner`, y 21 skills genericas o duplicadas sin uso.
