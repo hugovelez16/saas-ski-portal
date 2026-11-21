@@ -24,23 +24,30 @@ export function esSensible(ruta) {
 // que empieza por comodin no casa con un nombre que empieza por punto.
 function segmentoARegex(seg, { punto = false } = {}) {
   let r = '';
+  const primero = seg.indexOf('[');
+  const ultimo = seg.lastIndexOf(']');
   for (let i = 0; i < seg.length; i++) {
     const c = seg[i];
     if (c === '*') r += '[^/]*';
     else if (c === '?') r += '[^/]';
-    else if (c === '[') {
-      const fin = seg.indexOf(']', i + 2);
-      if (fin < 0) r += '\\[';
-      else {
-        let clase = seg.slice(i + 1, fin);
-        if (clase.startsWith('!')) clase = '^' + clase.slice(1);
-        r += `[${clase.replace(/\\/g, '\\\\')}]`;
-        i = fin;
-      }
-    } else r += c.replace(/[.+^${}()|\\]/g, '\\$&');
+    else if (c === '[' && i === primero && ultimo > primero) {
+      // Sin parsear clases: el tokenizador elimina las `\` y la sintaxis de
+      // clases ([[:x:]], [[.x.]], `]` inicial, rangos invertidos) es demasiado
+      // ambigua. Todo el tramo desde el primer `[` hasta el ultimo `]` se toma
+      // como "cualquier cosa" (superconjunto): puede sobre-bloquear, nunca
+      // dejar pasar un nombre que bash expandiria a una ruta protegida.
+      r += '[^/]*';
+      i = ultimo;
+    } else r += c.replace(/[.+^${}()|[\]\\]/g, '\\$&'); // `[` sin `]` posterior es literal en bash
   }
   const prefijo = !punto && /^[*?[]/.test(seg) ? '(?!\\.)' : '';
-  return new RegExp(`^${prefijo}${r}$`);
+  try {
+    return new RegExp(`^${prefijo}${r}$`);
+  } catch {
+    // Clase de caracteres invalida (p. ej. `[z-a]` o codigo en linea): bash
+    // la trata como texto literal, asi que el segmento casa solo consigo mismo.
+    return new RegExp(`^${seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+  }
 }
 
 const tieneComodin = (t) => /[*?[]/.test(t);
@@ -52,6 +59,29 @@ const MUESTRAS = [
   'backend/.env', 'frontend/.env', 'frontend/.env.local',
   'backend/keys', 'backend/keys/private.pem', 'backend/keys/jwt_private.pem',
 ];
+
+// Nombres protegidos que puede casar el ULTIMO segmento de un glob. `.env`
+// (salvo `.env.example`, que no casa con ninguno) es un nombre con punto, asi
+// que `*` solo no lo casa; `.pem` y `.key` solo cuentan si el segmento aporta
+// algun literal (`*.pem`, no `*` ni `[abc]`) para no bloquear `ls *`.
+const BASES_ENV = ['.env', '.env.local', '.env.production.local', '.env.swarm'];
+const BASES_CLAVE = ['private.pem', 'server.key'];
+
+// Un glob cuyo ultimo segmento puede casar un nombre protegido se bloquea sin
+// importar los segmentos anteriores (`../*/.env*`) ni que exista en disco.
+function ultimoSegmentoProtegido(patron) {
+  const partes = patron.replace(/^\.\//, '').split('/').filter(Boolean);
+  if (partes.length === 0) return false;
+  const ultimo = partes.at(-1);
+  if (!tieneComodin(ultimo)) return false;
+  const re = segmentoARegex(ultimo);
+  if (BASES_ENV.some((n) => re.test(n))) return true;
+  // Segmento `keys` con comodines, o contenido de un directorio `keys`.
+  const previo = partes.at(-2);
+  if (previo === 'keys' || (previo && /[^*?[\]]/.test(previo) && segmentoARegex(previo).test('keys'))) return true;
+  const literal = ultimo.replace(/\[.*\]/s, '').replace(/[*?[\]]/g, '');
+  return literal.length > 0 && (re.test('keys') || BASES_CLAVE.some((n) => re.test(n)));
+}
 
 function globCasaMuestra(patron, { punto = false, globstar = false } = {}) {
   const limpio = patron.replace(/^\.\//, '');
@@ -120,7 +150,7 @@ export function tokenProtegido(token, cwd, { punto = false } = {}) {
   for (const pieza of [token, pegado, ...String(token).split(/[=:,<>]+/)]) {
     if (!pieza) continue;
     if (esSensible(pieza)) return pieza;
-    if (tieneComodin(pieza) && (globCasaMuestra(pieza, { punto }) || globCasaEnDisco(pieza, cwd))) return pieza;
+    if (tieneComodin(pieza) && (globCasaMuestra(pieza, { punto }) || ultimoSegmentoProtegido(pieza) || globCasaEnDisco(pieza, cwd))) return pieza;
   }
   return null;
 }
