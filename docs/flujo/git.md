@@ -97,12 +97,24 @@ Limites:
 - `proteger-ramas` vigila Edit, Write y los Bash que escriben en el repo
   (`sed -i`, `>`, `>>`, `tee`, `cp`/`mv`/`touch`, `git commit`) en `main` y
   `develop`. Un comando que escriba por otra via no se detecta; el push
-  posterior si queda bloqueado.
+  posterior si queda bloqueado. Expande `~`, `$HOME` y las variables
+  asignadas antes en el mismo comando (`D=/tmp/x; echo > $D/f`), tambien en
+  `cd`. No sigue `read`, `declare`, `printf -v`, `for`, `+=`, subshells,
+  `$(...)`, `||` ni `&&`, ni una variable asignada dos veces: en esos casos
+  la variable queda sin resolver. Una escritura con expansion sin resolver
+  solo se permite desde una rama de trabajo; en `main`, `develop` o fuera de
+  un repo se bloquea y pide la ruta literal. `$TMPDIR` y `$TMP` se resuelven.
+  Limite aceptado: desde un worktree en rama de trabajo, una variable opaca
+  (`read D <<< <checkout principal>; echo > $D/f`) puede apuntar al checkout
+  principal en `develop` y no se detecta. Ahi la barrera es la regla 3 y la
+  proteccion de ramas en GitHub (el commit en `develop` no llega al remoto).
 - `bloquear-env` es conservador: bloquea globs que puedan casar `.env` o claves,
   `docker compose config`, `docker exec ... env` y `grep -r` sobre la raiz.
   `ls .env` o `cp .env.example .env` los ejecuta el usuario con `!`. Los
   scripts (`./bin/orca-setup`, `./bin/dev`) leen `.env` por dentro y no se
-  bloquean. El texto de `-m`, `--body` y `--title` no cuenta.
+  bloquean. El texto de `-m`, `--body` y `--title` no cuenta, ni los filtros
+  jq (`gh ... --jq`, `--template` y el filtro de `jq`), donde `.estado` o
+  `.env` son campos JSON.
 - `guardas-git` evalua `git push` en la rama del directorio del comando (`cd` y
   `git -C` incluidos), tambien dentro de heredocs y tuberias hacia un shell.
   Bloquea `gh pr merge` con squash, rebase o `--admin`, y `gh api` de escritura

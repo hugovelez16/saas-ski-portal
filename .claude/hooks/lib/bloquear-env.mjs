@@ -115,7 +115,9 @@ const INCRUSTADA = /(^|[^\w.-])\.env(?!\.example)(?![\w-])|backend\/keys\/|\.pem
 
 export function tokenProtegido(token, cwd, { punto = false } = {}) {
   if (INCRUSTADA.test(String(token))) return String(token);
-  for (const pieza of [token, ...String(token).split(/[=:,<>]+/)]) {
+  // Valor pegado a una opcion corta: `-f.env`, `-o./.env`.
+  const pegado = /^-[A-Za-z]+(.+)$/.exec(String(token))?.[1];
+  for (const pieza of [token, pegado, ...String(token).split(/[=:,<>]+/)]) {
     if (!pieza) continue;
     if (esSensible(pieza)) return pieza;
     if (tieneComodin(pieza) && (globCasaMuestra(pieza, { punto }) || globCasaEnDisco(pieza, cwd))) return pieza;
@@ -152,6 +154,27 @@ function indicesIgnorados(tokens) {
   const ign = new Set();
   const cmd = nombreComando(tokens[0] ?? '');
   const sub = tokens.slice(1).filter((t) => !t.startsWith('-'));
+  // Filtros jq: `.estado` o `.env` ahi son campos JSON, no ficheros.
+  if (cmd === 'gh') {
+    for (let i = 1; i < tokens.length; i++) {
+      if (['--jq', '-q', '--template'].includes(tokens[i])) ign.add(i + 1);
+      else if (/^--(jq|template)=/.test(tokens[i])) ign.add(i);
+    }
+  }
+  if (cmd === 'jq') {
+    const DOS_VALORES = new Set(['--arg', '--argjson', '--slurpfile', '--rawfile']);
+    for (let i = 1; i < tokens.length; i++) {
+      if (DOS_VALORES.has(tokens[i])) i += 2;
+      // Con -f (solo o combinado: -nf, -rf, -f.env) el filtro es un fichero:
+      // no se ignora nada. -L toma una ruta de librerias como valor.
+      else if (tokens[i] === '--from-file' || /^-[A-Za-z]*f/.test(tokens[i])) break;
+      else if (tokens[i] === '-L') i++;
+      else if (!tokens[i].startsWith('-')) {
+        ign.add(i);
+        break;
+      }
+    }
+  }
   let conValor = null;
   if (cmd === 'git' && sub.some((t) => ['commit', 'tag', 'notes', 'stash', 'merge'].includes(t))) {
     conValor = { cortas: ['-m'], largas: ['--message'] };
