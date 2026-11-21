@@ -95,9 +95,15 @@ git -C /home/usuario/00_datos/saas-ski-portal config core.hooksPath .githooks
    escribele `pausa`. No reanudes en otro worktree: los `wip` solo existen en
    local.
 
-5. **Limpiar:** archiva el worktree desde Orca. `./bin/orca-archive` baja el
-   stack del worktree con `down -v`. Para worktrees creados a mano, skill
-   `workspace-clean`.
+5. **Limpiar:** `/issue-work` archiva su propio worktree tras el merge, como
+   ultima accion: `$ORCA worktree rm --worktree path:<ruta> --run-hooks
+   --allow-failed-archive-hook --delete-branch --json`. Antes cierra la issue
+   si sigue abierta, la mueve a "Hecho" y publica el informe como comentario.
+   `--run-hooks` lanza `./bin/orca-archive`, que baja el stack del worktree con
+   `down -v`. Tu solo archivas a mano (desde Orca) los worktrees sin merge
+   (`NO APTO`, checks en rojo, migracion con paso previo) cuando ya no los
+   necesites, o si Orca no estaba disponible. Para worktrees creados a mano,
+   skill `workspace-clean`.
 
 6. **Actualizar** el checkout principal: `/daily-sync`.
 
