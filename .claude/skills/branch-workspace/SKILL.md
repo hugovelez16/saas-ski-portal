@@ -34,18 +34,18 @@ MAIN_REPO_ROOT=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 WT_BASE="${MAIN_REPO_ROOT}.worktrees"
 ```
 
-`<nombre>` es la descripcion de la rama sin el tipo (`feature/reportes-diarios` da `reportes-diarios`). En Orca, apuntar su directorio de workspaces a `$WT_BASE` (ajuste de Orca) para que ambos modos compartan ubicacion; si Orca usa otra ruta, funciona igual, solo cambia donde estan los directorios.
+`<nombre>` es la descripcion de la rama sin el tipo (`feat/12-reportes-de-soporte` da `12-reportes-de-soporte`). En Orca, apuntar su directorio de workspaces a `$WT_BASE` (ajuste de Orca) para que ambos modos compartan ubicacion; si Orca usa otra ruta, funciona igual, solo cambia donde estan los directorios.
 
 ---
 
 ## Reglas (CLAUDE.md)
 
-1. Rama `<tipo>/<descripcion-en-espanol>` en kebab-case (`feature`, `fix`, `refactor`, `chore`, `test`, `docs`). Ejemplo: `feature/reportes-diarios`.
+1. Rama `<tipo>/<n>-<descripcion-en-espanol>` en kebab-case (`feat`, `fix`, `refactor`, `chore`, `test`, `docs`, `perf`, `ci`), con `<n>` el numero de la issue. Ejemplo: `feat/12-reportes-de-soporte`. Para lanzar una issue con agente, lo normal es `/issue-start <n>`; esta skill sirve para worktrees a mano.
 2. `main` y `develop` estan protegidas: nunca trabajar ni commitear en ellas. Los cambios llegan por Pull Request.
-3. Prohibido `git commit`, `git push` y crear PR por iniciativa propia (regla 3). Esta skill no hace ninguno.
+3. Esta skill no hace commit, push ni PR (regla 3).
 4. Cero emojis. Ficheros nuevos o editados solo con Edit y Write (regla 7).
-5. Un worktree, una tarea, un PR. Dos worktrees no deben tocar los mismos ficheros.
-6. El incremento de version (regla 8) se hace al final, sobre `develop` actualizado, justo antes del PR, para no generar conflictos en `package.json` y `CHANGELOG.md`.
+5. Un worktree, una issue, un PR. Dos worktrees no deben tocar los mismos ficheros.
+6. Los PR no tocan la version (regla 8, ADR-0001): solo anaden su linea en `[Unreleased]` de `CHANGELOG.md`.
 
 ---
 
@@ -87,11 +87,7 @@ ORCA_ROOT_PATH="$MAIN_REPO_ROOT" ORCA_WORKTREE_PATH="$PWD" ./bin/orca-setup
 
 Sin `ORCA_ROOT_PATH` el script toma el propio worktree como raiz y falla al no encontrar `.env`: pasarlo siempre.
 
-Reflejar `worktree.sharedDirectories` de `orca.yaml` (Orca lo hace solo): compartir `frontend/node_modules` con el principal si existe y el worktree no tiene el suyo.
-
-```bash
-[ -d "$MAIN_REPO_ROOT/frontend/node_modules" ] && [ ! -e frontend/node_modules ] && ln -s "$MAIN_REPO_ROOT/frontend/node_modules" frontend/node_modules
-```
+No enlazar `frontend/node_modules` con el del principal: un symlink ahi impide arrancar el contenedor de frontend con Podman. Lo crea cada contenedor en un volumen anonimo; fuera de Docker, los comandos de frontend se ejecutan en el contenedor (`docker compose -f docker-compose.dev.yml exec frontend <comando>`).
 
 ### Fase 3: Entrar y preparar
 
@@ -116,7 +112,7 @@ La salida es `<detras> <delante>`. Si esta detras, el usuario decide como traer 
 1. **Ficheros locales que develop ya incorpora**: comparar antes (`git diff origin/develop -- <ruta>`; para ficheros sin seguimiento, `git show origin/develop:<ruta>`). Si son identicos, son duplicados y bloquearian el merge.
 2. **Guardar con stash etiquetado**, nunca `git stash` pelado (la pila se comparte entre worktrees): `git stash push -u -m "<etiqueta-unica>"`, capturar el SHA con `git stash list --format='%H %gs'` y recuperar con `git stash apply <sha>`, no `pop`. Los ficheros sin seguimiento viven en el tercer padre: `git checkout <sha>^3 -- <fichero>` y despues `git restore --staged <fichero>`. Borrar el stash solo con permiso.
 3. **Fusionar** con `git merge origin/develop`. Conflictos a mano, sin `--ours` ni `--theirs` a ciegas. El merge queda **sin commitear** hasta que el usuario lo ordene (regla 3).
-4. **Colision de version (regla 8)**: si `develop` ya usa o supero la version de la rama, subir la de la rama por encima en `package.json` (raiz), `frontend/package.json` y `CHANGELOG.md`. En el changelog, la seccion de la rama va la primera y las de `develop` conservan su orden debajo.
+4. **CHANGELOG**: en conflicto, conservar las lineas de ambas partes dentro de `[Unreleased]`. La version no se toca (regla 8).
 5. **Verificar**: `cd backend && pytest tests/`, `ruff check backend/` y, desde `frontend/`, `npx tsc --noEmit`, `npm run lint` y `npm test`. Si cambio `requirements.txt` o `package-lock.json`, el entorno Docker necesita reconstruirse (`workspace-dev`, solo si el usuario lo ordena).
 
 ### Fase 4: Trabajo en paralelo

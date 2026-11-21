@@ -16,8 +16,21 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - **PATCH (Parche)**: Correcciones de errores y bugs compatibles.
 - **Desarrollo Inicial**: El desarrollo inicial utiliza una version principal `0` (ej: `0.y.z`).
 - **Reinicio de contadores**: Al aumentar MINOR, PATCH se restablece a 0; al aumentar MAJOR, MINOR y PATCH se restablecen a 0.
+- **Flujo de versionado (ADR-0001)**: los PR solo anaden su linea en `[Unreleased]`; la version se fija en la release (skill `release`) y cada despliegue de dev publica `X.Y.Z-dev.N`.
 
 ---
+
+## [Unreleased]
+
+### Cambiado
+
+- **Flujo de trabajo con agentes**: issues como unica cola de trabajo (plantillas, labels, Project "saas-ski-portal" y `scripts/project-estado.sh`), skills `issue-create`, `issue-triage`, `issue-start`, `issue-work` y `release`, hooks locales de proteccion (`proteger-ramas`, `guardas-git`, `bloquear-env`, `.githooks/pre-push`) con sus tests en `tests/hooks/`, y documentacion en `docs/flujo/`, `docs/decisiones/` (ADR-0001 versionado y ADR-0002 ramas, PR y merge) y `docs/README.md`.
+- **Versionado (ADR-0001)**: `deploy-dev` etiqueta cada despliegue como `X.Y.Z-dev.<run_number>` (imagenes `dev-v...` y tag git) en lugar de reutilizar `dev-vX.Y.Z`. Los PR dejan de subir la version.
+- **`CLAUDE.md`**: autonomia del agente de `issue-work` (commit, PR y merge commit a `develop` con checks en verde y veredicto APTO), nuevo versionado y nueva lista de subagentes.
+
+### Eliminado
+
+- Subagentes `planner`, `reviewer` (fusionado en `code-reviewer`), `devops`, `b2b-monetization-strategist`, `build-error-resolver` y `e2e-runner`, y 21 skills genericas o duplicadas sin uso.
 
 ## [0.27.0] - 2026-11-03
 

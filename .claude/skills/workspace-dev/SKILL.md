@@ -66,7 +66,7 @@ Si salen los valores por defecto, parar y avisar: el `.env` no es el del worktre
 
 ## Fase 3: Dependencias y claves
 
-- Frontend: `frontend/node_modules` se comparte con el principal (`worktree.sharedDirectories` de `orca.yaml`; `branch-workspace` lo enlaza en modo terminal). Si falta y se necesita fuera de Docker, `cd frontend && npm ci` solo por orden del usuario.
+- Frontend: `frontend/node_modules` no se comparte con el principal; lo crea el contenedor de frontend en un volumen anonimo (un symlink ahi impide arrancarlo con Podman). Para lint, tipos y tests fuera de Docker, ejecutarlos en el contenedor (`docker compose -f docker-compose.dev.yml exec frontend <comando>`), o `cd frontend && npm ci` solo por orden del usuario.
 - `backend/keys/` (claves RSA) esta ignorada por git y NO viaja con el worktree. Comprobar con `ls backend/keys` que existen; si faltan, pedir al usuario que las copie desde el checkout principal o las genere. No mostrar su contenido.
 
 ## Fase 4: Contenedores
