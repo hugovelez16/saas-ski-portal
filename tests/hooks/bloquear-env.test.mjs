@@ -73,6 +73,36 @@ const casos = [
   ['Bash', { command: './bin/migrate' }, 0],
   ['Bash', { command: 'cd backend && pytest tests/' }, 0],
   ['Bash', { command: 'grep -rn foo backend/src' }, 0],
+  // Corchetes en codigo en linea o clases invalidas: literal, no excepcion.
+  ['Bash', { command: `orca worktree list --json | python3 -I -c 'import json,sys;d=json.load(sys.stdin);ws=d["worktrees"];[print(w.get("id","")[-60:]) for w in ws]'` }, 0],
+  ['Bash', { command: `python3 -c 'x=[1,2][-1:]'` }, 0],
+  ['Bash', { command: 'cat [z-a].txt' }, 0],
+  ['Bash', { command: `jq '.[0]' datos.json` }, 0],
+  ['Bash', { command: `grep -c '[a-z]+' README.md` }, 0],
+  // Sobre-bloqueos aceptados: cualquier tramo `[...]` se trata como comodin.
+  ['Bash', { command: 'cat .e[z-a]nv' }, 2],
+  ['Bash', { command: 'cat ../*/.e*' }, 2],
+  ['Bash', { command: 'cat ../*/.e[n]v' }, 2],
+  ['Bash', { command: 'cat ../../*/backend/keys/*' }, 2],
+  ['Bash', { command: 'cat ../*/README.md' }, 0],
+  ['Bash', { command: 'ls ../*/docs' }, 0],
+  ['Bash', { command: 'ls *' }, 0],
+  ['Bash', { command: 'git log [HEAD]' }, 0],
+  // Siguen bloqueados.
+  ['Bash', { command: 'cat .[[:alpha:]]nv' }, 2],
+  ['Bash', { command: 'cat .e[[:lower:]]v' }, 2],
+  ['Bash', { command: 'cat .e[[:alpha:]]v' }, 2],
+  ['Bash', { command: 'cat .e[]n]v' }, 2],
+  ['Bash', { command: 'cat .e[[.n.]]v' }, 2],
+  ['Bash', { command: 'cat .e[[=n=]]v' }, 2],
+  ['Bash', { command: 'cat *.p[[:alpha:]]m' }, 2],
+  ['Bash', { command: 'cat .e[n\\]]v' }, 2],
+  ['Bash', { command: 'cat .e[n\\\\]v' }, 2],
+  ['Bash', { command: 'cat .e[z-an]v' }, 2],
+  ['Bash', { command: 'cat .e[n]v' }, 2],
+  ['Bash', { command: 'cat .en[v]' }, 2],
+  ['Bash', { command: `python3 -c 'open(".env")'` }, 2],
+  ['Bash', { command: 'cat backend/keys/[a-z]*.pem' }, 2],
 ];
 
 for (const [tool_name, tool_input, codigo] of casos) {

@@ -37,6 +37,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 ### Corregido
 
 - **Hooks de agentes**: `proteger-ramas` expande `~`, `$HOME` y las variables asignadas en el mismo comando y deja de bloquear escrituras fuera del repo; `bloquear-env` ignora los filtros jq (#74).
+- **Hooks de agentes**: `bloquear-env` ya no falla cerrado con codigo en linea que lleva corchetes (`[-60:]`, `[z-a]`): un glob con clase de caracteres invalida se evalua como texto literal. Las clases POSIX (`[[:alpha:]]`), colaciones, equivalencias y `]` inicial (`.e[]n]v`) ya no eluden el bloqueo: se tratan como cualquier caracter (#81).
 
 ### Eliminado
 
