@@ -40,6 +40,10 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - **Hooks de agentes**: `proteger-ramas` expande `~`, `$HOME` y las variables asignadas en el mismo comando y deja de bloquear escrituras fuera del repo; `bloquear-env` ignora los filtros jq (#74).
 - **Hooks de agentes**: `bloquear-env` ya no falla cerrado con codigo en linea que lleva corchetes (`[-60:]`, `[z-a]`): un glob con clase de caracteres invalida se evalua como texto literal. Las clases POSIX (`[[:alpha:]]`), colaciones, equivalencias y `]` inicial (`.e[]n]v`) ya no eluden el bloqueo: se tratan como cualquier caracter (#81).
 
+### Seguridad
+
+- **Refresh token como access token**: `get_current_user` y `get_verified_user` responden 401 a cualquier JWT cuyo claim `type` no sea `access` (refresh, reset o sin `type`), tanto en la cabecera `Authorization: Bearer` como en la cookie `access_token`. Antes un refresh token se aceptaba como access con `scope = full` aunque su sesion estuviera revocada (#78).
+
 ### Eliminado
 
 - Subagentes `planner`, `reviewer` (fusionado en `code-reviewer`), `devops`, `b2b-monetization-strategist`, `build-error-resolver` y `e2e-runner`, y 21 skills genericas o duplicadas sin uso.
