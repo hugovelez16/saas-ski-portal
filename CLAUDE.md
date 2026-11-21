@@ -56,6 +56,7 @@ Toda tarea vive como issue en GitHub (`docs/flujo/issues.md`). Ciclo:
 ### Subagentes
 La sesion principal (o el agente de `/issue-work`) orquesta; los subagentes no invocan a otros. Cada uno devuelve un resultado breve y verificable. Al delegar, pasa rutas exactas, firmas, texto de las reglas, criterio de aceptacion y comando de verificacion; nunca "lee docs/".
 
+- **Delegacion por niveles**: el orquestador solo decide, verifica con un comando corto y comunica con el usuario. Lo mecanico (git, `gh`, comprobaciones, ediciones acotadas con ruta y cambio concretos) va a un subagente haiku; lo que exige criterio (revision, redaccion, diseno) va a uno sonnet. Prohibidos los forks (`subagent_type: "fork"`): heredan el modelo del orquestador. Al delegar, pasa siempre `model` explicito cuando el frontmatter del agente no lo fija (por ejemplo `general-purpose` o `Explore`).
 - `backend-dev` y `frontend-dev` (haiku): implementan un encargo cerrado sin ampliar alcance. Si es ambiguo, devuelven la duda. Paralelizables si tocan ficheros distintos. Si uno se atasca, relanzalo con `model: sonnet`.
 - `tester` (haiku): escribe primero los tests (TDD), los ejecuta y cita el resultado real.
 - `code-reviewer` (sonnet): revisa siempre y emite `VEREDICTO: APTO | NO APTO` (criterios, alcance, aislamiento multiempresa, CHANGELOG, gobernanza de este fichero).
