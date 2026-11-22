@@ -23,7 +23,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 ## [Unreleased]
 
 ### Anadido
-- **Reglas de empresa**: `docs/dominio/empresa.md` con las reglas `R-EMP-01` a `R-EMP-50` segun la revision de base (atributos, ciclo de vida, empresa gestionada y libre, suspension y contratos de `tax_config`, `worklog_definitions` y `settings`); preguntas abiertas O17 a O19; correcciones de glosario, `docs/dominio/README.md` y `revision-base.md` (T4 y configuracion por capas) (#66)
+- **Reglas de empresa**: `docs/dominio/empresa.md` con las reglas `R-EMP-01` a `R-EMP-50` segun la revision de base (atributos, ciclo de vida, empresa gestionada y autonoma, suspension y contratos de `tax_config`, `worklog_definitions` y `settings`); preguntas abiertas O17 a O19; correcciones de glosario, `docs/dominio/README.md` y `revision-base.md` (T4 y configuracion por capas) (#66)
 - La aplicacion muestra la version desplegada (`vX.Y.Z`, `vX.Y.Z-dev.N` o `dev` en local) en el pie del layout autenticado, y `GET /health` devuelve tambien `version`; ambas se inyectan como build-arg `APP_VERSION` desde `deploy-dev` y `deploy-prod` (#58)
 
 ### Cambiado

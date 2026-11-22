@@ -5,8 +5,8 @@ Entidad de dominio: `backend/src/domain/entities/company.py`. Contratos JSON:
 `backend/contracts.py`.
 
 La [empresa](../glosario.md) es la escuela cliente y el tenant: la unidad de
-aislamiento de datos. Puede ser **gestionada** (`is_managed = true`) o **libre**
-(`is_managed = false`, la "autonoma" del glosario) y puede estar suspendida.
+aislamiento de datos. Puede ser **gestionada** (`is_managed = true`) o **autonoma**
+(`is_managed = false`) y puede estar suspendida.
 
 Describe el comportamiento objetivo tras la revision de base (#114,
 2026-11-22, [revision-base.md](../producto/revision-base.md)); donde contradice
@@ -27,7 +27,7 @@ cada rol (R-ACC-54 a R-ACC-57), que puede hacer el worker en cada modo
 | `id` | UUID | Si | Identificador |
 | `name` | texto | Si | 1 a 120 caracteres, sin espacios sobrantes, no unico (R-EMP-01) |
 | `is_active` | bool | Si | `true` por defecto. `false` = empresa suspendida (R-EMP-24) |
-| `is_managed` | bool | Si | `false` por defecto. `true` = gestionada, `false` = libre (R-EMP-28) |
+| `is_managed` | bool | Si | `false` por defecto. `true` = gestionada, `false` = autonoma (R-EMP-28) |
 | `tax_config` | JSONB | Si en el alta | Impuestos `nombre: fraccion`; `{}` es valido (R-EMP-36) |
 | `worklog_definitions` | JSONB | Si | Tipos de turno por clave (R-EMP-40) |
 | `settings` | JSONB | Si | Solo `default_is_gross` (R-EMP-45) |
@@ -88,18 +88,18 @@ empresa exige ademas las comprobaciones de R-ACC-18 a R-ACC-23.
 | R-EMP-26 | Los modulos que vienen de la empresa dejan de valer mientras esta suspendida. La regla de modulos vive en `R-MOD` (#70) | Cerrado | 4.5 | `backend/routers/modules.py` |
 | R-EMP-27 | El frontend muestra un mensaje especifico, el selector no ofrece la empresa y un 403 no se pinta como lista vacia | Cerrado | 4.5 | `frontend/src/components/company-switcher.tsx` (selector); el mensaje especifico y el 403 como lista vacia: por comprobar |
 
-### Empresa gestionada y libre
+### Empresa gestionada y autonoma
 
 La definicion de la bandera vive aqui. Lo que el worker puede hacer en cada
 modo vive en R-ACC-70 y R-ACC-71 y no se repite.
 
 | ID | Regla | Estado | Origen | Codigo |
 |---|---|---|---|---|
-| R-EMP-28 | `is_managed = true` es empresa gestionada; `is_managed = false` es empresa libre ("autonoma" es el nombre antiguo). Es el unico modo: el modo "personal" esta eliminado y no se crean banderas nuevas hasta que haya una regla propia | Cerrado | S7, S10, T1 | `backend/models.py` (`Company.is_managed`) |
+| R-EMP-28 | `is_managed = true` es empresa gestionada; `is_managed = false` es empresa autonoma. Es el unico modo: el modo "personal" esta eliminado y no se crean banderas nuevas hasta que haya una regla propia | Cerrado | S7, S10, T1 | `backend/models.py` (`Company.is_managed`) |
 | R-EMP-29 | Solo el PA cambia `is_managed`, y el cambio se audita con valor anterior y nuevo | Cerrado | 4.5, S1 | `update_company.py` |
 | R-EMP-30 | El cambio de `is_managed` vale desde la siguiente peticion; un frontend abierto sigue mostrando el modo anterior hasta recargar | Cerrado | 4.5 | `backend/access_policy.py:can_write_work_log` lee la bandera de BD |
 | R-EMP-31 | El cambio de `is_managed` no recalcula importes ni toca turnos existentes | Cerrado | 4.5 | `update_company.py` solo cambia la columna |
-| R-EMP-32 | De gestionada a libre, los workers recuperan edicion y borrado de todos sus turnos, tambien de los creados por un manager; de libre a gestionada los pierden | Cerrado | 4.5 | `backend/access_policy.py:can_write_work_log` |
+| R-EMP-32 | De gestionada a autonoma, los workers recuperan edicion y borrado de todos sus turnos, tambien de los creados por un manager; de autonoma a gestionada los pierden | Cerrado | 4.5 | `backend/access_policy.py:can_write_work_log` |
 | R-EMP-33 | Cuando llegue la facturacion, cada permiso opcional del worker cuelga del plan, no de banderas sueltas de empresa | Confirmar | S7, "Autonomia frente a plan" | no aplica |
 
 ### Contratos de los campos JSON
