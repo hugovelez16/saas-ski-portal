@@ -23,6 +23,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 ## [Unreleased]
 
 ### Anadido
+- Documentacion: ADR-0003 a ADR-0012 en `docs/decisiones/` con las decisiones de arquitectura vigentes (autenticacion, aislamiento multiempresa, matriz de permisos, estructura del backend, limites de lineas, API v1 y v2, modo de empresa, migraciones con paso previo, rate limit y soporte del PA); se actualiza el indice de `docs/README.md` y `CLAUDE.md` (#72)
 - La aplicacion muestra la version desplegada (`vX.Y.Z`, `vX.Y.Z-dev.N` o `dev` en local) en el pie del layout autenticado, y `GET /health` devuelve tambien `version`; ambas se inyectan como build-arg `APP_VERSION` desde `deploy-dev` y `deploy-prod` (#58)
 
 ### Cambiado
