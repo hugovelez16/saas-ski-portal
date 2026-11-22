@@ -5,8 +5,9 @@ lista de excepciones no existen todavia.
 
 ## Contexto
 
-Hay ficheros de 1553 (`backend/crud.py`), 686 (`backend/schemas.py`) y 657
-(`backend/routers/auth.py`, 685 al medirlo el 2026-11-22) lineas, y paginas de frontend de 552 a 727. Un
+Hay ficheros de 1553 (`backend/crud.py`), 686 (`backend/schemas.py`) y 685
+(`backend/routers/auth.py`) lineas (medido el 2026-11-22), y paginas de
+frontend de 552 a 727. Un
 fichero largo obliga al agente a leerlo entero para tocar una parte y mezcla
 responsabilidades. Un limite solo documentado no se cumple.
 
