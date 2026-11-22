@@ -52,10 +52,10 @@ codigo, se indican los dos. Abreviaturas: PA = administrador de plataforma.
 
 | Termino | Nombre en codigo | Donde vive | Definicion |
 |---|---|---|---|
-| Modulo | `AppModule`, tabla `app_modules`, `code_name` | `backend/models.py` | Funcionalidad de pago del catalogo (parte diario, billing avanzado, informes). `target_scope` indica si se asigna a empresa, a usuario o a ambos |
-| Suscripcion | `ModuleSubscription`, tabla `module_subscriptions` | `backend/models.py` | Asignacion de un modulo a una empresa (`scope = company`) o a un usuario (`scope = user`), con estado `active`, `trial`, `cancelled` o `expired`. Solo la gestiona el PA |
-| Modulos efectivos | `GET /modules/me` | `backend/routers/modules.py` | Union de los modulos personales y los de la empresa activa. Los de empresa se descartan si esta suspendida |
-| Guardia de modulo | `require_module(code_name)` | `backend/routers/deps.py` | Dependencia que devuelve 403 si ni la empresa ni el usuario tienen el modulo. El PA pasa |
+| Modulo | `AppModule`, tabla `app_modules`, `code_name` | `backend/models.py` | Funcionalidad de pago del catalogo. Hoy se venden dos: parte diario (`worker_daily_report`, "Cuadrante compartido") e Informes (`reports`). Solo se asigna a empresas (R-MOD-17, R-MOD-18). `billing` no es un modulo: el billing basico es la pagina de facturacion y costes y el avanzado esta aplazado (R-MOD-04) |
+| Suscripcion | `ModuleSubscription`, tabla `module_subscriptions` | `backend/models.py` | Asignacion de un modulo a una empresa, con estado `active`, `trial`, `cancelled` o `expired`. Solo de empresa en v1 (R-MOD-17). Solo la gestiona el PA (R-MOD-08) |
+| Modulos efectivos | `GET /modules/me` | `backend/routers/modules.py` | Modulos vigentes de la empresa activa del token. Si la empresa esta suspendida no hay ninguno (R-MOD-16) |
+| Guardia de modulo | `require_module(code_name)` | `backend/routers/deps.py` | Dependencia que devuelve 403 si la empresa activa no tiene el modulo vigente. El PA pasa (R-MOD-13) |
 | Billing basico | `GET /work-logs/billing-summary` | `backend/routers/work_logs.py` | Suma de lo trabajado y lo generado. Sin modulo. Lo ven manager y PA |
 | Billing avanzado | modulo (aplazado hasta que lo pida un cliente, O11) | sin implementar | Porcentajes, tendencias y analitica. Solo con modulo |
 | Ajustes de empresa | `settings`, `CompanySettings` | `companies.settings`, `backend/contracts.py` | Hoy solo `default_is_gross`, el bruto/neto que se copia a los miembros nuevos (S2); los demas ajustes (`price_type`, `worker_experience`, `ui_customization`, `modules`, `allowed_rates`) estan eliminados (S3, S9). Los nuevos son claves del mismo contrato. Reglas: R-EMP-45 a R-EMP-49 |

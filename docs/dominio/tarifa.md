@@ -62,7 +62,7 @@ Sea `S` la suma de las tasas efectivas (R-TAR-09). Duracion: horas o dias del tu
 | R-TAR-13 | Con tarifa neta no se deduce nada: neto = base + extras; bruto = neto / (1 - S) si `S` < 1, y bruto = neto si `S` >= 1 | Cerrado | S2, S3 | `work_log_calculation_service.py:calculate` |
 | R-TAR-14 | Cada importe se redondea a 2 decimales, con la mitad hacia arriba | Cerrado | 7 | `work_log_calculation_service.py` (`ROUND_HALF_UP`) |
 | R-TAR-15 | Cada turno guarda `gross_amount` y `net_amount` (R-TUR-16) y un `calculation_snapshot` con la tarifa, los extras y los impuestos usados | Cerrado | S3, T5 | `backend/src/domain/value_objects/calculation_snapshot.py` |
-| R-TAR-16 | Con tarifa bruta y `S` > 1 el neto saldria negativo. Sin decidir si se rechaza al guardar impuestos o tarifas | Abierto (O27) | R-TAR-12 | sin validar: `backend/contracts.py:TaxConfig` solo acota cada tasa |
+| R-TAR-16 | Con tarifa bruta y `S` > 1 el neto saldria negativo. Sin decidir si se rechaza al guardar impuestos o tarifas | Abierto (O28) | R-TAR-12 | sin validar: `backend/contracts.py:TaxConfig` solo acota cada tasa |
 
 ### Pluses
 
@@ -95,7 +95,7 @@ Sea `S` la suma de las tasas efectivas (R-TAR-09). Duracion: horas o dias del tu
 | R-TAR-26 | Muestra, por miembro y tipo de turno, en un rango de fechas: horas, dias distintos, numero de turnos, total bruto y total neto | Cerrado | S3, T5 | `backend/migrations/versions/7d19bd7c379c_add_get_billing_summary_function.py` |
 | R-TAR-27 | Cada importe es la suma por columna de `gross_amount` y `net_amount` guardados en los turnos; no se recalcula con la tarifa vigente ni se elige un tipo de precio | Cerrado | S3, T5, R-TUR-25 | `get_billing_summary` (`SUM(net_amount)`, `SUM(gross_amount)`) |
 | R-TAR-28 | Entran los turnos cuyo rango de fechas solapa con el rango consultado, con su importe completo (no se reparte por dias) | Confirmar | 7 | `get_billing_summary` (`end_date >= s_date AND start_date <= e_date`) |
-| R-TAR-29 | Los miembros inactivos: R-TUR-27 y O6 los incluyen y marcados; el codigo solo lista miembros activos. Sin decidir cual vale para la billing basica | Abierto (O26) | O6, R-TUR-27 | `get_billing_summary` (`cm.is_active = true`) |
+| R-TAR-29 | Los miembros inactivos: R-TUR-27 y O6 los incluyen y marcados; el codigo solo lista miembros activos. Sin decidir cual vale para la billing basica | Abierto (O27) | O6, R-TUR-27 | `get_billing_summary` (`cm.is_active = true`) |
 
 ## Casos limite
 

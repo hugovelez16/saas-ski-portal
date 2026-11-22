@@ -8,7 +8,7 @@ con estado `Abierto` citan aqui su ID.
 - **ID**: `O<n>`. Se conservan los IDs de la seccion 11.2 de
   [empresa/logica-negocio-empresa.md](empresa/logica-negocio-empresa.md)
   (`O1` a `O11`). `O12` y `O13` salen de los temas "sin decision" de la
-  seccion 11.1; las preguntas nuevas siguen la numeracion (`O14` a `O27`; la siguiente es `O28`).
+  seccion 11.1; las preguntas nuevas siguen la numeracion (`O14` a `O28`; la siguiente es `O29`).
   Un ID no se reutiliza.
 - **Alta**: una fila en "Abiertas" con tema, detalle, origen y las reglas o
   issues que bloquea.
@@ -30,8 +30,9 @@ con estado `Abierto` citan aqui su ID.
 | O23 | Turnos antiguos con `manual_override` al editar o recalcular | S6 y T2 retiran el importe manual y los turnos antiguos se leen sin migrar, pero no esta decidido que pasa al editar uno de ellos (conservar su importe, forzar el recalculo con la tarifa vigente o bloquear la edicion de datos de calculo) | #68; S6, T2 | R-TUR-18 |
 | O24 | Aceptacion de turnos, aprobacion, cierre de periodo y plus por turno | Futuro, sin diseno: en empresa gestionada el worker acepta la asignacion de turnos; aprobacion de turnos y cierre de periodo en un modulo futuro; plus con cantidad editable por turno (S5). Sin decidir estados, quien aprueba ni como afectan a los importes | #68; S5, S7; seccion 10 de `logica-negocio-empresa.md` | R-TUR-33, R-TUR-34, R-TAR-20 |
 | O25 | Tabla 5 de `logica-negocio-empresa.md` desactualizada | La tabla 5 (membresia) dice que solo el PA anade, desactiva y reactiva miembros, que el rol admin de empresa existe como reservado y que reactivar vuelve siempre como worker. Contradice a P3, P6 y a la reactivacion de 2026-11-22: el manager anade, desactiva y reactiva workers, no hay admin de empresa y reactivar no cambia el rol. Manda `dominio/membresia.md`; la seccion queda como historico | #67; P3, P6 | R-MEM-04, R-MEM-10, R-MEM-11, R-MEM-12 |
-| O26 | Miembros inactivos en la billing basica | R-TUR-27 y O6 dicen que los totales y el desglose incluyen a los miembros inactivos, marcados como tales; `get_billing_summary` solo lista miembros activos, asi que los turnos de un miembro desactivado desaparecen de la facturacion de ese periodo. Sin decidir cual vale para la billing basica | #69; O6 | R-TAR-29 |
-| O27 | Suma de impuestos mayor que 100 % con tarifa bruta | Con tarifa bruta el neto es bruto x (1 - suma de tasas efectivas): si la suma supera 1 sale negativo. `TaxConfig` solo acota cada tasa entre 0 y 1 y no la suma. Sin decidir si se rechaza al guardar los impuestos de la empresa o los overrides del miembro, o si se limita el neto a 0 | #69; R-TAR-12 | R-TAR-16 |
+| O26 | Lo vendido frente a lo implementado en modulos y planes | `planes-y-precios.md` vende cosas que el codigo no aplica: (1) los limites de monitores y responsables por plan no se comprueban en ningun sitio (ver O12); (2) Informes (`reports`) no se exige en el backend (#103); (3) "Cuadrante compartido" es el `code_name` `worker_daily_report`, y la correspondencia solo esta escrita en la documentacion, no en el catalogo (`name`, `description`); (4) `push_notifications`, citado en las issues de notificaciones push, no existe en el catalogo y seria un modulo futuro, sin decidir si se vende ni en que plan. Sin decidir como se reconcilian ni cuando | #70; P17, O12 | R-MOD-03, R-MOD-15, R-MOD-20, R-MOD-22 |
+| O27 | Miembros inactivos en la billing basica | R-TUR-27 y O6 dicen que los totales y el desglose incluyen a los miembros inactivos, marcados como tales; `get_billing_summary` solo lista miembros activos, asi que los turnos de un miembro desactivado desaparecen de la facturacion de ese periodo. Sin decidir cual vale para la billing basica | #69; O6 | R-TAR-29 |
+| O28 | Suma de impuestos mayor que 100 % con tarifa bruta | Con tarifa bruta el neto es bruto x (1 - suma de tasas efectivas): si la suma supera 1 sale negativo. `TaxConfig` solo acota cada tasa entre 0 y 1 y no la suma. Sin decidir si se rechaza al guardar los impuestos de la empresa o los overrides del miembro, o si se limita el neto a 0 | #69; R-TAR-12 | R-TAR-16 |
 
 ## Cerradas
 
