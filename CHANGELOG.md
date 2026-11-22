@@ -22,6 +22,12 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-22
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: rate limit en el gateway por IP real tras proxies de confianza (`TRUSTED_PROXIES`), correccion de seguridad de autenticacion (un refresh token ya no vale como access token, #78), nuevo flujo de trabajo con agentes, hooks y versionado (ADR-0001), y documentacion de dominio y producto.
+
 ### Anadido
 
 - **Documentacion de dominio**: `docs/dominio/README.md` con el formato de reglas `R-<ENT>-nn`, los prefijos reservados y la plantilla por entidad, `docs/glosario.md` (termino, nombre en codigo y donde vive) y `docs/preguntas-abiertas.md` con las decisiones abiertas y cerradas de la seccion 11 de `logica-negocio-empresa.md` (#64).
