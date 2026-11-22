@@ -190,7 +190,7 @@ async def request_validation_error_handler(request: Request, exc: RequestValidat
 @app.get("/health", tags=["system"])
 def health_check():
     """Endpoint de comprobacion de salud para Docker Compose y Gateway Nginx."""
-    return {"status": "ok"}
+    return {"status": "ok", "version": os.getenv("APP_VERSION", "dev")}
 
 
 @app.middleware("http")
