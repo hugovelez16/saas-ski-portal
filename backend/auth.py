@@ -310,7 +310,8 @@ def generate_user_tokens(
             data["view_as"] = view_as
 
     access_token = create_access_token(data=data)
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    refresh_data = {k: v for k, v in data.items() if k in ("sub", "scope", "cid", "view_as")}
+    refresh_token = create_refresh_token(data=refresh_data)
     return access_token, refresh_token
 
 

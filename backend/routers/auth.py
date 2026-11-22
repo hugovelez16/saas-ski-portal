@@ -279,7 +279,17 @@ async def refresh_access_token(request: Request, response: Response, db: Session
         auth.revoke_session(db, refresh_token)
         raise HTTPException(status_code=401, detail="Cuenta desactivada")
 
-    new_access_token, _ = auth.generate_user_tokens(db, user)
+    if payload.get("scope") == "impersonated":
+        auth.revoke_session(db, refresh_token)
+        raise HTTPException(status_code=401, detail="Una sesion impersonada no se puede renovar")
+
+    new_access_token, _ = auth.generate_user_tokens(
+        db,
+        user,
+        company_id=payload.get("cid"),
+        scope=payload.get("scope"),
+        view_as=payload.get("view_as"),
+    )
 
     # Set as cookie
     response.set_cookie(
@@ -321,6 +331,7 @@ async def logout(request: Request, response: Response, db: Session = Depends(get
 async def switch_scope(
     data: schemas.SwitchScopeRequest,
     response: Response,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user),
 ):
@@ -391,6 +402,21 @@ async def switch_scope(
             company_id=str(data.company_id),
             scope=token_scope,
         )
+
+    # El refresh nuevo debe quedar registrado como sesion para poder renovarse despues
+    old_refresh = request.cookies.get("refresh_token")
+    old_session = auth.get_session_by_token(db, old_refresh) if old_refresh else None
+    if old_session is not None and old_session.user_id != current_user.id:
+        old_session = None
+    if old_session is not None:
+        auth.revoke_session(db, old_refresh)
+    auth.create_session(
+        db,
+        user_id=str(current_user.id),
+        refresh_token=refresh_token,
+        device_name=(old_session.device_name if old_session else request.headers.get("user-agent")),
+        ip_address=request.client.host if request.client else None,
+    )
 
     response.set_cookie(
         key="access_token",
@@ -488,7 +514,9 @@ async def impersonate_user(
         }
     )
     access_token = auth.jwt.encode(payload, auth.PRIVATE_KEY, algorithm=auth.ALGORITHM)
-    refresh_token = auth.create_refresh_token(data={"sub": str(target_user.id)})
+    refresh_token = auth.create_refresh_token(
+        data={"sub": str(target_user.id), "scope": "impersonated", "admin_user_id": str(current_user.id)}
+    )
 
     # Set Backup Cookies ONLY if we are starting a primary impersonation (not nested)
     if current_access and current_refresh and not request.cookies.get("admin_refresh_token"):

@@ -54,6 +54,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 ### Seguridad
 
 - **Refresh token como access token**: `get_current_user` y `get_verified_user` responden 401 a cualquier JWT cuyo claim `type` no sea `access` (refresh, reset o sin `type`), tanto en la cabecera `Authorization: Bearer` como en la cookie `access_token`. Antes un refresh token se aceptaba como access con `scope = full` aunque su sesion estuviera revocada (#78).
+- **Refresh conserva el contexto de la sesion**: el refresh token lleva los claims `scope`, `cid` y `view_as`, y `POST /refresh-token` los reutiliza (el `cid` se revalida con `resolve_active_company`). El refresh de una sesion impersonada responde 401 y revoca la sesion, por lo que no se amplia el limite de 10 minutos ni se pierde la auditoria de turnos. `POST /auth/switch-scope` registra la sesion del refresh nuevo y revoca la anterior (antes el refresh posterior respondia 401). Los refresh de impersonacion emitidos antes del despliegue no llevan `scope`: revocar las sesiones con `device_name` que empiece por `IMPERSONATED by Admin` al desplegar (#79).
 
 ### Eliminado
 
