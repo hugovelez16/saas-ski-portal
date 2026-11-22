@@ -29,6 +29,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ### Cambiado
 - Documentacion: se consolidan las decisiones de la revision de base del producto (P1-P17 y ajustes, tarifas e impuestos S1-S10) en `docs/producto/revision-base.md`, con las reglas `R-ACC-64` a `R-ACC-79` nuevas y las retiradas en `docs/dominio/acceso.md` y los cierres en `docs/preguntas-abiertas.md` (#114)
+- Documentacion: la empresa con `is_managed = false` se llama "autonoma" y no "libre" en `docs/dominio/acceso.md` (R-ACC-71 y casos limite) y en ADR-0009; "libre" queda reservado a la futura unidad de tipo de turno (#120)
 - `deploy-prod` deja de desplegar por webhook y crea el tag git `vX.Y.Z`; `docker-compose.prod.yml` exige `IMAGE_TAG`, y el despliegue y el rollback de produccion se hacen cambiando esa variable en Komodo (`docs/operaciones/despliegue.md`, ADR-0001) (#111)
 
 ## [0.28.0] - 2026-11-22

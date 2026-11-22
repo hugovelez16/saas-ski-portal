@@ -14,7 +14,7 @@ modo no tiene una regla propia que lo distinga (S7, S10, T1 de
 ## Decision
 
 - El modo es una bandera booleana `is_managed` de la empresa: gestionada
-  (`true`) o libre (`false`). Solo la cambia el PA (S1).
+  (`true`) o autonoma (`false`). Solo la cambia el PA (S1).
 - No se crea un enum de modos ni un modo "personal" hasta que tenga una regla
   propia que no se pueda expresar con la bandera (por ejemplo, no poder anadir
   miembros).
@@ -30,12 +30,12 @@ modo no tiene una regla propia que lo distinga (S7, S10, T1 de
 
 ## Consecuencias
 
-- Un solo eje (gestionada o libre) simplifica la matriz y los tests por fila.
+- Un solo eje (gestionada o autonoma) simplifica la matriz y los tests por fila.
 - Si un caso futuro necesita un tercer comportamiento, se decide con su regla
   y puede justificar un enum entonces; hasta entonces seria una abstraccion sin
   uso.
 - Pendiente de implementar: la bandera existe, pero que el worker de una
-  empresa libre edite su tarifa, bruto/neto e impuestos y que en gestionada sea
+  empresa autonoma edite su tarifa, bruto/neto e impuestos y que en gestionada sea
   espectador depende de la matriz unica.
 - La dependencia del plan es decision de direccion: no hay facturacion por plan
   implementada (O11, O12).
