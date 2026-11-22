@@ -8,7 +8,7 @@ con estado `Abierto` citan aqui su ID.
 - **ID**: `O<n>`. Se conservan los IDs de la seccion 11.2 de
   [empresa/logica-negocio-empresa.md](empresa/logica-negocio-empresa.md)
   (`O1` a `O11`). `O12` y `O13` salen de los temas "sin decision" de la
-  seccion 11.1; las preguntas nuevas siguen la numeracion (`O14` a `O23`; la siguiente es `O24`).
+  seccion 11.1; las preguntas nuevas siguen la numeracion (`O14` a `O25`; la siguiente es `O26`).
   Un ID no se reutiliza.
 - **Alta**: una fila en "Abiertas" con tema, detalle, origen y las reglas o
   issues que bloquea.
@@ -27,7 +27,9 @@ con estado `Abierto` citan aqui su ID.
 | O20 | Retencion de la auditoria | `audit_logs` no tiene politica de retencion ni tarea que purgue: los eventos se acumulan sin limite. Sin decidir durante cuanto se conservan, si se archivan o se borran, y quien lo ejecuta | #71; seccion 10 de `logica-negocio-empresa.md` | R-AUD-28 |
 | O21 | Auditoria general de turnos | Hoy los turnos solo se auditan durante la suplantacion (R-ACC-53, retirada con la suplantacion de solo lectura). Sin decidir si se audita toda creacion, edicion o borrado de turnos, con que campos y con que volumen asumible | #71; P4 | R-AUD-26, R-AUD-27 |
 | O22 | Nombre de las acciones nuevas de auditoria | Sin fijar el nombre de la accion de inicio y de fin de suplantacion (R-ACC-67) ni el de la concesion del rol de PA (R-ACC-65). Se propone el patron `<entidad>.<verbo>` de `AuditAction` | #71; P4, P5 | R-AUD-23, R-AUD-24, R-AUD-25 |
-| O23 | Tabla 5 de `logica-negocio-empresa.md` desactualizada | La tabla 5 (membresia) dice que solo el PA anade, desactiva y reactiva miembros, que el rol admin de empresa existe como reservado y que reactivar vuelve siempre como worker. Contradice a P3, P6 y a la reactivacion de 2026-11-22: el manager anade, desactiva y reactiva workers, no hay admin de empresa y reactivar no cambia el rol. Manda `dominio/membresia.md`; la seccion queda como historico | #67; P3, P6 | R-MEM-04, R-MEM-10, R-MEM-11, R-MEM-12 |
+| O23 | Turnos antiguos con `manual_override` al editar o recalcular | S6 y T2 retiran el importe manual y los turnos antiguos se leen sin migrar, pero no esta decidido que pasa al editar uno de ellos (conservar su importe, forzar el recalculo con la tarifa vigente o bloquear la edicion de datos de calculo) | #68; S6, T2 | R-TUR-18 |
+| O24 | Aceptacion de turnos, aprobacion, cierre de periodo y plus por turno | Futuro, sin diseno: en empresa gestionada el worker acepta la asignacion de turnos; aprobacion de turnos y cierre de periodo en un modulo futuro; plus con cantidad editable por turno (S5). Sin decidir estados, quien aprueba ni como afectan a los importes | #68; S5, S7; seccion 10 de `logica-negocio-empresa.md` | R-TUR-33, R-TUR-34 |
+| O25 | Tabla 5 de `logica-negocio-empresa.md` desactualizada | La tabla 5 (membresia) dice que solo el PA anade, desactiva y reactiva miembros, que el rol admin de empresa existe como reservado y que reactivar vuelve siempre como worker. Contradice a P3, P6 y a la reactivacion de 2026-11-22: el manager anade, desactiva y reactiva workers, no hay admin de empresa y reactivar no cambia el rol. Manda `dominio/membresia.md`; la seccion queda como historico | #67; P3, P6 | R-MEM-04, R-MEM-10, R-MEM-11, R-MEM-12 |
 
 ## Cerradas
 

@@ -8,7 +8,7 @@ su rol en ella, su estado y sus tarifas. Es el eje del modelo. Este fichero
 sustituye a las secciones 2.3 y 5 de `logica-negocio-empresa.md`, que quedan como
 historico; donde contradigan a [revision-base.md](../producto/revision-base.md)
 manda este (por ejemplo, la tabla 5 decia que solo el PA anade y desactiva
-miembros: ya no vale para workers, O23).
+miembros: ya no vale para workers, O25).
 
 Las reglas de acceso se enlazan, no se repiten (`acceso.md`): R-ACC-18 a R-ACC-23
 (comprobaciones), R-ACC-27 a R-ACC-32 (roles), R-ACC-34 a R-ACC-36 (empresa
