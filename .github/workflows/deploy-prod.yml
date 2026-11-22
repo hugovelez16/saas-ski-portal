@@ -1,4 +1,4 @@
-name: CD Build y Deploy Produccion (Komodo)
+name: CD Build Produccion (despliegue manual en Komodo)
 
 on:
   push:
@@ -116,33 +116,30 @@ jobs:
             ${{ env.IMAGE_BASE }}/gateway:latest
             ${{ env.IMAGE_BASE }}/gateway:v${{ needs.get-version.outputs.version }}
 
-  deploy-komodo:
-    name: Desplegar Stack Produccion en Komodo
+  tag:
+    name: Crear Tag Git de la Version de Produccion
+    # Produccion no se despliega desde aqui: se cambia IMAGE_TAG en Komodo
+    # (docs/operaciones/despliegue.md). El tag marca la version publicada.
     needs: [get-version, build-backend, build-frontend, build-gateway]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Disparar Webhook Komodo
+      - name: Checkout Repositorio
+        uses: actions/checkout@v4
+
+      - name: Crear y Publicar Tag
         env:
-          KOMODO_WEBHOOK: ${{ secrets.KOMODO_WEBHOOK_PROD || secrets.KOMODO_WEBHOOK }}
-          KOMODO_SECRET: ${{ secrets.KOMODO_SECRET_PROD || secrets.KOMODO_SECRET }}
+          VERSION: ${{ needs.get-version.outputs.version }}
         run: |
-          echo "Disparando despliegue en Komodo (Entorno Produccion)..."
-          if [ -z "$KOMODO_WEBHOOK" ]; then
-            echo "Error: Secreto KOMODO_WEBHOOK_PROD o KOMODO_WEBHOOK no configurado en el repositorio." >&2
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "[ERROR] Version con formato inesperado: ${VERSION}"
             exit 1
           fi
-
-          # Komodo valida la rama a partir de "ref"; sin ese campo descarta el webhook en silencio.
-          BODY="{\"ref\":\"${GITHUB_REF}\"}"
-          if [ -n "$KOMODO_SECRET" ]; then
-            SIGNATURE="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$KOMODO_SECRET" | sed 's/^.* //')"
-            curl -f -s -X POST "$KOMODO_WEBHOOK" \
-              -H "Content-Type: application/json" \
-              -H "X-Hub-Signature-256: $SIGNATURE" \
-              -d "$BODY"
-          else
-            curl -f -s -X POST "$KOMODO_WEBHOOK" \
-              -H "Content-Type: application/json" \
-              -d "$BODY"
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" > /dev/null 2>&1; then
+            echo "[INFO] El tag v${VERSION} ya existe"
+            exit 0
           fi
-          echo "Despliegue en Komodo completado con exito."
+          git tag "v${VERSION}"
+          git push origin "refs/tags/v${VERSION}"
+          echo "[INFO] Tag v${VERSION} publicado"

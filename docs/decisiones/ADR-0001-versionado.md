@@ -29,7 +29,7 @@ Se usa SemVer con prereleases en dev, como en portal-pisos:
    - Un PR `chore(release): prepara vX.Y.Z` a `develop` pasa `[Unreleased]` a
      `## [X.Y.Z] - <fecha>`.
    - Despues se abre el PR de `develop` a `main`. El merge lo hace el usuario.
-   - `deploy-prod` publica `vX.Y.Z` y `latest`.
+   - `deploy-prod` publica `vX.Y.Z` y `latest` y crea el tag git `vX.Y.Z`.
 5. Tras la release, un PR a `develop` sube `package.json` y
    `frontend/package.json` a la siguiente version (minor por defecto).
 
@@ -41,5 +41,21 @@ Se usa SemVer con prereleases en dev, como en portal-pisos:
   conservando ambas.
 - El tipo de cambio (MAJOR, MINOR, PATCH) se decide en la release a partir de
   `[Unreleased]`, no en cada PR.
-- `deploy-prod` no crea tag git; la version de produccion queda en la imagen
+- La version de produccion queda en la imagen `vX.Y.Z`, en el tag git
   `vX.Y.Z` y en el CHANGELOG.
+
+## Produccion (ampliacion 2026-11-22)
+
+Produccion corre siempre una version fija y conocida; el rollback es cambiar
+una variable.
+
+1. `deploy-prod` ya no llama al webhook de Komodo. Solo construye y publica
+   `vX.Y.Z` y `latest`, y crea y publica el tag git `vX.Y.Z` en `main`
+   (valida `^[0-9]+\.[0-9]+\.[0-9]+$` y no falla si el tag ya existe).
+2. `docker-compose.prod.yml` exige `IMAGE_TAG` en `migrate`, `backend`,
+   `frontend` y `gateway`: sin la variable el stack no arranca. No hay valor
+   por defecto.
+3. Desplegar es poner `IMAGE_TAG=vX.Y.Z` en el stack de produccion de Komodo y
+   desplegar. Rollback: poner la version anterior y redesplegar
+   (`docs/operaciones/despliegue.md`).
+4. Dev no cambia: cada merge a `develop` despliega `X.Y.Z-dev.N` por webhook.
