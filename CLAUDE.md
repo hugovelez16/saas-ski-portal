@@ -77,4 +77,4 @@ Comandos y detalle en `docs/flujo/orca.md`. Configuracion en `orca.yaml` (raiz).
 - **Un worktree, una issue, un PR.** Nada se queda sin commit en un worktree sin issue asociada.
 - **Reanudar**: `/issue-work` deja commits `wip` locales; en la terminal del agente escribe `continua`, o lanza `claude "/issue-work <n>"` en el mismo worktree. `pausa` lo detiene sin perder trabajo.
 - **Pestanas en el mismo worktree**: para un agente extra sobre el mismo codigo (revision, investigacion) abrir una pestana nueva con `orca terminal create --worktree active --command claude`.
-- **Plan de empresa (PR-00 a PR-23)**: ejecutado salvo PR-22 (rate limit, aparcado). `docs/empresa/plan-implementacion-empresa.md` queda como historico y como referencia del paso previo de despliegue de migraciones (secciones 9 y 10).
+- **Plan de empresa (PR-00 a PR-23)**: ejecutado; PR-22 (rate limit) lo resolvio #61 (ADR-0011). `docs/empresa/plan-implementacion-empresa.md` queda como historico y como referencia del paso previo de despliegue de migraciones (secciones 9 y 10).

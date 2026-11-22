@@ -24,6 +24,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ### Anadido
 - **Reglas de empresa**: `docs/dominio/empresa.md` con las reglas `R-EMP-01` a `R-EMP-50` segun la revision de base (atributos, ciclo de vida, empresa gestionada y autonoma, suspension y contratos de `tax_config`, `worklog_definitions` y `settings`); preguntas abiertas O17 a O19; correcciones de glosario, `docs/dominio/README.md` y `revision-base.md` (T4 y configuracion por capas) (#66)
+- Documentacion: ADR-0003 a ADR-0012 en `docs/decisiones/` con las decisiones de arquitectura vigentes (autenticacion, aislamiento multiempresa, matriz de permisos, estructura del backend, limites de lineas, API v1 y v2, modo de empresa, migraciones con paso previo, rate limit y soporte del PA); se actualiza el indice de `docs/README.md` y `CLAUDE.md` (#72)
 - La aplicacion muestra la version desplegada (`vX.Y.Z`, `vX.Y.Z-dev.N` o `dev` en local) en el pie del layout autenticado, y `GET /health` devuelve tambien `version`; ambas se inyectan como build-arg `APP_VERSION` desde `deploy-dev` y `deploy-prod` (#58)
 
 ### Cambiado

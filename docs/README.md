@@ -8,7 +8,7 @@ Las reglas generales estan en [../CLAUDE.md](../CLAUDE.md).
 | [flujo/git.md](flujo/git.md) | Ramas, commits, PR, merge, versionado y proteccion local | Antes del primer commit o PR |
 | [flujo/issues.md](flujo/issues.md) | Plantillas, labels, Project y criterio de "listo" | Al crear o refinar issues |
 | [flujo/orca.md](flujo/orca.md) | Ciclo con Orca y sin Orca, con los comandos | Al lanzar, reanudar o limpiar un worktree |
-| [decisiones/](decisiones/) | ADRs: el porque de cada decision (versionado, ramas y merge) | Si dudas de una decision o vas a cambiarla |
+| [decisiones/](decisiones/) | ADRs: el porque de cada decision. 0001 versionado, 0002 ramas y merge, 0003 autenticacion, 0004 aislamiento multiempresa, 0005 matriz de permisos, 0006 estructura del backend por contexto, 0007 limites de lineas, 0008 API v1 y v2, 0009 modo de empresa, 0010 migraciones con paso previo, 0011 rate limit, 0012 soporte del PA | Si dudas de una decision o vas a cambiarla |
 | [dominio/README.md](dominio/README.md) | Formato de las reglas `R-<ENT>-nn`, prefijos reservados y plantilla de fichero por entidad | Al escribir o citar reglas de dominio; despues, el fichero de la entidad que toque |
 | [glosario.md](glosario.md) | Terminos de negocio, su nombre en el codigo y donde viven | Si un termino de la issue no te es claro o no sabes donde vive en el codigo |
 | [preguntas-abiertas.md](preguntas-abiertas.md) | Decisiones de negocio sin cerrar, con ID `O<n>` | Si una regla esta `Abierto` o vas a decidir algo de negocio |
@@ -22,7 +22,7 @@ Las reglas generales estan en [../CLAUDE.md](../CLAUDE.md).
 | [operaciones/gateway-ip-real.md](operaciones/gateway-ip-real.md) | IP real tras los proxies (`TRUSTED_PROXIES`) y rate limit del gateway | Tareas del gateway, auth o despliegue |
 | [legal/](legal/) | Textos legales y contrato de encargado del tratamiento | Tareas de paginas legales, RGPD o datos personales |
 | [empresa/tareas-manuales-release.md](empresa/tareas-manuales-release.md) | Variables, secretos y pasos manuales por entorno | Antes de una release |
-| [empresa/plan-implementacion-empresa.md](empresa/plan-implementacion-empresa.md) | Plan PR-00 a PR-23, ya ejecutado (salvo PR-22) | Solo como historico, o para el paso previo de despliegue de migraciones (secciones 9 y 10) |
+| [empresa/plan-implementacion-empresa.md](empresa/plan-implementacion-empresa.md) | Plan PR-00 a PR-23, ya ejecutado (PR-22 lo resolvio #61) | Solo como historico, o para el paso previo de despliegue de migraciones (secciones 9 y 10) |
 
 Pendiente (fase 2): un fichero de `docs/dominio/` por entidad con sus reglas
 con ID y paso de los planes ya ejecutados a `docs/historico/`.
