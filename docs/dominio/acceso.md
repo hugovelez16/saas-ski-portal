@@ -36,7 +36,7 @@ Claims del access token (JWT RS256).
 | R-ACC-03 | El rol de plataforma y el de empresa se leen de BD en cada peticion; si el token trae `role` o `is_admin`, se ignoran | Cerrado | 3.1, O7 | `backend/auth.py:_attach_context` |
 | R-ACC-04 | El frontend obtiene rol de plataforma, empresa activa, rol activo y "ver como" de `GET /users/me` | Cerrado | 3.1 | `backend/routers/users.py:read_users_me` |
 | R-ACC-05 | El token se lee de la cookie HttpOnly `access_token` o, si falta, de la cabecera `Authorization: Bearer` | Confirmar | FRD 2.1 | `backend/auth.py:get_token_from_request` |
-| R-ACC-06 | El `scope` no es un plan ni un permiso de empresa: la cuenta gratuita se modela con `module_subscriptions` | Cerrado | 3.1 | objetivo (no hay cuenta gratuita) |
+| R-ACC-06 | El `scope` no es un plan ni un permiso de empresa: la cuenta gratuita se modela con `module_subscriptions` (que incluye y como se registra: O16) | Cerrado | 3.1, O16 | objetivo (no hay cuenta gratuita) |
 | R-ACC-07 | Login con contrasena correcta y 2FA activo emite un token `2fa_pending` de 5 min y ningun refresh token | Cerrado | 3.1, FRD RF-03 | `backend/routers/auth.py:login_for_access_token` |
 | R-ACC-08 | Un token `2fa_pending` solo vale en `POST /verify-2fa`; en cualquier otro endpoint responde 403 | Cerrado | 3.2 n.3 | `backend/auth.py:get_verified_user`, `backend/routers/auth.py:verify_2fa` |
 | R-ACC-09 | `POST /verify-2fa` con un token que no es `2fa_pending` responde 403 | Cerrado | 3.2 n.3 | `backend/routers/auth.py:verify_2fa` |
@@ -119,11 +119,11 @@ endpoints de una empresa, a traves de `deps.authorize`.
 |---|---|---|---|---|
 | R-ACC-54 | La vista completa de la empresa solo la recibe el PA actuando; manager, worker y PA en "ver como" reciben la reducida | Cerrado | 9, O5 | `backend/routers/v2/companies.py:read_company`, `backend/routers/v2/companies.py:read_my_companies` |
 | R-ACC-55 | La vista reducida lleva `id`, `name`, `is_managed`, los ajustes de interfaz y, en solo lectura, `worklog_definitions` y `tax_config` | Cerrado | 9, O5 | `backend/routers/v2/schemas.py:CompanyReduced` |
-| R-ACC-56 | `is_active` de la empresa lo ven PA y manager, no el worker | Abierto (O14) | 9 | la vista reducida (`backend/routers/v2/schemas.py:CompanyReduced`) no lo expone, ni al manager |
+| R-ACC-56 | `is_active` de la empresa solo lo ve el PA; manager y worker no lo ven | Cerrado | 9, O14 | la vista reducida (`backend/routers/v2/schemas.py:CompanyReduced`) no lo expone |
 | R-ACC-57 | `fiscal_id` no existe en ninguna respuesta | Cerrado | 9 | columna borrada (PR-23, `backend/scripts/repair_fiscal_id.py`) |
 | R-ACC-58 | Las tarifas de todos los miembros las ven PA y manager; el worker recibe 403 | Cerrado | 9 | `backend/routers/v2/members.py:list_rates` |
 | R-ACC-59 | Empresas de otro usuario: el PA ve todas; el worker recibe 403 | Cerrado | 9 | `backend/routers/v2/companies.py:read_user_companies` |
-| R-ACC-60 | Empresas de otro usuario, para el manager: solo las que comparte con el | Abierto (O14) | 9 | `read_user_companies` limita a la empresa del token |
+| R-ACC-60 | Empresas de otro usuario, para el manager: solo ve su empresa activa y ninguna otra del usuario | Cerrado | 9, O14 | `read_user_companies` limita a la empresa del token |
 | R-ACC-61 | Para quien no es PA, empresa inexistente, ajena o sin membresia responde el mismo 403; el 404 solo lo ve el PA | Cerrado | 9 (P-5) | `backend/access_policy.py:authorize_company` |
 | R-ACC-62 | El parte diario del worker no incluye las claves de importe; el de manager y PA si | Cerrado | 9 (P-14) | `backend/routers/companies.py:read_daily_report` |
 | R-ACC-63 | Los 403 no devuelven datos internos (`is_manager`, ids de usuario); el `detail` es un texto claro | Cerrado | 9 | `backend/access_policy.py` (`MSG_*`) |

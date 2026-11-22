@@ -57,6 +57,6 @@ codigo, se indican los dos. Abreviaturas: PA = administrador de plataforma.
 | Modulos efectivos | `GET /modules/me` | `backend/routers/modules.py` | Union de los modulos personales y los de la empresa activa. Los de empresa se descartan si esta suspendida |
 | Guardia de modulo | `require_module(code_name)` | `backend/routers/deps.py` | Dependencia que devuelve 403 si ni la empresa ni el usuario tienen el modulo. El PA pasa |
 | Billing basico | `GET /work-logs/billing-summary` | `backend/routers/work_logs.py` | Suma de lo trabajado y lo generado. Sin modulo. Lo ven manager y PA |
-| Billing avanzado | modulo (nombre abierto, O11) | sin implementar | Porcentajes, tendencias y analitica. Solo con modulo |
+| Billing avanzado | modulo (aplazado hasta que lo pida un cliente, O11) | sin implementar | Porcentajes, tendencias y analitica. Solo con modulo |
 | Ajustes de empresa | `settings`, `CompanySettings` | `companies.settings`, `backend/contracts.py` | Ajustes de interfaz y negocio de la empresa (modo de entrada, etiquetas, `business_logic.price_type`). El catalogo vive en el codigo del backend |
 | Auditoria | `AuditLog`, tabla `audit_logs` | `backend/models.py` | Registro de quien, cuando, que, empresa, valor anterior y nuevo y motivo de cada cambio relevante |
