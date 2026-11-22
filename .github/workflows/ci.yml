@@ -5,14 +5,51 @@ on:
     branches:
       - main
       - develop
+  # Ejecucion completa manual: ignora el filtro de ficheros y la marca de cache.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detectar cambios
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' }}
+      frontend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.frontend == 'true' }}
+    steps:
+      - name: Filtrar ficheros cambiados
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'docker-compose*.yml'
+              - 'requirements*'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+              - 'tests/hooks/**'
+              - '.claude/hooks/**'
+              - '.githooks/**'
+
+  # Si un job se salta por `if:`, GitHub lo da por satisfecho en la proteccion de
+  # ramas. Si no se salta, una marca en actions/cache (clave <job>-ok-<hash de
+  # entradas>) evita repetir los pasos pesados con codigo ya probado. La marca
+  # solo se guarda si todos los pasos anteriores pasaron.
   backend-qa:
     name: Backend QA (Ruff, Migraciones, Pytest)
+    needs: changes
+    # Falla cerrado: si `changes` falla, el job corre en lugar de saltarse.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.backend == 'true') }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -42,22 +79,45 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
+      # El hash se calcula una vez, antes de ejecutar nada: los tests y la
+      # instalacion generan ficheros en el arbol y cambiarian la clave del save.
+      - name: Calcular hash de las entradas
+        id: hash
+        run: echo "value=${{ hashFiles('backend/**', 'requirements*', 'docker-compose*.yml', '.github/workflows/ci.yml') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Consultar marca de codigo ya probado
+        id: mark
+        if: github.event_name != 'workflow_dispatch'
+        uses: actions/cache/restore@v4
+        with:
+          path: .ci-mark
+          key: backend-qa-ok-${{ steps.hash.outputs.value }}
+          lookup-only: true
+
+      - name: Codigo ya probado (marca encontrada)
+        if: steps.mark.outputs.cache-hit == 'true'
+        run: echo "OK Backend QA omitido, el mismo codigo ya paso en este PR"
+
       - name: Configurar Python 3.12
+        if: steps.mark.outputs.cache-hit != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
 
       - name: Instalar dependencias del backend
+        if: steps.mark.outputs.cache-hit != 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
           pip install ruff pytest pytest-asyncio httpx
 
       - name: Verificacion de estilo y formato (Ruff)
+        if: steps.mark.outputs.cache-hit != 'true'
         run: ruff check backend/
 
       - name: Validar migraciones de base de datos
+        if: steps.mark.outputs.cache-hit != 'true'
         env:
           DATABASE_URL: postgresql://ski_test_user:ski_test_password@localhost:5432/ski_test_db
           ENCRYPTION_KEY: dGVzdF9rZXlfZm9yX2NpX3ZhbGlkYXRpb25fcHVycG9zZXM=
@@ -66,6 +126,7 @@ jobs:
           python3 -m alembic upgrade head
 
       - name: Ejecutar pruebas unitarias (Pytest)
+        if: steps.mark.outputs.cache-hit != 'true'
         env:
           DATABASE_URL: postgresql://ski_test_user:ski_test_password@localhost:5432/ski_test_db
           TEST_DATABASE_URL: postgresql://ski_test_user:ski_test_password@localhost:5432/ski_test_db
@@ -83,8 +144,24 @@ jobs:
           pytest tests/ -n auto $IGNORE
           pytest $DDL_TESTS
 
+      - name: Escribir marca de codigo probado
+        if: steps.mark.outputs.cache-hit != 'true' && github.event_name != 'workflow_dispatch'
+        run: |
+          mkdir -p .ci-mark
+          echo ok > .ci-mark/ok
+
+      - name: Guardar marca de codigo probado
+        if: steps.mark.outputs.cache-hit != 'true' && github.event_name != 'workflow_dispatch'
+        uses: actions/cache/save@v4
+        with:
+          path: .ci-mark
+          key: backend-qa-ok-${{ steps.hash.outputs.value }}
+
   frontend-qa:
     name: Frontend QA (Lint, Types, Tests, Build)
+    needs: changes
+    # Falla cerrado: si `changes` falla, el job corre en lugar de saltarse.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -94,7 +171,28 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
+      # El hash se calcula una vez, antes de ejecutar nada: npm ci y el build
+      # generan ficheros en frontend/ y cambiarian la clave del save.
+      - name: Calcular hash de las entradas
+        id: hash
+        working-directory: ${{ github.workspace }}
+        run: echo "value=${{ hashFiles('frontend/**', '.github/workflows/ci.yml', 'tests/hooks/**', '.claude/hooks/**', '.githooks/**') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Consultar marca de codigo ya probado
+        id: mark
+        if: github.event_name != 'workflow_dispatch'
+        uses: actions/cache/restore@v4
+        with:
+          path: .ci-mark
+          key: frontend-qa-ok-${{ steps.hash.outputs.value }}
+          lookup-only: true
+
+      - name: Codigo ya probado (marca encontrada)
+        if: steps.mark.outputs.cache-hit == 'true'
+        run: echo "OK Frontend QA omitido, el mismo codigo ya paso en este PR"
+
       - name: Configurar Node.js 20
+        if: steps.mark.outputs.cache-hit != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -102,23 +200,43 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Pruebas de los hooks de agentes
+        if: steps.mark.outputs.cache-hit != 'true'
         working-directory: ${{ github.workspace }}
         # Sin comillas: Node 20 no expande globs en --test, lo hace el shell.
         run: node --test tests/hooks/*.test.mjs
 
       - name: Instalar dependencias del frontend
+        if: steps.mark.outputs.cache-hit != 'true'
         run: npm ci --legacy-peer-deps
 
       - name: Verificacion de linteo (ESLint)
+        if: steps.mark.outputs.cache-hit != 'true'
         run: npm run lint
 
       - name: Verificacion estricta de tipos (TypeScript)
+        if: steps.mark.outputs.cache-hit != 'true'
         run: npx tsc --noEmit
 
       - name: Pruebas unitarias (Vitest)
+        if: steps.mark.outputs.cache-hit != 'true'
         run: npm test
 
       - name: Compilacion de produccion (Next.js Build)
+        if: steps.mark.outputs.cache-hit != 'true'
         env:
           NEXT_PUBLIC_API_URL: /api
         run: npm run build
+
+      - name: Escribir marca de codigo probado
+        if: steps.mark.outputs.cache-hit != 'true' && github.event_name != 'workflow_dispatch'
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p .ci-mark
+          echo ok > .ci-mark/ok
+
+      - name: Guardar marca de codigo probado
+        if: steps.mark.outputs.cache-hit != 'true' && github.event_name != 'workflow_dispatch'
+        uses: actions/cache/save@v4
+        with:
+          path: .ci-mark
+          key: frontend-qa-ok-${{ steps.hash.outputs.value }}
