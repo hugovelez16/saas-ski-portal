@@ -79,13 +79,19 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
+      # El hash se calcula una vez, antes de ejecutar nada: los tests y la
+      # instalacion generan ficheros en el arbol y cambiarian la clave del save.
+      - name: Calcular hash de las entradas
+        id: hash
+        run: echo "value=${{ hashFiles('backend/**', 'requirements*', 'docker-compose*.yml', '.github/workflows/ci.yml') }}" >> "$GITHUB_OUTPUT"
+
       - name: Consultar marca de codigo ya probado
         id: mark
         if: github.event_name != 'workflow_dispatch'
         uses: actions/cache/restore@v4
         with:
           path: .ci-mark
-          key: backend-qa-ok-${{ hashFiles('backend/**', 'requirements*', 'docker-compose*.yml', '.github/workflows/ci.yml') }}
+          key: backend-qa-ok-${{ steps.hash.outputs.value }}
           lookup-only: true
 
       - name: Codigo ya probado (marca encontrada)
@@ -149,7 +155,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .ci-mark
-          key: backend-qa-ok-${{ hashFiles('backend/**', 'requirements*', 'docker-compose*.yml', '.github/workflows/ci.yml') }}
+          key: backend-qa-ok-${{ steps.hash.outputs.value }}
 
   frontend-qa:
     name: Frontend QA (Lint, Types, Tests, Build)
@@ -165,13 +171,20 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
+      # El hash se calcula una vez, antes de ejecutar nada: npm ci y el build
+      # generan ficheros en frontend/ y cambiarian la clave del save.
+      - name: Calcular hash de las entradas
+        id: hash
+        working-directory: ${{ github.workspace }}
+        run: echo "value=${{ hashFiles('frontend/**', '.github/workflows/ci.yml', 'tests/hooks/**', '.claude/hooks/**', '.githooks/**') }}" >> "$GITHUB_OUTPUT"
+
       - name: Consultar marca de codigo ya probado
         id: mark
         if: github.event_name != 'workflow_dispatch'
         uses: actions/cache/restore@v4
         with:
           path: .ci-mark
-          key: frontend-qa-ok-${{ hashFiles('frontend/**', '.github/workflows/ci.yml', 'tests/hooks/**', '.claude/hooks/**', '.githooks/**') }}
+          key: frontend-qa-ok-${{ steps.hash.outputs.value }}
           lookup-only: true
 
       - name: Codigo ya probado (marca encontrada)
@@ -226,4 +239,4 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .ci-mark
-          key: frontend-qa-ok-${{ hashFiles('frontend/**', '.github/workflows/ci.yml', 'tests/hooks/**', '.claude/hooks/**', '.githooks/**') }}
+          key: frontend-qa-ok-${{ steps.hash.outputs.value }}
