@@ -3,7 +3,7 @@
 Plataforma SaaS de gestion de escuelas de esqui: reservas y jornadas laborales (saas_ski_vesotel). Multiempresa. Este fichero es la unica fuente de reglas para agentes (Claude Code y Orca); no existe AGENTS.md. El indice de documentacion (que leer segun la tarea) esta en `docs/README.md`.
 
 ## Stack
-- `backend/`: FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16, Redis 7. Capas en `backend/src/{domain,application,infrastructure}`, routers en `backend/routers`. Auth OAuth2 password flow con JWT firmado con RSA. API v2 del area empresa en `/api/v2/` (`backend/routers/v2/`, `backend/src/`).
+- `backend/`: FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16, Redis 7. Capas en `backend/src/{domain,application,infrastructure}`, routers en `backend/routers`. Auth OAuth2 password flow con JWT firmado con RSA. API v2 en `/api/v2/` (`backend/routers/v2/`, `backend/src/`): hoy solo el area empresa; el resto del backend se migra por contextos (Turnos, Usuarios y Membresias, Modulos y billing) y `crud.py` se vacia poco a poco (O4, `docs/preguntas-abiertas.md`).
 - `frontend/`: Next.js (App Router), React, TypeScript, shadcn, Tailwind. Tests con vitest.
 - `gateway/`: Nginx. Frontend en `/`, backend en `/api/`.
 - CI/CD: `.github/workflows/` (`ci.yml`, `deploy-dev.yml`, `deploy-prod.yml`). Cada merge a `develop` publica imagenes `dev-vX.Y.Z-dev.N` y el tag git `vX.Y.Z-dev.N`; cada merge a `main` publica `vX.Y.Z` (ADR-0001). Despliegue y rollback con Komodo.
