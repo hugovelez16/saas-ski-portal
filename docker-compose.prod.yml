@@ -141,6 +141,12 @@ services:
     logging: *default-logging
     ports:
       - "${GATEWAY_PORT:-8080}:80"
+    environment:
+      # IP o CIDR de los proxies de confianza, separados por espacios. Vacia: no se confia en ninguno.
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
+    # Aqui el entrypoint escribe real-ip.conf; el resto del sistema de ficheros puede ir en solo lectura.
+    tmpfs:
+      - /etc/nginx/real-ip.d
     depends_on:
       backend:
         condition: service_healthy
