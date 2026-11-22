@@ -11,8 +11,9 @@ propuesta (secciones 1 a 6), manda la decision.** Las reglas `R-ACC` derivadas
 estan en [../dominio/acceso.md](../dominio/acceso.md). Mediciones con `wc -l` y
 `grep`.
 
-Terminologia: la empresa "libre" de las decisiones es la "autonoma" del
-glosario (`is_managed = false`); la "gestionada" es la misma.
+Terminologia: empresa "gestionada" (`is_managed = true`) y "autonoma"
+(`is_managed = false`). "Libre" queda reservado a la futura unidad de tipo de
+turno (S6).
 
 ## 1. Producto en una pagina
 
@@ -77,7 +78,7 @@ Siete tablas bastan. Lo que sigue es cada concepto actual con la propuesta.
 
 Matriz con las decisiones de 2026-11-22 aplicadas (P3, P4, P5, P6, P7, S1,
 S7, S8). Roles: PA actuando, manager y worker. El admin de empresa no aparece
-porque se elimina (P3). "L" es empresa libre (`is_managed = false`) y "G"
+porque se elimina (P3). "L" es empresa autonoma (`is_managed = false`) y "G"
 gestionada; si no se indica, vale para las dos. Toda accion sobre una empresa
 exige ademas membresia activa, empresa activa y empresa del token (R-ACC-18 a
 23, 41).
@@ -151,9 +152,7 @@ empresa para la misma clave.
 | Plataforma (futuro) | Limites del plan (monitores, responsables) | PA | O12. Se modelan con suscripciones cuando haya facturacion |
 | Empresa | `name`, `is_active`, `is_managed` | PA | Columnas |
 | Empresa | `tax_config`, `worklog_definitions` | PA | JSONB con contrato |
-| Empresa | `settings.business_logic.price_type` | PA | Solo afecta a la vista del dashboard |
-| Empresa | `settings.worker_experience` (modo de entrada, importe a mano) | PA | |
-| Empresa | `settings.ui_customization.labels` | PA | |
+| Empresa | `settings.default_is_gross` (bruto/neto por defecto, se copia a los miembros nuevos; unico ajuste de `settings`, validado por `CompanySettings`, S2) | PA | Los demas ajustes (`price_type`, `worker_experience`, `ui_customization`) estan eliminados (S3, S9) |
 | Empresa | Modulos contratados (`module_subscriptions`) | PA | Unica fuente de modulos |
 | Miembro | Rol, `is_active`, `sort_order` | PA (alta de worker: P6) | |
 | Miembro | `rates_config` (tarifa, bruto o neto, `tax_overrides`, `extras`) | PA, manager; worker en autonoma (P7) | |
@@ -331,7 +330,7 @@ Hoy el worker de una empresa autonoma edita su propia tarifa.
 - Otra:
 - Notas:
 - **Decision (2026-11-22):** distinta de la recomendada. En empresa no
-  gestionada (libre) el worker edita su tarifa, su bruto/neto y sus impuestos
+  gestionada (autonoma) el worker edita su tarifa, su bruto/neto y sus impuestos
   propios (R-ACC-71). En gestionada es espectador (R-ACC-70).
 
 ### P8. Ajustes por miembro (`CompanyMember.settings`)
@@ -471,20 +470,21 @@ issue de seguimiento (ver el PR de #114).
 | S4 | Impuestos propios del miembro elegidos de la lista de impuestos de la empresa. El servidor rechaza overrides con nombres que no existan en la empresa; al quitar un impuesto de empresa se limpian los overrides huerfanos |
 | S5 | Pluses = `options` del tipo de turno con valor en la tarifa del miembro (`extras`, fijo o por unidad). La pantalla de edicion lleva valor y "fijo / por unidad"; guardar tarifas nunca borra lo que la pantalla no toca. Futuro: cantidad editable por plus en el turno (nocturnidad = dias - 1, "2 festivos") |
 | S6 | Se eliminan el importe manual y `allow_manual_amount` (ramas de `crud.py`, error 409 y su dialogo). Despues, issue aparte: unidad "libre" con precio obligatorio, fecha de inicio obligatoria (fin = inicio) y horas opcionales; el precio se trata segun el bruto/neto del miembro; solo lo crea quien puede escribir turnos. Los turnos antiguos con `manual_override` se siguen leyendo sin migrar (con T2) |
-| S7 | Se mantiene la bandera `is_managed` (con S10 y T1). Gestionada = el worker es espectador en todo (turnos, tarifa, bruto/neto e impuestos). Libre = el worker escribe sus turnos y edita tarifa, bruto/neto e impuestos propios. No se crea modo "personal" hasta que tenga una regla propia (p. ej. no poder anadir miembros). Futuro: en gestionada el worker acepta la asignacion de turnos |
+| S7 | Se mantiene la bandera `is_managed` (con S10 y T1). Gestionada = el worker es espectador en todo (turnos, tarifa, bruto/neto e impuestos). Autonoma = el worker escribe sus turnos y edita tarifa, bruto/neto e impuestos propios. No se crea modo "personal" hasta que tenga una regla propia (p. ej. no poder anadir miembros). Futuro: en gestionada el worker acepta la asignacion de turnos |
 | S8 | Parte diario (pantalla del modulo `worker_daily_report`): el worker ve descripcion, horas y tipo de turnos ajenos sin importes; no abre el dialogo de detalle de un turno ajeno. Comprobar que un worker con el modulo ve empresas (hoy el filtro exige manager) |
 | S9 | Se eliminan sin migracion de datos `CompanyMember.settings` (columna, endpoint, caso de uso, validador, `can_edit_member_settings`, dialogo muerto), `allowed_rates`, `worker_experience`, `ui_customization` y `settings.modules`. Antes, `manager/daily-reports/page.tsx` pasa a leer las suscripciones de modulos. Preferencias de interfaz futuras en `localStorage`; preferencias de notificaciones en servidor por usuario (se decide con el modulo push) |
-| S10 | Ver S7 (misma decision: bandera `is_managed`, gestionada y libre) |
+| S10 | Ver S7 (misma decision: bandera `is_managed`, gestionada y autonoma) |
 
 ### Decisiones T
 
-El texto de la issue #114 identifica T1, T2, T3 y T5; no identifica T4, y no se
-le asigna contenido aqui.
+El texto de la issue #114 identifica T1, T2, T3 y T5; T4 se anade en #66 con la
+decision de la matriz de permisos.
 
 | ID | Decision |
 |---|---|
 | T1 | Ver S7 |
 | T2 | Ver S6 |
+| T4 | En gestionada el worker es espectador en todo, impuestos incluidos; en autonoma edita su tarifa, su bruto/neto y sus impuestos propios (R-ACC-70 y R-ACC-71) |
 | T3 | Al cambiar de tipo o recalcular, aviso antes de guardar con importe actual frente a nuevo y confirmacion; "recalcular" como accion explicita propia (hoy solo existe dentro del dialogo de importe manual). Editar un turno del mismo tipo sigue usando la instantanea (`calculation_snapshot`) |
 | T5 | Ver S3 |
 

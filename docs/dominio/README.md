@@ -21,12 +21,12 @@ codigo.
 
 | Prefijo | Fichero | Contenido | Origen en `logica-negocio-empresa.md` |
 |---|---|---|---|
-| `R-ACC` | `acceso.md` | Token, sesion, empresa activa, roles, "ver como", comprobaciones por peticion | 2.2, 3 y 9 |
+| `R-ACC` | `acceso.md` | Token, sesion, empresa activa, roles, suplantacion de solo lectura ("ver como" retirado, P4), comprobaciones por peticion | 2.2, 3 y 9 |
 | `R-EMP` | `empresa.md` | Atributos, ciclo de vida, empresa gestionada y suspendida, campos JSON | 4 |
 | `R-MEM` | `membresia.md` | Alta, baja, reactivacion, rol y estado de la membresia | 2.3 y 5 |
 | `R-TUR` | `turno.md` | Turnos (work logs): quien hace que, validaciones, recalculo, parte diario | 6 y 8 (parte diario) |
-| `R-TAR` | `tarifa.md` | Tarifas por miembro, impuestos, overrides y calculo del importe | 4.4 y 7 |
-| `R-MOD` | `modulo.md` | Catalogo de modulos, suscripciones, `require_module` y billing | 8 |
+| `R-TAR` | `tarifa.md` | Tarifas por miembro, impuestos, overrides, calculo del importe y billing basica (P17) | 4.4 y 7 |
+| `R-MOD` | `modulo.md` | Catalogo de modulos, suscripciones y `require_module` (la billing no es modulo, P17) | 8 |
 | `R-AUD` | `auditoria.md` | Eventos que se registran y consulta de `audit_logs` | 10 |
 
 Los ficheros se crean en las issues de cada entidad. Un prefijo nuevo se anade

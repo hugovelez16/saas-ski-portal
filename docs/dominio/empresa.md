@@ -1,0 +1,158 @@
+# Empresa
+
+Prefijo: `R-EMP`. Tabla: `companies`. Modelo: `Company` (`backend/models.py`).
+Entidad de dominio: `backend/src/domain/entities/company.py`. Contratos JSON:
+`backend/contracts.py`.
+
+La [empresa](../glosario.md) es la escuela cliente y el tenant: la unidad de
+aislamiento de datos. Puede ser **gestionada** (`is_managed = true`) o **autonoma**
+(`is_managed = false`) y puede estar suspendida.
+
+Describe el comportamiento objetivo tras la revision de base (#114,
+2026-11-22, [revision-base.md](../producto/revision-base.md)); donde contradice
+a la seccion 4 de [logica-negocio-empresa.md](../empresa/logica-negocio-empresa.md),
+manda este fichero y esa seccion queda como historico. En la columna Codigo,
+`pendiente de implementar (issue de seguimiento)` marca que el codigo actual
+difiere de la regla; las citas se comprobaron con `grep` el 2026-11-22.
+
+Las reglas de acceso no se repiten aqui, se enlazan: roles (R-ACC-27), que ve
+cada rol (R-ACC-54 a R-ACC-57), que puede hacer el worker en cada modo
+(R-ACC-70 y R-ACC-71), edicion de tipos de turno e impuestos por el manager
+(R-ACC-72 y R-ACC-73) y alta publica B2C (R-ACC-75 a R-ACC-77).
+
+## Campos
+
+| Campo | Tipo | Obligatorio | Descripcion y restricciones |
+|---|---|---|---|
+| `id` | UUID | Si | Identificador |
+| `name` | texto | Si | 1 a 120 caracteres, sin espacios sobrantes, no unico (R-EMP-01) |
+| `is_active` | bool | Si | `true` por defecto. `false` = empresa suspendida (R-EMP-24) |
+| `is_managed` | bool | Si | `false` por defecto. `true` = gestionada, `false` = autonoma (R-EMP-28) |
+| `tax_config` | JSONB | Si en el alta | Impuestos `nombre: fraccion`; `{}` es valido (R-EMP-36) |
+| `worklog_definitions` | JSONB | Si | Tipos de turno por clave (R-EMP-40) |
+| `settings` | JSONB | Si | Solo `default_is_gross` (R-EMP-45) |
+| `created_at`, `updated_at` | fecha | Si | Los pone el ORM; sin trigger de PostgreSQL |
+
+`fiscal_id` no existe (R-ACC-57).
+
+## Reglas
+
+### Atributos
+
+| ID | Regla | Estado | Origen | Codigo |
+|---|---|---|---|---|
+| R-EMP-01 | `name` es obligatorio, de 1 a 120 caracteres tras quitar espacios sobrantes, y no es unico; `null` o cadena vacia se rechazan (422) | Cerrado | 4.1 | `backend/schemas.py:normalize_company_name` |
+| R-EMP-02 | `is_active` decide el acceso a la empresa; solo el PA lo ve (R-ACC-56) y lo cambia | Cerrado | 4.1, O14 | `backend/routers/v2/schemas.py:CompanyReduced` no lo expone |
+| R-EMP-03 | `is_managed` fija el modo de la empresa (R-EMP-28); solo el PA lo cambia | Cerrado | 4.1, S7 | `backend/routers/v2/companies.py:update_company` |
+| R-EMP-04 | `updated_at` lo actualiza el ORM; no hay trigger de PostgreSQL | Cerrado | 4.1 (P-16) | `backend/models.py` (`Company.updated_at`, `onupdate`) |
+| R-EMP-05 | `owner_id` y `fiscal_id` no existen: la responsabilidad la tienen los managers y el PA | Cerrado | O13, 4.1 | columna `fiscal_id` borrada (PR-23) |
+
+### Quien hace que con la empresa
+
+Las filas de empresa de la matriz de permisos (seccion 3 de
+[revision-base.md](../producto/revision-base.md)). Toda accion sobre una
+empresa exige ademas las comprobaciones de R-ACC-18 a R-ACC-23.
+
+| ID | Regla | Estado | Origen | Codigo |
+|---|---|---|---|---|
+| R-EMP-06 | Solo el PA crea empresas (`POST /companies`); manager y worker reciben 403 | Cerrado | 4.2 | `backend/routers/v2/companies.py:create_company` |
+| R-EMP-07 | Solo el PA edita `name` y `settings` (`PUT /companies/{id}`); manager y worker reciben 403 | Cerrado | 4.2, S1 | `backend/routers/v2/companies.py:update_company` |
+| R-EMP-08 | El manager edita `worklog_definitions` y `tax_config` de su empresa activa por un endpoint propio; la regla de acceso es R-ACC-72 y R-ACC-73. Sustituye a "un manager no edita nada de la empresa" (4.2) | Cerrado | S1 | pendiente de implementar (issue de seguimiento): hoy `PUT /companies/{id}` es solo del PA |
+| R-EMP-09 | Solo el PA suspende, reactiva y cambia `is_managed`; manager y worker reciben 403 | Cerrado | 4.2, S1 | `backend/routers/v2/companies.py:update_company` |
+| R-EMP-10 | Solo el PA borra una empresa (`DELETE /companies/{id}`) y solo si no tiene nada asociado | Cerrado | 4.2 | `backend/routers/v2/companies.py:delete_company` |
+| R-EMP-11 | Solo el PA lista todas las empresas (`GET /companies`); manager y worker reciben 403 | Cerrado | 4.2 | `backend/routers/v2/companies.py:list_companies` |
+| R-EMP-12 | PA, manager y worker listan las empresas a las que acceden (`GET /me/companies`); en la reducida para manager y worker (R-ACC-54 y R-ACC-55) | Cerrado | 4.2 | `backend/routers/v2/companies.py:read_my_companies` |
+
+### Ciclo de vida
+
+| ID | Regla | Estado | Origen | Codigo |
+|---|---|---|---|---|
+| R-EMP-13 | El alta crea la empresa sin miembros: el PA no se anade como miembro, accede por ser PA. Excepcion: el seed y el `dev_seed` dejan al PA como `manager` de su empresa inicial | Cerrado | 4.3 (P-7) | `backend/seed.py:seed_initial_data`, `backend/dev_seed.py` |
+| R-EMP-14 | El alta exige `tax_config` informado; `{}` es valido. No hay valor por defecto | Cerrado | 4.3, 4.4 | `backend/routers/v2/schemas.py` (`tax_config: TaxConfig` sin default) |
+| R-EMP-15 | Todo turno pertenece a una empresa: no existe empresa personal ni tipo "personal" (eliminado en P2). Una empresa de alta publica es una empresa normal (R-ACC-75 a R-ACC-77) | Cerrado | P2 | pendiente de implementar (issue de seguimiento): `Company.is_personal` en `backend/src/domain/entities/company.py` y `work_logs.company_id` aun admite nulos |
+| R-EMP-16 | `PUT /companies/{id}` sin cambios (incluido `{}`) responde 422; un campo con el mismo valor no cuenta como cambio | Cerrado | 4.3 (P-6) | `backend/src/application/use_cases/company/update_company.py` (`MSG_NO_CHANGES`) |
+| R-EMP-17 | Cada campo que cambia genera un evento de auditoria con valor anterior y nuevo | Cerrado | 4.3 | `backend/src/application/use_cases/company/update_company.py` |
+| R-EMP-18 | Suspender es poner `is_active = false`: lo hace solo el PA y queda en `audit_logs` quien, cuando y el motivo. No hay `archived_at` ni `archived_by` | Cerrado | 4.3 | `update_company.py` (`reason` solo con `is_active`) |
+| R-EMP-19 | Reactivar es poner `is_active = true`: solo el PA, auditado igual; la interfaz pide confirmacion | Cerrado | 4.3 | `update_company.py`; la confirmacion en el frontend: por comprobar |
+| R-EMP-20 | La baja es la suspension: no se borra nada | Cerrado | 4.3 | `backend/models.py` (`Company.is_active`) |
+| R-EMP-21 | Borrar una empresa con miembros, turnos o suscripciones responde 409 y dice que lo impide; sin cascadas. Con la empresa vacia, el borrado se audita | Cerrado | 4.3 | `backend/src/application/use_cases/company/delete_company.py` |
+| R-EMP-22 | Una empresa sin manager es un estado valido: el PA anade un manager o cambia el rol de un worker. No hay guardia de ultimo manager | Cerrado | 4.3 (E7), P3 | `backend/routers/v2/members.py:set_member_role` |
+| R-EMP-23 | Suspender o reactivar la empresa no cambia sus membresias ni los turnos; los miembros conservan su rol y su estado | Cerrado | analisis-entidad-empresa.md 10.1 | `backend/src/application/use_cases/company/update_company.py` solo cambia la columna |
+
+### Empresa suspendida
+
+| ID | Regla | Estado | Origen | Codigo |
+|---|---|---|---|---|
+| R-EMP-24 | Con `is_active = false`, manager y worker reciben 403 en todo endpoint de la empresa (empresa, miembros, tarifas, turnos, dashboard, billing); solo el PA accede (R-ACC-19, R-ACC-20) | Cerrado | 4.5 | `backend/access_policy.py:authorize_company` |
+| R-EMP-25 | A manager y worker no se les emite `cid` de una empresa suspendida y su listado la oculta; el PA la ve y puede cambiar a ella (R-ACC-39, R-ACC-40) | Cerrado | 4.5 (P-4) | `backend/auth.py:resolve_active_company`, `backend/routers/v2/companies.py:read_my_companies` |
+| R-EMP-26 | Los modulos que vienen de la empresa dejan de valer mientras esta suspendida. La regla de modulos vive en `R-MOD` (#70) | Cerrado | 4.5 | `backend/routers/modules.py` |
+| R-EMP-27 | El frontend muestra un mensaje especifico, el selector no ofrece la empresa y un 403 no se pinta como lista vacia | Cerrado | 4.5 | `frontend/src/components/company-switcher.tsx` (selector); el mensaje especifico y el 403 como lista vacia: por comprobar |
+
+### Empresa gestionada y autonoma
+
+La definicion de la bandera vive aqui. Lo que el worker puede hacer en cada
+modo vive en R-ACC-70 y R-ACC-71 y no se repite.
+
+| ID | Regla | Estado | Origen | Codigo |
+|---|---|---|---|---|
+| R-EMP-28 | `is_managed = true` es empresa gestionada; `is_managed = false` es empresa autonoma. Es el unico modo: el modo "personal" esta eliminado y no se crean banderas nuevas hasta que haya una regla propia | Cerrado | S7, S10, T1 | `backend/models.py` (`Company.is_managed`) |
+| R-EMP-29 | Solo el PA cambia `is_managed`, y el cambio se audita con valor anterior y nuevo | Cerrado | 4.5, S1 | `update_company.py` |
+| R-EMP-30 | El cambio de `is_managed` vale desde la siguiente peticion; un frontend abierto sigue mostrando el modo anterior hasta recargar | Cerrado | 4.5 | `backend/access_policy.py:can_write_work_log` lee la bandera de BD |
+| R-EMP-31 | El cambio de `is_managed` no recalcula importes ni toca turnos existentes | Cerrado | 4.5 | `update_company.py` solo cambia la columna |
+| R-EMP-32 | De gestionada a autonoma, los workers recuperan edicion y borrado de todos sus turnos, tambien de los creados por un manager; de autonoma a gestionada los pierden | Cerrado | 4.5 | `backend/access_policy.py:can_write_work_log` |
+| R-EMP-33 | Cuando llegue la facturacion, cada permiso opcional del worker cuelga del plan, no de banderas sueltas de empresa | Confirmar | S7, "Autonomia frente a plan" | no aplica |
+
+### Contratos de los campos JSON
+
+Todo JSONB con estructura fija lleva un modelo Pydantic con tipos, rangos y
+`extra="forbid"`; se valida al escribir.
+
+| ID | Regla | Estado | Origen | Codigo |
+|---|---|---|---|---|
+| R-EMP-34 | `tax_config` es un diccionario de claves libres `nombre: fraccion`; cada empresa nombra sus impuestos | Cerrado | 4.4, O9 | `backend/contracts.py:TaxConfig` |
+| R-EMP-35 | Nombre de impuesto de 1 a 50 caracteres, valor entre 0 y 1 como fraccion, maximo 20 impuestos, sin claves obligatorias; un valor de tipo incorrecto se rechaza al escribir | Cerrado | 4.4 (P-12) | `backend/contracts.py:TaxConfig`, `TAX_MAX_ENTRIES` |
+| R-EMP-36 | `tax_config: {}` es valido y significa sin impuestos; un valor 0 es valido | Cerrado | 4.4 (P-11) | `backend/contracts.py:TaxConfig` |
+| R-EMP-37 | El seed y el `dev_seed` no definen `tax_config`; las pantallas recorren los impuestos que existan en lugar de leer `social_security` | Cerrado | revision-base seccion 8 ("Seed") | pendiente de implementar (issue de seguimiento): `backend/seed.py` y `backend/dev_seed.py` siembran `social_security` 0,0648 |
+| R-EMP-38 | El uso de `tax_config` en el calculo, los overrides del miembro y el bruto/neto son de `R-TAR` (#69) | Cerrado | S2, S4, #69 | no aplica |
+| R-EMP-39 | Cada tipo de turno de `worklog_definitions` lleva `unit` (`hours`, `days` o `fixed`), `label` (1 a 60 caracteres) y `fields`; un tipo sin `unit` se rechaza y `is_range` se elimina | Cerrado | 4.4 | `backend/contracts.py:WorklogDefinition` (`unit` obligatorio); `is_range` ya no se lee, lo normaliza la migracion `b7e1a0d10005` |
+| R-EMP-40 | La clave de un tipo de turno tiene de 1 a 50 caracteres y es inmutable; solo `label` es editable | Cerrado | revision-base seccion 8 ("Tipos de turno") | `backend/contracts.py:WorklogDefinitions` valida la longitud; la inmutabilidad: pendiente de implementar (issue de seguimiento) |
+| R-EMP-41 | El backend rechaza quitar un tipo de turno con tarifas asociadas, salvo accion explicita; un script lista las tarifas huerfanas | Cerrado | revision-base seccion 8 | pendiente de implementar (issue de seguimiento) |
+| R-EMP-42 | El editor de tipos de turno deja de ser JSON crudo | Cerrado | revision-base seccion 8 | pendiente de implementar (issue de seguimiento): `frontend/src/` |
+| R-EMP-43 | `fields` de un tipo de turno se tipa o se quita al migrar Turnos | Abierto (O18) | 4.4, O18 | `backend/contracts.py:WorklogDefinition` (`list[dict]`) |
+| R-EMP-44 | La unidad "libre" (precio obligatorio, fecha de inicio obligatoria, horas opcionales) es futura y se define en #68 | Abierto (O18) | S6 | no aplica |
+
+### Ajustes de empresa (`settings`)
+
+| ID | Regla | Estado | Origen | Codigo |
+|---|---|---|---|---|
+| R-EMP-45 | `companies.settings` se mantiene y solo guarda `default_is_gross`; los futuros ajustes de empresa son claves nuevas del mismo contrato | Cerrado | S2 | `backend/contracts.py:CompanySettings` aun define otras claves: pendiente de implementar (issue de seguimiento) |
+| R-EMP-46 | `default_is_gross` es el valor de bruto/neto que se copia a los miembros nuevos; el uso en el miembro es de `R-TAR` (#69) | Cerrado | S2 | pendiente de implementar (issue de seguimiento) |
+| R-EMP-47 | `settings` se valida con `CompanySettings`; una clave desconocida se rechaza al escribir (422) | Cerrado | 4.4 | `backend/contracts.py:CompanySettings` (`extra="forbid"`) |
+| R-EMP-48 | Quedan eliminados, sin migracion de datos, `settings.modules`, `allowed_rates`, `worker_experience` y `ui_customization` (P9, S9), y `business_logic.price_type` (S3): el panel muestra siempre bruto y neto | Cerrado | P9, S3, S9 | pendiente de implementar (issue de seguimiento): `backend/contracts.py:CompanySettings` |
+| R-EMP-49 | Solo el PA edita `settings` y lo lee completo; manager y worker reciben la vista reducida (R-ACC-54, R-ACC-55); que `settings` lleva la reducida: O19 | Abierto (O19) | 4.4, O19 | `backend/routers/v2/schemas.py:CompanyReduced` |
+| R-EMP-50 | `CompanyMember.settings` se elimina; la regla es de `R-MEM` (#67) | Cerrado | P8, S9, O10 | no aplica |
+
+## Casos limite
+
+| Caso | Resultado esperado | Regla |
+|---|---|---|
+| `POST /companies` con `name` vacio o solo espacios | 422 | R-EMP-01 |
+| `POST /companies` sin `tax_config` | 422 | R-EMP-14 |
+| `POST /companies` con `tax_config: {}` | 201 | R-EMP-14, R-EMP-36 |
+| Manager pide `PUT /companies/{id}` para renombrar | 403 | R-EMP-07 |
+| `PUT /companies/{id}` con `{}` o con los valores actuales | 422 | R-EMP-16 |
+| `settings` con la clave `price_type` | 422 (clave desconocida, eliminado en S3) | R-EMP-47, R-EMP-48 |
+| `tax_config` con 21 impuestos, nombre vacio o valor 1,5 | 422 | R-EMP-35 |
+| Borrar empresa con un turno | 409 con el motivo | R-EMP-21 |
+| Suspender una empresa con miembros | `is_active = false`, auditado; los miembros conservan su membresia | R-EMP-18, R-EMP-20 |
+| Worker de empresa suspendida pide sus turnos | 403, no lista vacia | R-EMP-24, R-EMP-27 |
+| PA cambia `is_managed` de `true` a `false` | Los workers editan sus turnos desde la siguiente peticion; importes intactos | R-EMP-30 a R-EMP-32 |
+| Empresa sin manager | Estado valido | R-EMP-22 |
+
+## Relacion con otras entidades
+
+- Acceso (`R-ACC`): roles, vistas, suspension, modo y alta publica (ver arriba).
+- Membresia (`R-MEM`): `default_is_gross` se copia al miembro nuevo; borrar la empresa exige que no haya miembros.
+- Tarifa (`R-TAR`): consume `tax_config`, los tipos de turno y `default_is_gross`.
+- Modulo (`R-MOD`): la suspension anula los modulos de empresa.
+- Auditoria (`R-AUD`): suspension, reactivacion, `is_managed`, edicion y borrado.

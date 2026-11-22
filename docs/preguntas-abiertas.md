@@ -8,7 +8,7 @@ con estado `Abierto` citan aqui su ID.
 - **ID**: `O<n>`. Se conservan los IDs de la seccion 11.2 de
   [empresa/logica-negocio-empresa.md](empresa/logica-negocio-empresa.md)
   (`O1` a `O11`). `O12` y `O13` salen de los temas "sin decision" de la
-  seccion 11.1; las preguntas nuevas siguen la numeracion (`O14` a `O16`; la siguiente es `O17`).
+  seccion 11.1; las preguntas nuevas siguen la numeracion (`O14` a `O19`; la siguiente es `O20`).
   Un ID no se reutiliza.
 - **Alta**: una fila en "Abiertas" con tema, detalle, origen y las reglas o
   issues que bloquea.
@@ -21,6 +21,9 @@ con estado `Abierto` citan aqui su ID.
 | ID | Tema | Detalle | Origen | Bloquea |
 |---|---|---|---|---|
 | O16 | Registro publico B2C gratuito y capa freemium | Decidido en P1 de `producto/revision-base.md` (2026-11-22): el alta publica es un alta automatica que crea una empresa con el nombre del usuario, con el como unico worker y sin manager, con impuestos y tipos de turno prefijados y, al principio, sin acceso de manager (R-ACC-75 a 77). Se disena ya y se implementa tras migrar Usuarios y Membresias. Sigue abierto: que puede y que no puede hacer el usuario gratuito (limites, modulos, paso a un plan de pago) y si pasa a manager de su empresa (se resolveria por rol, no por modo). Issue de idea: #89 | Cuestionario de dominio 2026-11-21; FRD 1.2; P1 | R-ACC-06 (cuenta gratuita) |
+| O17 | Convivencia de `is_gross` durante su migracion | S2 pasa `is_gross` de cada `RateEntry` (por tipo de turno) a un unico `is_gross` por miembro, con `default_is_gross` en `companies.settings`. Sin decidir: que valor toma un miembro con tipos mezclados (bruto en unos, neto en otros), si el codigo lee ambos formatos durante la migracion y cuando se borra el campo de `RateEntry`. Issue de seguimiento: #116 | #66 (S2); `producto/revision-base.md` seccion 8 | R-EMP-45, R-EMP-46; `R-TAR` (#69) |
+| O18 | `fields` y unidad "libre" de los tipos de turno | `fields` de `worklog_definitions` se tipa o se quita al migrar Turnos, y la unidad "libre" (S6) se define en #68. Sin decidir ninguna de las dos | #66 (S6); 4.4 de `logica-negocio-empresa.md` | R-EMP-43, R-EMP-44; #68 |
+| O19 | Contenido de la vista reducida de la empresa | R-ACC-55 dice que la vista reducida lleva "los ajustes de interfaz", pero S9 elimina `worker_experience` y `ui_customization` y `settings` solo guarda `default_is_gross`. Sin decidir si la vista reducida lleva `settings` y que parte | #66 (S9) | R-ACC-55, R-EMP-49 |
 
 ## Cerradas
 
