@@ -392,20 +392,23 @@ def test_view_as_token_blocks_writes(client, db):
     assert resp.status_code == 403, resp.text
 
 
-def test_refresh_drops_view_as(client, db):
+# R-ver-como (issue #79, seccion 10 caso 4): el refresh conserva cid y view_as de la sesion.
+def test_refresh_keeps_view_as(client, db):
     pa = make_user(db, role="admin")
     company = make_company(db)
-    _, refresh = _login(client, pa)
+    _login(client, pa)
     resp = client.post("/auth/switch-scope", json={"companyId": str(company.id), "viewAs": "worker"})
     assert resp.status_code == 200, resp.text
+    refresh = _cookie(resp, "refresh_token")
+    assert refresh is not None, "switch-scope debe emitir refresh_token"
 
     _use_refresh(client, refresh)
     resp = client.post("/refresh-token")
 
     assert resp.status_code == 200, resp.text
     payload = _decode(_cookie(resp, "access_token"))
-    assert "view_as" not in payload
-    assert "cid" not in payload
+    _assert_cid(payload, company.id)
+    assert payload["view_as"] == "worker"
 
 
 # --- 6. Seleccion de empresa en login ---
@@ -669,3 +672,83 @@ def test_switch_scope_rejected_while_impersonating(client, db):
     resp = client.post("/auth/switch-scope", json={"companyId": str(company.id)})
 
     assert resp.status_code == 403
+
+
+# --- 10. refresh conserva el contexto de la sesion ---
+
+
+# Issue #79, seccion 9: una sesion impersonada no se puede refrescar.
+def test_impersonated_session_cannot_refresh(client, db):
+    pa = make_user(db, role="admin")
+    target = make_user(db)
+    _join(db, target, 1)
+    as_user(client, pa)
+    resp = client.post(f"/admin/impersonate/{target.id}")
+    assert resp.status_code == 200, resp.text
+    refresh = _cookie(resp, "refresh_token")
+    assert refresh is not None, "impersonate debe emitir refresh_token"
+
+    _use_refresh(client, refresh)
+    resp = client.post("/refresh-token")
+
+    assert resp.status_code == 401, resp.text
+    assert _cookie(resp, "access_token") is None
+
+
+# Issue #79, seccion 10 caso 2: el refresh de switch-scope conserva la empresa B elegida.
+def test_refresh_after_switch_scope_keeps_target_company(client, db):
+    user = make_user(db)
+    _join(db, user, 1)
+    b, _ = _join(db, user, 2)
+    _login(client, user)
+    resp = client.post("/auth/switch-scope", json={"companyId": str(b.id)})
+    assert resp.status_code == 200, resp.text
+    refresh = _cookie(resp, "refresh_token")
+    assert refresh is not None, "switch-scope debe emitir refresh_token"
+
+    _use_refresh(client, refresh)
+    resp = client.post("/refresh-token")
+
+    assert resp.status_code == 200, resp.text
+    _assert_cid(_decode(_cookie(resp, "access_token")), b.id)
+
+
+# Issue #79, seccion 10 caso 3: si la membresia de B se revoca, el refresh aplica resolve_active_company y cae en A.
+def test_refresh_after_switch_scope_falls_back_when_target_revoked(client, db):
+    user = make_user(db)
+    a, _ = _join(db, user, 1)
+    b, b_member = _join(db, user, 2)
+    _login(client, user)
+    resp = client.post("/auth/switch-scope", json={"companyId": str(b.id)})
+    assert resp.status_code == 200, resp.text
+    refresh = _cookie(resp, "refresh_token")
+    assert refresh is not None, "switch-scope debe emitir refresh_token"
+    b_member.is_active = False
+    db.commit()
+
+    _use_refresh(client, refresh)
+    resp = client.post("/refresh-token")
+
+    assert resp.status_code == 200, resp.text
+    _assert_cid(_decode(_cookie(resp, "access_token")), a.id)
+
+
+# Issue #79, seccion 10 caso 5: tras switch-scope a contexto neutro el refresh no reintroduce cid.
+def test_refresh_after_neutral_switch_scope_has_no_cid(client, db):
+    pa = make_user(db, role="admin")
+    company = make_company(db)
+    _login(client, pa)
+    resp = client.post("/auth/switch-scope", json={"companyId": str(company.id)})
+    assert resp.status_code == 200, resp.text
+    _use_token(client, _cookie(resp, "access_token"))
+
+    resp = client.post("/auth/switch-scope", json={})
+    assert resp.status_code == 200, resp.text
+    refresh = _cookie(resp, "refresh_token")
+    assert refresh is not None, "switch-scope debe emitir refresh_token"
+
+    _use_refresh(client, refresh)
+    resp = client.post("/refresh-token")
+
+    assert resp.status_code == 200, resp.text
+    _assert_cid(_decode(_cookie(resp, "access_token")), None)
