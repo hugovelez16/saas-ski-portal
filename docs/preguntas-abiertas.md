@@ -27,6 +27,8 @@ con estado `Abierto` citan aqui su ID.
 | O20 | Retencion de la auditoria | `audit_logs` no tiene politica de retencion ni tarea que purgue: los eventos se acumulan sin limite. Sin decidir durante cuanto se conservan, si se archivan o se borran, y quien lo ejecuta | #71; seccion 10 de `logica-negocio-empresa.md` | R-AUD-28 |
 | O21 | Auditoria general de turnos | Hoy los turnos solo se auditan durante la suplantacion (R-ACC-53, retirada con la suplantacion de solo lectura). Sin decidir si se audita toda creacion, edicion o borrado de turnos, con que campos y con que volumen asumible | #71; P4 | R-AUD-26, R-AUD-27 |
 | O22 | Nombre de las acciones nuevas de auditoria | Sin fijar el nombre de la accion de inicio y de fin de suplantacion (R-ACC-67) ni el de la concesion del rol de PA (R-ACC-65). Se propone el patron `<entidad>.<verbo>` de `AuditAction` | #71; P4, P5 | R-AUD-23, R-AUD-24, R-AUD-25 |
+| O23 | Turnos antiguos con `manual_override` al editar o recalcular | S6 y T2 retiran el importe manual y los turnos antiguos se leen sin migrar, pero no esta decidido que pasa al editar uno de ellos (conservar su importe, forzar el recalculo con la tarifa vigente o bloquear la edicion de datos de calculo) | #68; S6, T2 | R-TUR-18 |
+| O24 | Aceptacion de turnos, aprobacion, cierre de periodo y plus por turno | Futuro, sin diseno: en empresa gestionada el worker acepta la asignacion de turnos; aprobacion de turnos y cierre de periodo en un modulo futuro; plus con cantidad editable por turno (S5). Sin decidir estados, quien aprueba ni como afectan a los importes | #68; S5, S7; seccion 10 de `logica-negocio-empresa.md` | R-TUR-33, R-TUR-34 |
 
 ## Cerradas
 
