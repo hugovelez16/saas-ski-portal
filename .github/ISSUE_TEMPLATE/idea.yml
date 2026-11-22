@@ -1,0 +1,27 @@
+name: Idea
+description: Idea sin refinar o trabajo futuro. Pasa por triaje antes de ir a un agente.
+title: "<tipo>(<ambito>): <descripcion>"
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Problema
+      description: Que necesidad o problema resuelve.
+    validations:
+      required: true
+  - type: textarea
+    id: propuesta
+    attributes:
+      label: Propuesta
+    validations:
+      required: false
+  - type: dropdown
+    id: prioridad
+    attributes:
+      label: Prioridad sugerida
+      options:
+        - baja
+        - media
+        - alta
+    validations:
+      required: true

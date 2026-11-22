@@ -16,8 +16,47 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - **PATCH (Parche)**: Correcciones de errores y bugs compatibles.
 - **Desarrollo Inicial**: El desarrollo inicial utiliza una version principal `0` (ej: `0.y.z`).
 - **Reinicio de contadores**: Al aumentar MINOR, PATCH se restablece a 0; al aumentar MAJOR, MINOR y PATCH se restablecen a 0.
+- **Flujo de versionado (ADR-0001)**: los PR solo anaden su linea en `[Unreleased]`; la version se fija en la release (skill `release`) y cada despliegue de dev publica `X.Y.Z-dev.N`.
 
 ---
+
+## [Unreleased]
+
+## [0.28.0] - 2026-11-22
+
+### Tipo de Cambio SemVer
+
+- **MINOR**: rate limit en el gateway por IP real tras proxies de confianza (`TRUSTED_PROXIES`), correccion de seguridad de autenticacion (un refresh token ya no vale como access token, #78), nuevo flujo de trabajo con agentes, hooks y versionado (ADR-0001), y documentacion de dominio y producto.
+
+### Anadido
+
+- **Documentacion de dominio**: `docs/dominio/README.md` con el formato de reglas `R-<ENT>-nn`, los prefijos reservados y la plantilla por entidad, `docs/glosario.md` (termino, nombre en codigo y donde vive) y `docs/preguntas-abiertas.md` con las decisiones abiertas y cerradas de la seccion 11 de `logica-negocio-empresa.md` (#64).
+- **Reglas de acceso**: `docs/dominio/acceso.md` con las reglas `R-ACC-01` a `R-ACC-63` (token, comprobaciones por peticion, roles, empresa activa, "ver como", suplantacion y que ve cada rol), cada una con su implementacion; preguntas abiertas O14 y O15 y terminos nuevos en el glosario (#65).
+- **Rate limit en el gateway con IP real**: zonas `auth_zone` (10 por minuto en login, 2FA, restablecer contrasena, cambio de contrasena, suplantacion), `refresh_zone` y `api_zone` por IP real. La variable `TRUSTED_PROXIES` (stack de Komodo, sin valores en el repo) define los proxies de confianza; `gateway/docker-entrypoint.d/40-real-ip.sh` genera `real-ip.d/real-ip.conf` (tmpfs en produccion) con `real_ip_header X-Forwarded-For` y `real_ip_recursive on`. El log de acceso registra `$realip_remote_addr` y `X-Forwarded-For`. Documentado en `docs/operaciones/gateway-ip-real.md` (#61).
+- **Revision de base del producto**: `docs/producto/revision-base.md` (estado Propuesta) con el producto en una pagina, el modelo minimo, la matriz de permisos con la regla de concesion, la configuracion por capas, la lista de recortes, las reglas de estructura para la migracion hexagonal y un cuestionario de 17 preguntas (#102).
+
+### Cambiado
+
+- **Cuestionario de dominio (2026-11-21)**: `docs/preguntas-abiertas.md` cierra O1, O4 (migracion por contextos a `backend/src/` y `crud.py` se vacia poco a poco), O10 a O15 y abre O16 (registro publico B2C gratuito y capa freemium); `R-ACC-56` y `R-ACC-60` pasan a `Cerrado` (el manager solo ve su empresa activa y no ve `is_active`), `R-ACC-06` cita O16, y `CLAUDE.md` deja de decir que la v2 es solo del area empresa (#90).
+- **Flujo de trabajo con agentes**: issues como unica cola de trabajo (plantillas, labels, Project "saas-ski-portal" y `scripts/project-estado.sh`), skills `issue-create`, `issue-triage`, `issue-start`, `issue-work` y `release`, hooks locales de proteccion (`proteger-ramas`, `guardas-git`, `bloquear-env`, `.githooks/pre-push`) con sus tests en `tests/hooks/`, y documentacion en `docs/flujo/`, `docs/decisiones/` (ADR-0001 versionado y ADR-0002 ramas, PR y merge) y `docs/README.md`.
+- **Versionado (ADR-0001)**: `deploy-dev` etiqueta cada despliegue como `X.Y.Z-dev.<run_number>` (imagenes `dev-v...` y tag git) en lugar de reutilizar `dev-vX.Y.Z`. Los PR dejan de subir la version.
+- **`CLAUDE.md`**: autonomia del agente de `issue-work` (commit, PR y merge commit a `develop` con checks en verde y veredicto APTO), nuevo versionado y nueva lista de subagentes.
+- **Suite del backend mas rapida**: bcrypt baja a 4 rondas solo en `backend/tests/conftest.py` (la suite en SQLite pasa de 7m20s a 52s) y el job "Backend QA" ejecuta los tests con `pytest-xdist` (`-n auto`), dejando en serie los tests que hacen DDL. Se elimina el paso muerto `pytest test_*.py || true` de `ci.yml` (#57).
+- **Delegacion en subagentes**: `CLAUDE.md` fija que el orquestador delega lo mecanico en haiku y lo que exige criterio en sonnet, prohibe los forks y exige `model` explicito al delegar cuando el frontmatter del agente no lo fija (#77).
+
+### Corregido
+
+- **Cierre de `issue-work`**: tras el merge a `develop` la skill cierra la issue si sigue abierta (`Closes` solo actua en la rama por defecto), la mueve a "Hecho", publica el informe en la issue y archiva su propio worktree con Orca; sin merge no archiva. `docs/flujo/orca.md` actualizado (#83).
+- **Hooks de agentes**: `proteger-ramas` expande `~`, `$HOME` y las variables asignadas en el mismo comando y deja de bloquear escrituras fuera del repo; `bloquear-env` ignora los filtros jq (#74).
+- **Hooks de agentes**: `bloquear-env` ya no falla cerrado con codigo en linea que lleva corchetes (`[-60:]`, `[z-a]`): un glob con clase de caracteres invalida se evalua como texto literal. Las clases POSIX (`[[:alpha:]]`), colaciones, equivalencias y `]` inicial (`.e[]n]v`) ya no eluden el bloqueo: se tratan como cualquier caracter (#81).
+
+### Seguridad
+
+- **Refresh token como access token**: `get_current_user` y `get_verified_user` responden 401 a cualquier JWT cuyo claim `type` no sea `access` (refresh, reset o sin `type`), tanto en la cabecera `Authorization: Bearer` como en la cookie `access_token`. Antes un refresh token se aceptaba como access con `scope = full` aunque su sesion estuviera revocada (#78).
+
+### Eliminado
+
+- Subagentes `planner`, `reviewer` (fusionado en `code-reviewer`), `devops`, `b2b-monetization-strategist`, `build-error-resolver` y `e2e-runner`, y 21 skills genericas o duplicadas sin uso.
 
 ## [0.27.0] - 2026-11-03
 

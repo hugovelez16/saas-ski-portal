@@ -55,7 +55,7 @@ Si hay novedades en el remoto pero el usuario ya estuvo tocando código en local
    * Archivos locales que están modificados actualmente.
 3. Propón las opciones seguras para proceder:
    * **Opción 1:** Hacer un `git stash`, aplicar `git pull` y luego `git stash pop`.
-   * **Opción 2:** Usar la skill `smart-commit` para guardar primero lo local antes de traer lo remoto.
+   * **Opción 2:** Si estás en `develop` (el checkout principal no debe llevar cambios y los hooks bloquean `git commit` ahí), llevar los cambios a un worktree propio: `git stash`, crear el worktree de la rama de trabajo y aplicar allí `git stash pop`. En una rama de trabajo, usar `smart-commit` antes de traer lo remoto.
 
 ---
 

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Hook git pre-push: rechaza el push directo a main y develop (CLAUDE.md regla 2).
+# Se activa con: git config core.hooksPath .githooks
+set -euo pipefail
+
+while read -r _ref_local _sha_local ref_remota _sha_remota; do
+  case "$ref_remota" in
+    refs/heads/main | refs/heads/develop)
+      echo "[ERROR] push directo a ${ref_remota#refs/heads/} bloqueado; usa un PR" >&2
+      exit 1
+      ;;
+  esac
+done
+exit 0

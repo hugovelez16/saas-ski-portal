@@ -20,12 +20,42 @@ jobs:
       - name: Checkout Repositorio
         uses: actions/checkout@v4
 
-      - name: Leer Version SemVer
+      # ADR-0001: package.json guarda la proxima version; cada despliegue de dev
+      # publica una prerelease unica X.Y.Z-dev.<run_number>.
+      - name: Calcular Version de Desarrollo
         id: versioning
         run: |
-          VERSION=$(grep '"version"' package.json | head -1 | cut -d'"' -f4)
-          echo "Version detectada: ${VERSION}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          BASE=$(node -p "require('./package.json').version")
+          VERSION="${BASE}-dev.${GITHUB_RUN_NUMBER}"
+          echo "[INFO] Version de dev: ${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  tag:
+    name: Crear Tag Git de la Version de Desarrollo
+    # Va despues del despliegue: un fallo al crear el tag no bloquea dev.
+    needs: [get-version, deploy-komodo]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repositorio
+        uses: actions/checkout@v4
+
+      - name: Crear y Publicar Tag
+        env:
+          VERSION: ${{ needs.get-version.outputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$ ]]; then
+            echo "[ERROR] Version con formato inesperado: ${VERSION}"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" > /dev/null 2>&1; then
+            echo "[INFO] El tag v${VERSION} ya existe"
+            exit 0
+          fi
+          git tag "v${VERSION}"
+          git push origin "refs/tags/v${VERSION}"
+          echo "[INFO] Tag v${VERSION} publicado"
 
   build-backend:
     name: Compilar y Publicar Backend Desarrollo
