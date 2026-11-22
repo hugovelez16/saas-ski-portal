@@ -149,14 +149,14 @@ usuarios demo (R-ACC-69).
 ### Modo de empresa y ajustes
 
 `is_managed` se mantiene (S7). La empresa **gestionada** es la `is_managed =
-true`; la **libre** es la `is_managed = false` (la "autonoma" del glosario). No
+true`; la **autonoma** es la `is_managed = false` (ver el glosario). No
 hay modo "personal". Detalle en la seccion 8 de
 [revision-base.md](../producto/revision-base.md).
 
 | ID | Regla | Estado | Origen | Codigo |
 |---|---|---|---|---|
 | R-ACC-70 | En una empresa gestionada el worker es espectador en todo: no crea, edita ni borra turnos y no edita su tarifa, su bruto/neto ni sus impuestos (403) | Cerrado | S7, T1, P7 | `backend/access_policy.py:can_write_work_log`, `can_edit_member_rates` |
-| R-ACC-71 | En una empresa libre el worker crea, edita y borra sus propios turnos y edita su tarifa, su bruto/neto y sus impuestos propios; no toca los de otros | Cerrado | S7, T1, P7 | `backend/access_policy.py:can_write_work_log`, `can_edit_member_rates` |
+| R-ACC-71 | En una empresa autonoma el worker crea, edita y borra sus propios turnos y edita su tarifa, su bruto/neto y sus impuestos propios; no toca los de otros | Cerrado | S7, T1, P7 | `backend/access_policy.py:can_write_work_log`, `can_edit_member_rates` |
 | R-ACC-72 | El manager edita los tipos de turno y los impuestos (`worklog_definitions`, `tax_config`) de su empresa activa mediante un endpoint propio. El PA los crea en el alta | Cerrado | S1 | objetivo (hoy solo el PA edita la empresa) |
 | R-ACC-73 | El endpoint de R-ACC-72 no acepta `is_active` ni `is_managed`: solo el PA los cambia | Cerrado | S1 | objetivo |
 | R-ACC-74 | El servidor rechaza un override de impuesto de un miembro cuyo nombre no exista en los impuestos de la empresa; al quitar un impuesto de la empresa se limpian los overrides huerfanos | Cerrado | S4 | objetivo |
@@ -185,7 +185,7 @@ B2C no es otro producto: es un alta automatica.
 | PA suplantando a un worker hace `POST /work-logs` | 403 de solo lectura | R-ACC-66 |
 | Manager intenta cambiar el rol de una membresia | 403 | R-ACC-64 |
 | Worker de empresa gestionada intenta editar su tarifa | 403 | R-ACC-70 |
-| Worker de empresa libre edita su tarifa | 2xx | R-ACC-71 |
+| Worker de empresa autonoma edita su tarifa | 2xx | R-ACC-71 |
 | Membresia degradada a worker | Efecto en la siguiente peticion (se lee de BD, sin cache) | R-ACC-79 |
 | Unico PA activo se desactiva | 403 (a si mismo) | R-ACC-31 |
 | Otro PA desactiva al unico PA activo restante | 409 | R-ACC-32 |
