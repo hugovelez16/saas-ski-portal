@@ -66,6 +66,30 @@ pies de atribucion ("Generated with Claude Code" o similares) en commits ni PR.
 En el servidor (GitHub): `develop` exige los checks de CI, rama al dia,
 `enforce_admins` y prohibe force-push.
 
+### CI: jobs saltados y marca de cache
+
+Los checks obligatorios son "Backend QA (Ruff, Migraciones, Pytest)" y
+"Frontend QA (Lint, Types, Tests, Build)". El job `changes` detecta los ficheros
+del PR (`dorny/paths-filter`) y cada job se salta con `if:` cuando no aplica; un
+job saltado cuenta como satisfecho para la proteccion de ramas. Falla cerrado: si
+`changes` falla, los dos jobs corren completos en lugar de saltarse.
+
+- Backend QA corre si cambian `backend/**`, `docker-compose*.yml`, `requirements*`
+  o `.github/workflows/ci.yml`.
+- Frontend QA corre si cambian `frontend/**`, `.github/workflows/ci.yml`,
+  `tests/hooks/**`, `.claude/hooks/**` o `.githooks/**` (los tests de los hooks
+  viven en este job).
+- Si el job corre, calcula un hash de esas mismas entradas y busca una marca
+  `actions/cache` con clave `<job>-ok-<hash>`. Si existe, termina en verde sin
+  ejecutar los pasos pesados. La marca solo se guarda al final, cuando todos los
+  pasos pasaron: un fallo nunca deja marca. Las caches de `actions/cache` de un PR
+  solo las ve ese PR, asi que la marca cubre los `gh pr update-branch` y las
+  repeticiones dentro del mismo PR, no PR distintos.
+- Forzar una ejecucion completa: lanzar el workflow a mano
+  (`gh workflow run ci.yml --ref <rama>`, ignora filtro y marca) o borrar la marca
+  (`gh cache list --key backend-qa-ok` y `gh cache delete <clave>`) y relanzar el
+  job.
+
 En local:
 
 - Hooks de Claude (`.claude/settings.json`):
