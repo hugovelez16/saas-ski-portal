@@ -51,6 +51,8 @@ jobs:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
+          build-args: |
+            APP_VERSION=${{ needs.get-version.outputs.version }}
           tags: |
             ${{ env.IMAGE_BASE }}/backend:latest
             ${{ env.IMAGE_BASE }}/backend:v${{ needs.get-version.outputs.version }}
@@ -84,6 +86,7 @@ jobs:
             NEXT_PUBLIC_POSTHOG_KEY=${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
             NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com
             NEXT_PUBLIC_CONTACT_EMAIL=${{ vars.NEXT_PUBLIC_CONTACT_EMAIL }}
+            APP_VERSION=${{ needs.get-version.outputs.version }}
           tags: |
             ${{ env.IMAGE_BASE }}/frontend:latest
             ${{ env.IMAGE_BASE }}/frontend:v${{ needs.get-version.outputs.version }}
