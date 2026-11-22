@@ -42,6 +42,26 @@ def test_client_uses_db_override(client):
     assert response.status_code == 200
 
 
+# /health expone la version desplegada leida de APP_VERSION en cada peticion
+def test_health_sin_app_version_devuelve_dev(client, monkeypatch):
+    monkeypatch.delenv("APP_VERSION", raising=False)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "version": "dev"}
+
+
+# Con APP_VERSION definida, /health devuelve esa version
+def test_health_con_app_version_devuelve_la_version(client, monkeypatch):
+    monkeypatch.setenv("APP_VERSION", "1.2.3")
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "version": "1.2.3"}
+
+
 def test_fake_redis_is_installed():
     assert redis_config.redis_manager.set("k", "v")
     assert redis_config.redis_manager.get("k") == "v"

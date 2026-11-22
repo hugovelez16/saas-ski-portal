@@ -11,3 +11,5 @@ export const APP_ID = "vesotel-app-v1";
 export const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
 // Correo de contacto mostrado a usuarios sin empresa. Sin valor por defecto: si falta, no se muestra.
 export const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL || undefined;
+// Version desplegada de la aplicacion. Se fija en el build (ARG APP_VERSION del Dockerfile).
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
