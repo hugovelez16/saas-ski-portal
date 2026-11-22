@@ -22,6 +22,9 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ## [Unreleased]
 
+### Cambiado
+- `deploy-prod` deja de desplegar por webhook y crea el tag git `vX.Y.Z`; `docker-compose.prod.yml` exige `IMAGE_TAG`, y el despliegue y el rollback de produccion se hacen cambiando esa variable en Komodo (`docs/operaciones/despliegue.md`, ADR-0001) (#111)
+
 ## [0.28.0] - 2026-11-22
 
 ### Tipo de Cambio SemVer
