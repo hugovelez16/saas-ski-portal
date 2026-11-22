@@ -8,7 +8,7 @@ con estado `Abierto` citan aqui su ID.
 - **ID**: `O<n>`. Se conservan los IDs de la seccion 11.2 de
   [empresa/logica-negocio-empresa.md](empresa/logica-negocio-empresa.md)
   (`O1` a `O11`). `O12` y `O13` salen de los temas "sin decision" de la
-  seccion 11.1; las preguntas nuevas siguen la numeracion (`O14` a `O22`; la siguiente es `O23`).
+  seccion 11.1; las preguntas nuevas siguen la numeracion (`O14` a `O25`; la siguiente es `O26`).
   Un ID no se reutiliza.
 - **Alta**: una fila en "Abiertas" con tema, detalle, origen y las reglas o
   issues que bloquea.
@@ -29,6 +29,7 @@ con estado `Abierto` citan aqui su ID.
 | O22 | Nombre de las acciones nuevas de auditoria | Sin fijar el nombre de la accion de inicio y de fin de suplantacion (R-ACC-67) ni el de la concesion del rol de PA (R-ACC-65). Se propone el patron `<entidad>.<verbo>` de `AuditAction` | #71; P4, P5 | R-AUD-23, R-AUD-24, R-AUD-25 |
 | O23 | Turnos antiguos con `manual_override` al editar o recalcular | S6 y T2 retiran el importe manual y los turnos antiguos se leen sin migrar, pero no esta decidido que pasa al editar uno de ellos (conservar su importe, forzar el recalculo con la tarifa vigente o bloquear la edicion de datos de calculo) | #68; S6, T2 | R-TUR-18 |
 | O24 | Aceptacion de turnos, aprobacion, cierre de periodo y plus por turno | Futuro, sin diseno: en empresa gestionada el worker acepta la asignacion de turnos; aprobacion de turnos y cierre de periodo en un modulo futuro; plus con cantidad editable por turno (S5). Sin decidir estados, quien aprueba ni como afectan a los importes | #68; S5, S7; seccion 10 de `logica-negocio-empresa.md` | R-TUR-33, R-TUR-34 |
+| O25 | Tabla 5 de `logica-negocio-empresa.md` desactualizada | La tabla 5 (membresia) dice que solo el PA anade, desactiva y reactiva miembros, que el rol admin de empresa existe como reservado y que reactivar vuelve siempre como worker. Contradice a P3, P6 y a la reactivacion de 2026-11-22: el manager anade, desactiva y reactiva workers, no hay admin de empresa y reactivar no cambia el rol. Manda `dominio/membresia.md`; la seccion queda como historico | #67; P3, P6 | R-MEM-04, R-MEM-10, R-MEM-11, R-MEM-12 |
 
 ## Cerradas
 
@@ -44,9 +45,9 @@ de `logica-negocio-empresa.md` hasta que pase a su fichero de `dominio/`.
 | O5 | Vista reducida del worker (D5) | Se le da lo que necesita su frontend: `id`, `name`, `is_managed`, ajustes de interfaz y, en solo lectura, `worklog_definitions` y `tax_config` | 9 |
 | O6 | Totales del dashboard | Los totales incluyen a los miembros inactivos y el desglose tambien, marcados como inactivos | 11.2 |
 | O7 | Confirmaciones pendientes de acceso | Opcion A: el token lleva solo `sub`, `cid`, `scope` y `exp`; rol e `is_admin` se leen de BD | 3.1 y 3.2 |
-| O8 | Reactivar una membresia | Vuelve siempre como worker | 5 |
+| O8 | Reactivar una membresia | Vuelve siempre como worker. Cambiada 2026-11-22: un worker desactivado lo reactivan el manager y el PA, y la reactivacion no cambia el rol (el manager desactivado lo reactiva solo el PA, por confirmar) | R-MEM-11, R-MEM-12 |
 | O9 | Nombre de la clave de IRPF | Claves libres de impuestos: el override usa la misma clave que `tax_config` | 4.4 |
-| O10 | `CompanyMember.settings` | Aparcado: no se usa hasta que haya un caso concreto. El campo queda reservado. Cerrada de nuevo 2026-11-22: `CompanyMember.settings` se elimina, con su endpoint, caso de uso y validador, sin migracion de datos (P8, S9) | Este fichero; sin regla `R-MEM` que lo use; `producto/revision-base.md` P8 y S9 |
+| O10 | `CompanyMember.settings` | Aparcado: no se usa hasta que haya un caso concreto. El campo queda reservado. Cerrada de nuevo 2026-11-22: `CompanyMember.settings` se elimina, con su endpoint, caso de uso y validador, sin migracion de datos (P8, S9) | R-MEM-22; `producto/revision-base.md` P8 y S9 |
 | O11 | Billing avanzado | Aplazado hasta que lo pida un cliente. No se vende hoy: `planes-y-precios.md` no lo incluye | `planes-y-precios.md`; glosario (Billing avanzado) |
 | O12 | Plan o limites por empresa (D16) | Si, modelados con `module_subscriptions` y limites por modulo, cuando exista facturacion por plan | Este fichero; sin implementar |
 | O13 | `owner_id` de la empresa | No se retoma: la responsabilidad la tienen los managers y el administrador de plataforma | Este fichero |

@@ -67,7 +67,7 @@ endpoints de una empresa, a traves de `deps.authorize`.
 | R-ACC-21 | **Retirada (P11, 2026-11-22), sustituida por R-ACC-79.** El rol sale de la membresia en BD con cache Redis de 60 s; si Redis falla o no tiene el dato, se lee de BD y la peticion sigue | Retirada | 3.2 n.6, P11 | `backend/routers/deps.py:load_company_facts`, `backend/access_cache.py` (hasta que se quite la cache) |
 | R-ACC-22 | **Retirada (P11, 2026-11-22), sustituida por R-ACC-79.** Cambiar rol o estado de una membresia, o `is_active` de una empresa, invalida su cache de acceso al momento | Retirada | 3.2, P11 | `SqlAlchemyCompanyMemberRepository.save` y `SqlAlchemyCompanyRepository.save` (`backend/src/infrastructure/persistence/sqlalchemy/repositories/company_repository.py`), `backend/crud.py:join_company` |
 | R-ACC-23 | Si el rol no alcanza el minimo del endpoint, responde 403 | Cerrado | 3.2 n.7 | `backend/access_policy.py:authorize_company` |
-| R-ACC-24 | En un endpoint de pago sin el modulo en la empresa ni en el usuario responde 403; el PA actuando pasa | Cerrado | 3.2 n.8 | `backend/routers/deps.py:require_module`, `backend/routers/deps.py:authorize` |
+| R-ACC-24 | En un endpoint de pago sin el modulo suscrito por la empresa responde 403; el PA actuando pasa. Solo hay suscripciones de empresa (P10) | Cerrado | 3.2 n.8, P10 | `backend/routers/deps.py:require_module`, `backend/routers/deps.py:authorize`; hoy cuenta tambien el modulo del usuario: objetivo |
 | R-ACC-25 | El bypass del PA vive en un solo punto; ningun handler repite `if not is_platform_admin` | Confirmar | P2 (direccion cerrada, forma por confirmar) | `backend/access_policy.py:authorize_company`, `backend/routers/deps.py:acting_platform_admin` |
 | R-ACC-79 | El rol y el estado de la membresia se leen de BD en cada peticion, sin cache; un cambio de rol o de estado surte efecto en la siguiente peticion. Sustituye a R-ACC-21 y R-ACC-22 | Cerrado | P11 | objetivo (hoy hay cache Redis de 60 s) |
 
@@ -135,14 +135,14 @@ usuarios demo (R-ACC-69).
 | ID | Regla | Estado | Origen | Codigo |
 |---|---|---|---|---|
 | R-ACC-54 | La vista completa de la empresa solo la recibe el PA actuando; manager y worker reciben la reducida. Nota 2026-11-22: se quita "PA en ver como" porque "ver como" se retira (P4) | Cerrado | 9, O5, P4 | `backend/routers/v2/companies.py:read_company`, `backend/routers/v2/companies.py:read_my_companies` |
-| R-ACC-55 | La vista reducida lleva `id`, `name`, `is_managed`, los ajustes de interfaz y, en solo lectura, `worklog_definitions` y `tax_config` | Cerrado | 9, O5 | `backend/routers/v2/schemas.py:CompanyReduced` |
+| R-ACC-55 | La vista reducida lleva `id`, `name`, `is_managed` y, en solo lectura, `worklog_definitions` y `tax_config`; sin ajustes de interfaz, eliminados (S9); que parte de `settings` lleva esta abierto (O19) | Cerrado | 9, O5, S9 | `backend/routers/v2/schemas.py:CompanyReduced` |
 | R-ACC-56 | `is_active` de la empresa solo lo ve el PA; manager y worker no lo ven | Cerrado | 9, O14 | la vista reducida (`backend/routers/v2/schemas.py:CompanyReduced`) no lo expone |
 | R-ACC-57 | `fiscal_id` no existe en ninguna respuesta | Cerrado | 9 | columna borrada (PR-23, `backend/scripts/repair_fiscal_id.py`) |
 | R-ACC-58 | Las tarifas de todos los miembros las ven PA y manager; el worker recibe 403 | Cerrado | 9 | `backend/routers/v2/members.py:list_rates` |
 | R-ACC-59 | Empresas de otro usuario: el PA ve todas; el worker recibe 403 | Cerrado | 9 | `backend/routers/v2/companies.py:read_user_companies` |
 | R-ACC-60 | Empresas de otro usuario, para el manager: solo ve su empresa activa y ninguna otra del usuario | Cerrado | 9, O14 | `read_user_companies` limita a la empresa del token |
 | R-ACC-61 | Para quien no es PA, empresa inexistente, ajena o sin membresia responde el mismo 403; el 404 solo lo ve el PA | Cerrado | 9 (P-5) | `backend/access_policy.py:authorize_company` |
-| R-ACC-62 | El parte diario del worker no incluye las claves de importe; el de manager y PA si | Cerrado | 9 (P-14) | `backend/routers/companies.py:read_daily_report` |
+| R-ACC-62 | El parte diario del worker no incluye las claves de importe (en el modulo, solo descripcion, horas y tipo de turnos ajenos, R-ACC-78); el de manager y PA si | Cerrado | 9 (P-14), S8 | `backend/routers/companies.py:read_daily_report` |
 | R-ACC-63 | Los 403 no devuelven datos internos (`is_manager`, ids de usuario); el `detail` es un texto claro | Cerrado | 9 | `backend/access_policy.py` (`MSG_*`) |
 | R-ACC-78 | En el parte diario (modulo `worker_daily_report`) el worker ve descripcion, horas y tipo de los turnos ajenos, sin importes, y no puede abrir el detalle de un turno ajeno. Un worker con el modulo ve la lista de empresas (por comprobar: hoy el filtro exige manager) | Cerrado | S8 | objetivo; ver R-ACC-62 |
 
@@ -194,6 +194,6 @@ B2C no es otro producto: es un alta automatica.
 ## Relacion con otras entidades
 
 - Empresa (`R-EMP`): suspension e `is_managed` alimentan las comprobaciones de R-ACC-19 y las de escritura.
-- Membresia (`R-MEM`): rol y `is_active` deciden R-ACC-18, R-ACC-21 y R-ACC-23.
+- Membresia (`R-MEM`): rol y `is_active` deciden R-ACC-18, R-ACC-23 y R-ACC-79.
 - Modulo (`R-MOD`): `require_module` aplica R-ACC-24.
 - Auditoria (`R-AUD`): R-ACC-53 escribe en `audit_logs`.
