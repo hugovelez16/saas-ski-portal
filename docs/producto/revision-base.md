@@ -151,9 +151,7 @@ empresa para la misma clave.
 | Plataforma (futuro) | Limites del plan (monitores, responsables) | PA | O12. Se modelan con suscripciones cuando haya facturacion |
 | Empresa | `name`, `is_active`, `is_managed` | PA | Columnas |
 | Empresa | `tax_config`, `worklog_definitions` | PA | JSONB con contrato |
-| Empresa | `settings.business_logic.price_type` | PA | Solo afecta a la vista del dashboard |
-| Empresa | `settings.worker_experience` (modo de entrada, importe a mano) | PA | |
-| Empresa | `settings.ui_customization.labels` | PA | |
+| Empresa | `settings.default_is_gross` (bruto/neto por defecto, se copia a los miembros nuevos; unico ajuste de `settings`, validado por `CompanySettings`, S2) | PA | Los demas ajustes (`price_type`, `worker_experience`, `ui_customization`) estan eliminados (S3, S9) |
 | Empresa | Modulos contratados (`module_subscriptions`) | PA | Unica fuente de modulos |
 | Miembro | Rol, `is_active`, `sort_order` | PA (alta de worker: P6) | |
 | Miembro | `rates_config` (tarifa, bruto o neto, `tax_overrides`, `extras`) | PA, manager; worker en autonoma (P7) | |
@@ -478,13 +476,14 @@ issue de seguimiento (ver el PR de #114).
 
 ### Decisiones T
 
-El texto de la issue #114 identifica T1, T2, T3 y T5; no identifica T4, y no se
-le asigna contenido aqui.
+El texto de la issue #114 identifica T1, T2, T3 y T5; T4 se anade en #66 con la
+decision de la matriz de permisos.
 
 | ID | Decision |
 |---|---|
 | T1 | Ver S7 |
 | T2 | Ver S6 |
+| T4 | En gestionada el worker es espectador en todo, impuestos incluidos; en libre edita su tarifa, su bruto/neto y sus impuestos propios (R-ACC-70 y R-ACC-71) |
 | T3 | Al cambiar de tipo o recalcular, aviso antes de guardar con importe actual frente a nuevo y confirmacion; "recalcular" como accion explicita propia (hoy solo existe dentro del dialogo de importe manual). Editar un turno del mismo tipo sigue usando la instantanea (`calculation_snapshot`) |
 | T5 | Ver S3 |
 
