@@ -53,7 +53,9 @@ class SqlAlchemyUserRepository(UserRepositoryPort):
         return SqlAlchemyUserMapper.to_domain(orm_user) if orm_user else None
 
     async def get_by_email(self, email: str) -> Optional[User]:
-        orm_user = self.db.query(models.User).filter(models.User.email == email).first()
+        from sqlalchemy import func
+
+        orm_user = self.db.query(models.User).filter(func.lower(models.User.email) == email.strip().lower()).first()
         return SqlAlchemyUserMapper.to_domain(orm_user) if orm_user else None
 
     async def list_users(self, skip: int = 0, limit: int = 100) -> List[User]:

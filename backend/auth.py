@@ -9,7 +9,7 @@ import hashlib
 import os
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import access_policy
 import crud
@@ -161,7 +161,7 @@ def get_password_hash(password):
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     """Creates a JWT access token with an expiration time."""
     to_encode = data.copy()
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     # Added jti for revocation support
     to_encode.update({"exp": expire, "iat": now, "type": "access", "jti": secrets.token_hex(16)})
@@ -171,7 +171,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 def create_refresh_token(data: dict):
     """Creates a long-lived JWT refresh token."""
     to_encode = data.copy()
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "iat": now, "type": "refresh", "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
@@ -183,7 +183,7 @@ _consumed_reset_jtis = set()
 def create_reset_token(email: str) -> str:
     """Creates a short-lived JWT reset token (valid for 30 minutes)."""
     to_encode = {"sub": email, "type": "reset"}
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     expire = now + timedelta(minutes=30)
     to_encode.update({"exp": expire, "iat": now, "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
@@ -536,15 +536,15 @@ def hash_refresh_token(refresh_token: str) -> str:
 
 
 def _extract_refresh_expires_at(refresh_token: str) -> datetime:
-    """Extrae la caducidad UTC naive del JWT de refresh o usa el TTL por defecto."""
+    """Extrae la caducidad UTC del JWT de refresh o usa el TTL por defecto."""
     try:
         claims = jwt.get_unverified_claims(refresh_token)
         exp = claims.get("exp")
-        if isinstance(exp, (int, float)):
-            return datetime.utcfromtimestamp(exp)
+        if isinstance(exp, (int, float)) and not isinstance(exp, bool):
+            return datetime.fromtimestamp(exp, UTC)
     except JWTError:
         pass
-    return datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    return datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
 
 
 def create_session(
@@ -561,7 +561,7 @@ def create_session(
         expires_at=expires_at or _extract_refresh_expires_at(refresh_token),
         device_name=device_name,
         ip_address=ip_address,
-        last_active=datetime.utcnow(),
+        last_active=datetime.now(UTC),
     )
     db.add(session)
     db.commit()
@@ -569,7 +569,7 @@ def create_session(
 
 
 def get_session_by_token(db: Session, refresh_token: str):
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     token_hash = hash_refresh_token(refresh_token)
     return (
         db.query(models.UserSession)
@@ -595,7 +595,7 @@ def revoke_session(db: Session, refresh_token: str):
     )
     if session:
         session.is_active = False
-        session.revoked_at = datetime.utcnow()
+        session.revoked_at = datetime.now(UTC)
         db.commit()
     return session
 
@@ -609,7 +609,7 @@ def blacklist_token(token: str):
         jti = payload.get("jti")
         exp = payload.get("exp")
         if jti and exp:
-            now = datetime.utcnow().timestamp()
+            now = datetime.now(UTC).timestamp()
             ttl = int(exp - now)
             if ttl > 0:
                 redis_manager.set(f"bl_{jti}", "1", ex=ttl)

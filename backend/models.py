@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from database import Base
 from sqlalchemy import (
@@ -20,7 +20,11 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
 
 class UserRole(str, enum.Enum):
@@ -47,6 +51,7 @@ class User(Base):
     """
 
     __tablename__ = "users"
+    __table_args__ = (Index("uq_users_email_lower", text("lower(email)"), unique=True),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, nullable=False)
@@ -63,18 +68,24 @@ class User(Base):
     is_2fa_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
     otp_secret = Column(String, nullable=True)  # Cifrado con Fernet (ENCRYPTION_KEY) via auth.encrypt_secret
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=_utcnow,
+        onupdate=_utcnow,
         server_default=text("CURRENT_TIMESTAMP"),
     )
 
     work_logs = relationship("WorkLog", back_populates="user")
     company_memberships = relationship("CompanyMember", back_populates="user")
     sessions = relationship("UserSession", back_populates="user")
+
+    @validates("email")
+    def _normalize_email(self, _key: str, value: str | None) -> str | None:
+        return value.strip().lower() if isinstance(value, str) else value
 
 
 # Legacy UserDevice model removed in favor of UserSession
@@ -100,12 +111,14 @@ class Company(Base):
     is_managed = Column(Boolean, default=False, server_default="false", nullable=False)
 
     settings = Column(JSONB, default=dict)  # Global company settings
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=_utcnow,
+        onupdate=_utcnow,
         server_default=text("CURRENT_TIMESTAMP"),
     )
 
@@ -132,12 +145,14 @@ class CompanyMember(Base):
     # Structure example: { "particular": { "base_rate": 25.0, "is_gross": true, "tax_overrides": {...} } }
 
     settings = Column(JSONB, default=dict)  # User-specific UI/Feature overrides
-    joined_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    joined_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=_utcnow,
+        onupdate=_utcnow,
         server_default=text("CURRENT_TIMESTAMP"),
     )
 
@@ -181,12 +196,14 @@ class WorkLog(Base):
     calculation_snapshot = Column(JSONB, nullable=True)
     # Stores a copy of rates, definitions and logic used for this calculation.
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=_utcnow,
+        onupdate=_utcnow,
         server_default=text("CURRENT_TIMESTAMP"),
     )
 
@@ -208,14 +225,18 @@ class UserSession(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
 
     refresh_token_hash = Column(String(64), unique=True, nullable=False)
-    expires_at = Column(DateTime, nullable=True)
-    revoked_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
     device_name = Column(String, nullable=True)
     ip_address = Column(String, nullable=True)
 
     is_active = Column(Boolean, nullable=False, default=True, server_default="true")
-    last_active = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    last_active = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
 
     user = relationship("User", back_populates="sessions")
 
@@ -234,7 +255,9 @@ class AuditLog(Base):
     new_value = Column(JSONB, nullable=True)
     reason = Column(Text, nullable=True)
     extra_data = Column(JSONB, default=dict)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
 
 
 class SubscriptionScope(str, enum.Enum):
@@ -261,7 +284,9 @@ class AppModule(Base):
     code_name = Column(String, unique=True, nullable=False)  # e.g. "worker_daily_report", "export_pdf"
     name = Column(String, nullable=False)  # Display name
     description = Column(Text, nullable=True)
-    is_active = Column(Boolean, nullable=False, default=True, server_default="true")  # Is the module available to subscribe to?
+    is_active = Column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )  # Is the module available to subscribe to?
 
     # Which scopes can subscribe to this module?
     # "both" means company OR user can subscribe.
@@ -272,12 +297,14 @@ class AppModule(Base):
     # Future: pricing info (not used yet)
     price_monthly = Column(Numeric(10, 2), nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=_utcnow,
+        onupdate=_utcnow,
         server_default=text("CURRENT_TIMESTAMP"),
     )
 
@@ -314,16 +341,18 @@ class ModuleSubscription(Base):
     status = Column(Enum(SubscriptionStatus), nullable=False, default=SubscriptionStatus.active)
 
     # Optional expiry (NULL = never expires)
-    expires_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
 
     notes = Column(Text, nullable=True)  # Admin notes (e.g. "Regalo promo", "Pago Stripe #123")
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=_utcnow,
+        onupdate=_utcnow,
         server_default=text("CURRENT_TIMESTAMP"),
     )
 

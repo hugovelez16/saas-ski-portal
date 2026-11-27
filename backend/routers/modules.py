@@ -5,7 +5,7 @@ Gestión del catálogo de módulos de la plataforma y las suscripciones
 de empresa o usuario a dichos módulos.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 import access_policy
@@ -215,7 +215,7 @@ def get_my_modules(
 
     from sqlalchemy import or_
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     active_statuses = [models.SubscriptionStatus.active, models.SubscriptionStatus.trial]
 
     if is_admin:
