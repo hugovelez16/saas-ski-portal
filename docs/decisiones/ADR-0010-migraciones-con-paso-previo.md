@@ -1,8 +1,8 @@
 # ADR-0010: Migraciones con paso previo de despliegue
 
 Estado: Aceptada (2026-11-22). Procedimiento vigente; el detalle operativo
-sigue en las secciones 9 y 10 de
-[../empresa/plan-implementacion-empresa.md](../empresa/plan-implementacion-empresa.md).
+esta en [../operaciones/despliegue.md](../operaciones/despliegue.md)
+(seccion "Migraciones con paso previo").
 
 ## Contexto
 
@@ -41,4 +41,5 @@ sigue sirviendo mientras tanto (`docker-compose.prod.yml`).
 - Se acepta una ventana de errores de segundos en lugar de montar releases
   previas o divisiones en dos PR.
 - Los ids P-/E7 de la tabla 4.1 que regulan datos concretos (por ejemplo,
-  `repair_work_log_company.py`) siguen en el plan como historico.
+  `repair_work_log_company.py`) quedan en `plan-implementacion-empresa.md`
+  (eliminado, ver historial de git).
