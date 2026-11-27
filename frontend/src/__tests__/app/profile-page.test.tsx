@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ProfilePage from "@/app/(app)/profile/page";
 
@@ -77,5 +77,30 @@ describe("ProfilePage", () => {
         expect(await screen.findByText("User Information")).toBeInTheDocument();
         expect(screen.queryByText("Empresa de Inicio (Login)")).not.toBeInTheDocument();
         expect(screen.queryByText("Seleccionar empresa de inicio")).not.toBeInTheDocument();
+    });
+
+    it("muestra el pie legal completo en la pagina de ajustes del usuario", async () => {
+        authState.user = {
+            id: "user-1",
+            email: "ana@test.com",
+            firstName: "Ana",
+            lastName: "Monitora",
+            role: "worker",
+            isActive: true,
+            activeCompanyId: "company-1",
+        };
+
+        renderProfile();
+
+        expect(await screen.findByText("User Information")).toBeInTheDocument();
+
+        const nav = screen.getByRole("navigation", { name: "Información legal" });
+        const links = within(nav).getAllByRole("link");
+        expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+            ["Aviso legal", "/aviso-legal"],
+            ["Privacidad", "/privacidad"],
+            ["Cookies", "/cookies"],
+            ["Términos", "/terminos"],
+        ]);
     });
 });

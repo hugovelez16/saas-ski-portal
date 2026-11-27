@@ -209,4 +209,38 @@ describe('AppLayout Sidebar Integration for Platform Admin', () => {
         expect(screen.getByText('Facturación')).toBeInTheDocument();
         expect(screen.getByText('Informes')).toBeInTheDocument();
     });
+
+    it('omite LegalFooter del pie del layout operativo pero mantiene AppVersion y el enlace legal directo en Sidebar', () => {
+        vi.mocked(useAuth).mockReturnValue({
+            user: {
+                id: 'worker-id',
+                email: 'ana@vesotel.com',
+                firstName: 'Ana',
+                role: 'worker',
+                isPlatformAdmin: false,
+                activeRole: 'worker',
+                activeCompanyId: 'querkus-id',
+            },
+            loading: false,
+            logout: vi.fn(),
+        } as unknown as ReturnType<typeof useAuth>);
+
+        vi.mocked(useModules).mockReturnValue({
+            modules: [],
+            isLoading: false,
+            hasModule: () => false,
+        } as unknown as ReturnType<typeof useModules>);
+
+        render(
+            <AppLayout>
+                <div>Contenido operativo</div>
+            </AppLayout>
+        );
+
+        expect(screen.queryByRole('navigation', { name: 'Información legal' })).not.toBeInTheDocument();
+        expect(screen.getByTestId('app-version')).toBeInTheDocument();
+
+        const legalLink = screen.getByRole('link', { name: 'Información legal' });
+        expect(legalLink).toHaveAttribute('href', '/aviso-legal');
+    });
 });
