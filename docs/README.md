@@ -17,6 +17,7 @@ Las reglas generales estan en [../CLAUDE.md](../CLAUDE.md).
 | [producto/revision-base.md](producto/revision-base.md) | Propuesta: modelo minimo, matriz de permisos, configuracion por capas, recortes y reglas de estructura para la migracion, con cuestionario | Antes de disenar reglas de dominio, permisos o la migracion hexagonal, mientras siga en estado Propuesta |
 | [producto/cobros.md](producto/cobros.md) | Modelo objetivo de cobro, reparto portal/Odoo, flujo mensual, fases 0-4 y datos conocidos de Odoo | Tareas de planes, limites, cobros o integracion con Odoo |
 | [planes-y-precios.md](planes-y-precios.md) | Planes comerciales y cambio de plan | Tareas de landing, planes o modulos de pago |
+| [frontend/evaluacion-librerias-calendario.md](frontend/evaluacion-librerias-calendario.md) | Comparativa entre FullCalendar, Schedule-X, `@event-calendar/core` y el componente propio `event-calendar/` | Tareas del calendario del manager (`/manager/calendar`) o de `/daily-report` (`R-ACC-78`) |
 | [auditoria-propuesta-iliberis.md](auditoria-propuesta-iliberis.md) | Lo prometido al cliente frente a lo que hace el codigo | Antes de prometer o priorizar funcionalidades |
 | [operaciones/backups.md](operaciones/backups.md) | Backups de produccion y restauracion | Tareas de infra, migraciones destructivas o despliegue |
 | [operaciones/despliegue.md](operaciones/despliegue.md) | Despliegue y rollback de produccion cambiando `IMAGE_TAG` en Komodo, y versiones publicadas | Releases, despliegue o rollback de produccion |
