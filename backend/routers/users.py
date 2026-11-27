@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from uuid import UUID
 
 import access_policy
@@ -207,7 +208,7 @@ def reset_user_2fa(
 
     db.query(models.UserSession).filter(
         models.UserSession.user_id == user.id, models.UserSession.is_active.is_(True)
-    ).update({"is_active": False}, synchronize_session=False)
+    ).update({"is_active": False, "revoked_at": datetime.utcnow()}, synchronize_session=False)
 
     db.add(
         models.AuditLog(
