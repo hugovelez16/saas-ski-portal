@@ -7,7 +7,7 @@ si se definen las variables de entorno correspondientes y la BD se encuentra vac
 
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import auth
 import models
@@ -97,7 +97,7 @@ def seed_initial_data(db: Session = None) -> bool:
         # 4. Activar suscripciones a modulos existentes para la empresa
         try:
             modules = db.query(models.AppModule).filter(models.AppModule.is_active == True).all()
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             for mod in modules:
                 existing_sub = (
                     db.query(models.ModuleSubscription)

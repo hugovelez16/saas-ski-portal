@@ -39,13 +39,13 @@ def perform_session_cleanup():
     """
     Síncrona: Borra de la base de datos las sesiones inactivas por más de 30 días.
     """
-    from datetime import datetime, timedelta
+    from datetime import UTC, datetime, timedelta
 
     import models
 
     db = SessionLocal()
     try:
-        limit_date = datetime.utcnow() - timedelta(days=30)
+        limit_date = datetime.now(UTC) - timedelta(days=30)
         deleted_count = (
             db.query(models.UserSession)
             .filter(models.UserSession.last_active < limit_date)
