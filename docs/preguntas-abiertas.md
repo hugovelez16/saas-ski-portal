@@ -8,7 +8,7 @@ con estado `Abierto` citan aqui su ID.
 - **ID**: `O<n>`. Se conservan los IDs de la seccion 11.2 de
   [empresa/logica-negocio-empresa.md](empresa/logica-negocio-empresa.md)
   (`O1` a `O11`). `O12` y `O13` salen de los temas "sin decision" de la
-  seccion 11.1; las preguntas nuevas siguen la numeracion (`O14` a `O28`; la siguiente es `O29`).
+  seccion 11.1; las preguntas nuevas siguen la numeracion (`O14` a `O30`; la siguiente es `O31`).
   Un ID no se reutiliza.
 - **Alta**: una fila en "Abiertas" con tema, detalle, origen y las reglas o
   issues que bloquea.
@@ -21,6 +21,8 @@ con estado `Abierto` citan aqui su ID.
 | ID | Tema | Detalle | Origen | Bloquea |
 |---|---|---|---|---|
 | O16 | Cobro a particulares B2C (aplazado) | Cerrado en el repaso 2026-11-25 (R-ACC-06, R-ACC-75 a 77, R-ACC-80): el usuario gratuito tiene su empresa autonoma ("Empresa de `<Nombre> <Apellido>`") y sus turnos propios sin modulos de pago; los modulos se contratan despues como suscripcion de su empresa y recibe rol de `manager` al contratar un plan de pago (por rol, no por modo). Sigue abierto (aplazado, sin decidir): el cobro a particulares (B2C). Issue de idea: #89 | Cuestionario de dominio 2026-11-21; FRD 1.2; P1; Repaso 2026-11-25 | R-ACC-06 (solo cobro B2C, aplazado) |
+| O29 | Esquema SEPA Core o B2B (C4) | Depende de Vesotel. SEPA Core permite al cliente devolver un cargo en 8 semanas sin motivo; SEPA B2B no admite devoluciones, pero obliga a la escuela a registrar el mandato en su banco, lo que choca con el alta autonoma (C11) | Cobros 2026-11-25 (#130) | Fase 3 de `docs/producto/cobros.md` (alta autonoma y mandatos SEPA) |
+| O30 | Acceso a la API y capacidades del Odoo de Vesotel | En Odoo Online la API externa solo esta disponible en el plan Custom. Confirmar el plan contratado de Odoo Online 19.0 Enterprise, si el modulo SEPA Direct Debit esta activo, si permite firmar el mandato online en 19.0 y si Odoo puede notificar a un sistema externo (webhook) al pagarse o devolverse una factura | Cobros 2026-11-25 (#130) | Fases 1 a 3 de `docs/producto/cobros.md` |
 
 ## Cerradas
 

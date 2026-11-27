@@ -72,16 +72,30 @@ facturacion y costes) no es un modulo: sus reglas estan en `R-TAR`.
 | R-MOD-15 | `reports` se exige en el backend en los datos del modulo Informes | Cerrado | P17 | pendiente de implementar (#103): hoy solo oculta el menu en `frontend/src/app/(app)/layout.tsx` |
 | R-MOD-16 | Los modulos efectivos de una sesion son los de la empresa activa del token; si la empresa esta suspendida, no hay ninguno (R-ACC-19) | Cerrado | R-ACC-19, P10 | `backend/routers/modules.py:get_my_modules`; pendiente de implementar (issue de seguimiento): hoy suma los modulos del usuario y, sin empresa en contexto, el PA recibe todos los activos |
 
-### Retiradas y planes
+### Retiradas
 
 | ID | Regla | Estado | Origen | Codigo |
 |---|---|---|---|---|
 | R-MOD-17 | **Retirada.** Las suscripciones de usuario (`scope = user`, `user_id`) se eliminan definitivamente: tambien en el alta publica B2C los modulos se contratan como suscripcion de la empresa del usuario (R-ACC-06) | Retirada | P10, O16, Repaso 2026-11-25 | pendiente de implementar (issue de seguimiento): `SubscriptionScope.user` y el alta de usuario siguen vivos |
 | R-MOD-18 | `AppModule.target_scope` y `AppModule.price_monthly` se eliminan | Retirada | P10, S9 | pendiente de implementar (issue de seguimiento): siguen en `backend/models.py` |
 | R-MOD-19 | `settings.modules` se elimina: la unica fuente de modulos contratados es `module_subscriptions` | Retirada | P9, S9 | pendiente de implementar (issue de seguimiento): `frontend/src/app/(app)/manager/daily-reports/page.tsx` aun lee `settings.modules` |
+
+### Planes, limites y cobro
+
+| ID | Regla | Estado | Origen | Codigo |
+|---|---|---|---|---|
 | R-MOD-20 | Pista Verde paga Cuadrante compartido (5 EUR/mes) e Informes (15 EUR/mes); Azul y Roja los incluyen | Cerrado | `planes-y-precios.md` | no aplica en codigo |
 | R-MOD-21 | Un modulo nuevo no queda incluido en ningun plan automaticamente: su precio por plan se decide al lanzarlo | Cerrado | `planes-y-precios.md` | no aplica en codigo |
-| R-MOD-22 | Cada empresa tiene un plan que fija el PA (si es personalizado, el PA escribe sus numeros). Los limites de monitores y responsables se aplican bloqueando el alta o la invitacion de miembros al superarlos (detalle de cobro y avisos en #130). El recuento mensual de monitores es el maximo de monitores activos simultaneamente en el mes (`planes-y-precios.md`) | Cerrado | O12, O26, Repaso 2026-11-25 (ronda 2 6.1) | pendiente de implementar (issue de seguimiento): ningun codigo aplica los limites |
+| R-MOD-22 | Cada empresa tiene un plan asignado en el portal (en fase 0 lo fija el PA; si es personalizado, el PA escribe sus numeros); Odoo recibe el plan desde el portal para facturar y no es la fuente de verdad del plan | Cerrado | O12, O26, Repaso 2026-11-25, Cobros 2026-11-25 (C6) | pendiente de implementar (fase 0) |
+| R-MOD-23 | El recuento facturable de monitores y responsables de un mes natural es el maximo de miembros activos simultaneamente en ese mes; desactivar a uno antes de activar a otro no incrementa el pico, pero activar primero y desactivar despues si suma ese mes | Cerrado | Cobros 2026-11-25 (C1) | pendiente de implementar (fase 0) |
+| R-MOD-24 | Un miembro empieza a contar en el recuento del plan cuando acepta la invitacion (membresia activa), no cuando se envia la invitacion | Cerrado | Cobros 2026-11-25 (C1) | pendiente de implementar (fase 0) |
+| R-MOD-25 | En planes con adicionales (Pista Verde y Pista Azul), el manager puede superar los monitores o responsables incluidos tras confirmar un aviso con el coste adicional del mes; la confirmacion queda registrada en auditoria (`audit_logs`) | Cerrado | Cobros 2026-11-25 (C2) | pendiente de implementar (fase 0) |
+| R-MOD-26 | Cuando el coste de los miembros adicionales del mes supera el importe del plan superior, el aviso de superacion lo indica y ofrece subir de plan | Cerrado | Cobros 2026-11-25 (C2) | pendiente de implementar (fase 0) |
+| R-MOD-27 | Pista Roja tiene un tope duro de 50 monitores activos simultaneos; intentar superarlo bloquea el alta o activacion y remite a Pista Negra (a consultar) | Cerrado | Cobros 2026-11-25 (C2) | pendiente de implementar (fase 0) |
+| R-MOD-28 | El manager dispone de un panel de consumo del mes en curso con su plan, adicionales, pico alcanzado e importe previsto | Cerrado | Cobros 2026-11-25 (C2) | pendiente de implementar (fase 0) |
+| R-MOD-29 | El manager puede activar o desactivar el mes natural siguiente desde el portal hasta el dia 25 del mes anterior; despues aplica la configuracion que estuviera guardada | Cerrado | Cobros 2026-11-25 (C8) | pendiente de implementar (fase 3) |
+| R-MOD-30 | Ante un impago o devolucion notificado por Odoo, se avisa al manager al momento; a los 5 dias la empresa pasa a solo lectura y a los 15 dias queda suspendida conservando sus datos | Cerrado | Cobros 2026-11-25 (C5) | pendiente de implementar (fase 2) |
+| R-MOD-31 | El PA puede reactivar manualmente una empresa en solo lectura o suspendida por impago en cualquier momento (por ejemplo, con justificante de pago) | Cerrado | Cobros 2026-11-25 (C5) | pendiente de implementar (fase 2) |
 
 ## Casos limite
 
@@ -96,6 +110,12 @@ facturacion y costes) no es un modulo: sus reglas estan en `R-TAR`.
 | Empresa suspendida con el modulo vigente | Sin modulos efectivos; 403 en la guardia | R-MOD-16 |
 | Empresa sin `reports` pide datos de Informes | 403 | R-MOD-15 |
 | Modulo desactivado (`is_active = false`) con suscripcion vigente | No cuenta como contratado | R-MOD-05 |
+| Se envia una invitacion a un monitor pero aun no la acepta | No suma en el pico mensual del plan | R-MOD-24 |
+| Se desactiva un monitor y despues se activa otro en el mismo mes | El pico simultaneo no aumenta | R-MOD-23 |
+| Manager en Pista Verde o Azul supera los incluidos | Aviso con el coste adicional (y oferta de subida si sale mas caro); al confirmar, se audita y se permite | R-MOD-25, R-MOD-26 |
+| Empresa en Pista Roja intenta activar el monitor 51 simultaneo | Bloqueo; remite a Pista Negra | R-MOD-27 |
+| Manager intenta cambiar el estado del mes siguiente el dia 26 | No cambia el mes siguiente; vale lo guardado hasta el dia 25 | R-MOD-29 |
+| Impago sin regularizar a los 5 y a los 15 dias | Aviso inmediato, solo lectura a los 5 dias, suspension con datos conservados a los 15 dias; el PA puede reactivar en cualquier momento | R-MOD-30, R-MOD-31 |
 
 ## Relacion con otras entidades
 
