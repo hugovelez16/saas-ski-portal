@@ -6,17 +6,16 @@ Entidad de dominio: `backend/src/domain/entities/company_member.py`.
 La [membresia](../glosario.md) es la relacion de un usuario con una empresa: lleva
 su rol en ella, su estado y sus tarifas. Es el eje del modelo. Este fichero
 sustituye a las secciones 2.3 y 5 de `logica-negocio-empresa.md`, que quedan como
-historico; donde contradigan a [revision-base.md](../producto/revision-base.md)
-manda este (por ejemplo, la tabla 5 decia que solo el PA anade y desactiva
-miembros: ya no vale para workers, O25).
+historico (O25 cerrada en el repaso 2026-11-25).
 
 Las reglas de acceso se enlazan, no se repiten (`acceso.md`): R-ACC-18 a R-ACC-23
-(comprobaciones), R-ACC-27 a R-ACC-32 (roles), R-ACC-34 a R-ACC-36 (empresa
-activa), R-ACC-64 y R-ACC-65 (quien anade y quien concede), R-ACC-69 (usuarios
-demo manager y worker de cada empresa de prueba), R-ACC-75 a R-ACC-77 (alta
-publica B2C: una empresa con el usuario como unico worker, sin manager; es un
-caso de alta de membresia, no un tipo de miembro) y R-ACC-79 (rol y estado se
-leen de BD en cada peticion, sin cache). La "empresa personal" esta retirada (P2).
+(comprobaciones), R-ACC-26 a R-ACC-32 (roles y prohibicion de membresia al PA),
+R-ACC-34 a R-ACC-36 (empresa activa), R-ACC-64 y R-ACC-65 (quien anade y quien
+concede), R-ACC-69 (usuarios demo manager y worker de la empresa Demo), R-ACC-75
+a R-ACC-77 (alta publica B2C: una empresa con el usuario como unico worker, sin
+manager; es un caso de alta de membresia, no un tipo de miembro) y R-ACC-79 (rol
+y estado se leen de BD en cada peticion, sin cache). La "empresa personal" esta
+retirada (P2).
 
 ## Campos
 
@@ -39,11 +38,14 @@ leen de BD en cada peticion, sin cache). La "empresa personal" esta retirada (P2
 |---|---|---|---|---|
 | R-MEM-01 | Hay una sola membresia por par `(user_id, company_id)` | Cerrado | 2.1, 5 | `backend/models.py:CompanyMember` (clave primaria compuesta) |
 | R-MEM-02 | La membresia lleva rol, `is_active`, `sort_order` y `rates_config`. Un usuario puede tener membresias en varias empresas | Cerrado | 2.1 | `backend/models.py:CompanyMember` |
-| R-MEM-03 | El PA anade a una empresa usuarios como worker; para que sea manager, cambia luego su rol (R-MEM-14) | Cerrado | P6, matriz de permisos | `backend/routers/v2/members.py:add_member` (`require_platform_admin`) |
-| R-MEM-04 | El manager anade workers a su empresa activa; no da de alta managers (403) | Cerrado | P6, R-ACC-64 | pendiente de implementar (issue de seguimiento): hoy `add_member` solo admite al PA |
-| R-MEM-05 | Se anade un usuario existente por su email; si no existe responde 404. La membresia nace activa, como worker y con `sort_order` 1000 | Cerrado | 5 | `backend/src/application/use_cases/company/add_member.py` (`AddMemberUseCase`), `backend/models.py:CompanyMember` (`sort_order`) |
-| R-MEM-06 | Anadir a quien ya es miembro activo no cambia nada (200). Si su membresia esta inactiva, se reactiva segun R-MEM-11 y R-MEM-12 | Cerrado | 5 | `backend/src/application/use_cases/company/add_member.py`; fuerza `worker` al reactivar: pendiente de implementar (issue de seguimiento) |
-| R-MEM-07 | No hay invitaciones por email a usuarios sin cuenta: el PA crea el usuario (R-ACC-11) y luego lo anade | Cerrado (aplazado) | 5 | no aplica |
+| R-MEM-03 | El PA anade a una empresa usuarios existentes como worker desde `/api/v2/admin/...` (nunca a un PA, R-ACC-26); para que sea manager, cambia luego su rol (R-MEM-14) | Cerrado | P6, Repaso 2026-11-25 (D2) | `backend/routers/v2/members.py:add_member` (`require_platform_admin`) |
+| R-MEM-04 | El manager incorpora workers a su empresa activa mediante invitaciones por correo (R-MEM-07); no da de alta managers (403) | Cerrado | P6, R-ACC-64, Repaso 2026-11-25 (ronda 2 3.1) | pendiente de implementar (issue de seguimiento): hoy `add_member` solo admite al PA |
+| R-MEM-05 | Alta directa del PA: anade un usuario existente por su email (404 si no existe, error si es PA); la membresia nace activa, como `worker` y con `sort_order` 1000. Para el manager, el alta pasa por invitacion por correo (R-MEM-07, tras el registro publico) | Cerrado | 5, Repaso 2026-11-25 (D2, ronda 2 3.1) | `backend/src/application/use_cases/company/add_member.py` (`AddMemberUseCase`), `backend/models.py:CompanyMember` (`sort_order`) |
+| R-MEM-06 | Anadir o aceptar invitacion para quien ya es miembro activo no cambia nada (200). Si su membresia esta inactiva, se reactiva segun R-MEM-11 y R-MEM-12 | Cerrado | 5, Repaso 2026-11-25 (ronda 2 3.1, 3.2) | `backend/src/application/use_cases/company/add_member.py`; fuerza `worker` al reactivar: pendiente de implementar (issue de seguimiento) |
+| R-MEM-07 | Invitaciones por correo (tras el registro publico): el manager escribe un correo; el servidor guarda una invitacion (empresa, correo, quien invita, caduca en 7 dias) y envia un correo con un enlace de un solo uso ("`<manager>` te ha invitado a unirte a `<empresa>`"). La respuesta al manager es siempre la misma, exista o no el correo en la plataforma | Cerrado | Repaso 2026-11-25 (ronda 2 3.1) | pendiente de implementar (issue de seguimiento) |
+| R-MEM-23 | El enlace de invitacion solo vale para su correo (con otra cuenta muestra "esta invitacion es para otro correo"): con cuenta inicia sesion y ve "Aceptar invitacion"; sin cuenta se registra (contrasena o Google) con ese mismo correo y acepta. Al aceptar se crea la membresia como `worker` o se reactiva con su rol anterior (R-MEM-12); si ya es miembro activo no pasa nada | Cerrado | Repaso 2026-11-25 (ronda 2 3.1) | pendiente de implementar (issue de seguimiento) |
+| R-MEM-24 | El manager ve las invitaciones pendientes y puede reenviarlas o cancelarlas. Invitar y aceptar se auditan. El limite de miembros del plan (R-MOD-22) se comprueba al invitar y al aceptar | Cerrado | Repaso 2026-11-25 (ronda 2 3.1) | pendiente de implementar (issue de seguimiento) |
+| R-MEM-25 | Un monitor cuenta para el recuento de facturacion desde que acepta la invitacion (membresia activa), no desde que se envia | Cerrado | Repaso 2026-11-25 (ronda 2 3.1) | pendiente de implementar (issue de seguimiento) |
 
 ### Baja
 
@@ -52,7 +54,7 @@ leen de BD en cada peticion, sin cache). La "empresa personal" esta retirada (P2
 | R-MEM-08 | Desactivar una membresia conserva sus turnos y corta el acceso a la empresa en la siguiente peticion (R-ACC-18, R-ACC-79). No hay `default_company_id` que reasignar: el siguiente login cae en el fallback de R-ACC-34 | Cerrado | 5 | `backend/src/application/use_cases/company/set_member_status.py`; la cache de acceso se quita: objetivo |
 | R-MEM-09 | Eliminar una membresia solo es posible si no tiene turnos ni nada asociado, sin cascadas. Si los tiene, queda inactiva y conserva los turnos | Cerrado | 5 | `backend/src/application/use_cases/company/remove_member.py` (`count_work_logs`; hoy solo comprueba turnos) |
 | R-MEM-10 | Desactivar o eliminar: el PA cualquier membresia; el manager solo las de workers de su empresa activa (403 si el destino es manager) | Cerrado | P6, R-ACC-64 | pendiente de implementar (issue de seguimiento): hoy los endpoints exigen PA (`require_platform_admin`) |
-| R-MEM-11 | Un worker desactivado lo reactivan el manager de su empresa y el PA. Un manager desactivado lo reactiva solo el PA | Cerrado (worker), Confirmar (manager) | Decision 2026-11-22 (sustituye a "solo PA" de O8); manager: inferencia de R-ACC-64 | pendiente de implementar (issue de seguimiento): hoy solo el PA |
+| R-MEM-11 | Un worker desactivado lo reactivan el manager de su empresa y el PA. Un manager desactivado lo reactiva solo el PA | Cerrado | Decision 2026-11-22 (O8), Repaso 2026-11-25 | pendiente de implementar (issue de seguimiento): hoy solo el PA |
 | R-MEM-12 | Reactivar una membresia no cambia su rol: conserva el que tenia | Cerrado | Decision 2026-11-22 (O8) | pendiente de implementar (issue de seguimiento): `set_member_status.py` y `add_member.py` fuerzan `worker` |
 | R-MEM-13 | Los turnos de una membresia inactiva se conservan y cuentan en los totales, marcados como inactivos (O6). No se crean turnos nuevos a su nombre (regla de `R-TUR`, #68) | Cerrado | 5, O6 | `backend/src/application/use_cases/work_logs/create_work_log_use_case.py` |
 
