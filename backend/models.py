@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -107,7 +108,7 @@ class CompanyMember(Base):
     __tablename__ = "company_members"
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), primary_key=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), primary_key=True, index=True)
     role = Column(Enum(CompanyRole), nullable=False, default=CompanyRole.worker, server_default="worker")
     is_active = Column(Boolean, nullable=False, default=True, server_default="true")
     sort_order = Column(Integer, default=1000, server_default="1000")
@@ -129,6 +130,10 @@ class CompanyMember(Base):
 
 class WorkLog(Base):
     __tablename__ = "work_logs"
+    __table_args__ = (
+        Index("ix_work_logs_company_start_date", "company_id", "start_date"),
+        Index("ix_work_logs_user_start_date", "user_id", "start_date"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -173,7 +178,7 @@ class UserSession(Base):
     __tablename__ = "user_sessions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
 
     refresh_token_hash = Column(String(64), unique=True, nullable=False)
     expires_at = Column(DateTime, nullable=True)
@@ -190,13 +195,14 @@ class UserSession(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
+    __table_args__ = (Index("ix_audit_logs_company_created", "company_id", "created_at"),)
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    action = Column(String, nullable=False)
+    action = Column(String, nullable=False, index=True)
     impersonated_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     admin_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     actor_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     company_id = Column(UUID(as_uuid=True), nullable=True, index=True)
-    target_user_id = Column(UUID(as_uuid=True), nullable=True)
+    target_user_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     old_value = Column(JSONB, nullable=True)
     new_value = Column(JSONB, nullable=True)
     reason = Column(Text, nullable=True)
@@ -258,7 +264,7 @@ class ModuleSubscription(Base):
     module_id = Column(UUID(as_uuid=True), ForeignKey("app_modules.id"), nullable=False)
 
     # Exactly ONE of these must be set (enforced at application level)
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     scope = Column(Enum(SubscriptionScope), nullable=False)
