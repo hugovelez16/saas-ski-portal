@@ -752,3 +752,33 @@ def test_refresh_after_neutral_switch_scope_has_no_cid(client, db):
 
     assert resp.status_code == 200, resp.text
     _assert_cid(_decode(_cookie(resp, "access_token")), None)
+
+
+# Issue #109: el refresh de un PA con cid de empresa inexistente vuelve a contexto neutro sin view_as.
+def test_refresh_platform_admin_with_deleted_company_drops_cid_and_view_as(client, db):
+    pa = make_user(db, role="admin")
+    missing_cid = str(uuid.uuid4())
+    refresh = auth.create_refresh_token({"sub": str(pa.id), "scope": "full", "cid": missing_cid, "view_as": "worker"})
+    auth.create_session(db, str(pa.id), refresh)
+
+    _use_refresh(client, refresh)
+    resp = client.post("/refresh-token")
+
+    assert resp.status_code == 200, resp.text
+    payload = _decode(_cookie(resp, "access_token"))
+    _assert_cid(payload, None)
+    assert "view_as" not in payload
+
+
+# Issue #109: el refresh de un PA con cid de empresa existente (incluso suspendida) conserva cid.
+def test_refresh_platform_admin_with_suspended_company_keeps_cid(client, db):
+    pa = make_user(db, role="admin")
+    company = make_company(db, is_active=False)
+    refresh = auth.create_refresh_token({"sub": str(pa.id), "scope": "full", "cid": str(company.id)})
+    auth.create_session(db, str(pa.id), refresh)
+
+    _use_refresh(client, refresh)
+    resp = client.post("/refresh-token")
+
+    assert resp.status_code == 200, resp.text
+    _assert_cid(_decode(_cookie(resp, "access_token")), company.id)
