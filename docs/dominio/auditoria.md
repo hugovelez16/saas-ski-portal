@@ -6,8 +6,7 @@ Puerto de dominio: `backend/src/domain/ports/audit_port.py`.
 
 La [auditoria](../glosario.md) es el registro de quien hizo que, cuando y sobre
 quien o que. Solo la consulta el administrador de plataforma (PA). Este fichero
-sustituye a la seccion 10 de `logica-negocio-empresa.md`, que queda como
-historico. Las reglas de suplantacion y de concesion del rol de PA viven en
+sustituye a la seccion 10 de `logica-negocio-empresa.md` (eliminado, ver historial de git). Las reglas de suplantacion y de concesion del rol de PA viven en
 `acceso.md` y aqui se enlazan: R-ACC-65, R-ACC-66 y R-ACC-67.
 
 ## Campos
@@ -71,7 +70,7 @@ Contrastadas con `grep -n '= "' backend/audit.py` (16 acciones) y con
 
 Las rutas sin carpeta de la columna "Codigo" son casos de uso de
 `backend/src/application/use_cases/company/`. Todas las filas tienen el origen
-en la seccion 10 de `logica-negocio-empresa.md`, salvo lo que cita una decision
+en la seccion 10 de `logica-negocio-empresa.md` (eliminado, ver historial de git), salvo lo que cita una decision
 (P6, P7, S1, S7, Repaso 2026-11-25).
 
 ### Acciones nuevas por las decisiones de revision

@@ -43,6 +43,9 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - Documentacion: la empresa con `is_managed = false` se llama "autonoma" y no "libre" en `docs/dominio/acceso.md` (R-ACC-71 y casos limite) y en ADR-0009; "libre" queda reservado a la futura unidad de tipo de turno (#120)
 - `deploy-prod` deja de desplegar por webhook y crea el tag git `vX.Y.Z`; `docker-compose.prod.yml` exige `IMAGE_TAG`, y el despliegue y el rollback de produccion se hacen cambiando esa variable en Komodo (`docs/operaciones/despliegue.md`, ADR-0001) (#111)
 
+### Eliminado
+- **Documentacion obsoleta**: se eliminan `docs/superpowers/`, `docs/empresa/` (moviendo `tareas-manuales-release.md` a `docs/operaciones/tareas-manuales-release.md` y resumiendo el paso previo de despliegue de migraciones en `docs/operaciones/despliegue.md`), `docs/ANALISIS_DOCKER_COMPOSE.md`, `docs/FASE_2_PLAN_GOBERNANZA_UI.md`, `docs/PLAN_IMPLEMENTACION_POSTHOG_Y_ESTRATEGIA_PRODUCTO.md`, `docs/functional_requirements_document.md`, `docs/propuesta-iliberis.md`, `docs/propuesta-iliberis.pdf` y `docs/auditoria-propuesta-iliberis.md`, y se actualizan las referencias rotas (#131)
+
 ## [0.28.0] - 2026-11-22
 
 ### Tipo de Cambio SemVer

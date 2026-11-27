@@ -2,7 +2,7 @@
 
 Recorre `Company.tax_config` y `CompanyMember.rates_config[tipo].tax_overrides`.
 
-Reglas (docs/empresa/plan-implementacion-empresa.md, seccion 9):
+Reglas (plan-implementacion-empresa.md, seccion 9; eliminado, ver historial de git):
 - Numero (int/float, no bool) finito en [0, 1] -> correcto.
 - Cadena que parsea a un numero finito en [0, 1] -> CAMBIO: --apply la guarda como float.
 - Cualquier otro valor -> MANUAL: no se toca. En `tax_overrides` null es valido.

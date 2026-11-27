@@ -12,8 +12,7 @@ Las reglas R-ACC-64 a R-ACC-79 y los cambios de R-ACC-27, R-ACC-44 a 49 y
 R-ACC-53 vienen de las decisiones de la revision de base (#114, 2026-11-22).
 Describen el comportamiento objetivo: el codigo aun no las cumple.
 Sustituye a las secciones 2.2, 3 y 9 de
-[logica-negocio-empresa.md](../empresa/logica-negocio-empresa.md), que quedan
-como historico. En la columna Codigo, "objetivo" significa que la regla no esta
+`logica-negocio-empresa.md` (eliminado, ver historial de git). En la columna Codigo, "objetivo" significa que la regla no esta
 implementada hoy; las citas se comprobaron con `grep` el 2026-11-21.
 
 ## Campos
@@ -40,9 +39,9 @@ Claims del access token (JWT RS256).
 | R-ACC-02 | El access token no lleva `role` ni `is_admin`; solo los claims de la tabla Campos | Cerrado | 3.1, O7 | `backend/auth.py:generate_user_tokens` |
 | R-ACC-03 | El rol de plataforma y el de empresa se leen de BD en cada peticion; si el token trae `role` o `is_admin`, se ignoran | Cerrado | 3.1, O7 | `backend/auth.py:_attach_context` |
 | R-ACC-04 | El frontend obtiene rol de plataforma, empresa activa y rol activo de `GET /users/me` (el "ver como" se retira, P4) | Cerrado | 3.1 | `backend/routers/users.py:read_users_me` |
-| R-ACC-05 | El token se lee de la cookie HttpOnly `access_token` o, si falta, de la cabecera `Authorization: Bearer` | Cerrado | FRD 2.1, Repaso 2026-11-25 | `backend/auth.py:get_token_from_request` |
+| R-ACC-05 | El token se lee de la cookie HttpOnly `access_token` o, si falta, de la cabecera `Authorization: Bearer` | Cerrado | FRD 2.1 (eliminado, ver historial de git), Repaso 2026-11-25 | `backend/auth.py:get_token_from_request` |
 | R-ACC-06 | El `scope` no es un plan ni un permiso de empresa: el usuario gratuito tiene su empresa autonoma y sus turnos propios, sin modulos de pago; los modulos se contratan despues como suscripcion de su empresa (`module_subscriptions`). El cobro a particulares (B2C) queda aplazado (O16) | Cerrado | 3.1, O16, Repaso 2026-11-25 | objetivo (no hay cuenta gratuita) |
-| R-ACC-07 | Login con contrasena correcta y 2FA activo emite un token `2fa_pending` de 5 min y ningun refresh token | Cerrado | 3.1, FRD RF-03 | `backend/routers/auth.py:login_for_access_token` |
+| R-ACC-07 | Login con contrasena correcta y 2FA activo emite un token `2fa_pending` de 5 min y ningun refresh token | Cerrado | 3.1, FRD RF-03 (eliminado, ver historial de git) | `backend/routers/auth.py:login_for_access_token` |
 | R-ACC-08 | Un token `2fa_pending` solo vale en `POST /verify-2fa`; en cualquier otro endpoint responde 403 | Cerrado | 3.2 n.3 | `backend/auth.py:get_verified_user`, `backend/routers/auth.py:verify_2fa` |
 | R-ACC-09 | `POST /verify-2fa` con un token que no es `2fa_pending` responde 403 | Cerrado | 3.2 n.3 | `backend/routers/auth.py:verify_2fa` |
 | R-ACC-10 | Login de un usuario con `users.is_active = false` responde 403 (tambien si es PA) y el frontend muestra "Tu cuenta ha sido suspendida. Contacta con soporte". Desactivar un usuario (solo PA, cierra toda la plataforma) es distinto de desactivar una membresia (cierra una empresa) | Cerrado | 2.3, 3.4, Repaso 2026-11-25 (ronda 2 7.3) | `backend/routers/auth.py:login_for_access_token`; mensaje especifico en `frontend/src/app/(auth)/login/page.tsx`: objetivo |
@@ -121,9 +120,9 @@ usuarios demo (R-ACC-69).
 
 | ID | Regla | Estado | Origen | Codigo |
 |---|---|---|---|---|
-| R-ACC-50 | Solo el PA suplanta (`POST /admin/impersonate/{user_id}`); otro usuario recibe 403 | Cerrado | 3.4, FRD RF-07 | `backend/routers/auth.py:impersonate_user` |
-| R-ACC-51 | El token de suplantacion lleva `scope = impersonated`, `admin_user_id` del PA y caduca a los 10 min | Cerrado | 3.4, FRD RF-07 | `backend/routers/auth.py:impersonate_user`. Hallazgo #79: el refresh lo prolonga |
-| R-ACC-52 | La sesion del PA se guarda en `admin_access_token` y `admin_refresh_token`, y `POST /admin/stop-impersonation` la restaura | Cerrado | FRD RF-07 | `backend/routers/auth.py:impersonate_user`, `backend/routers/auth.py:stop_impersonation` |
+| R-ACC-50 | Solo el PA suplanta (`POST /admin/impersonate/{user_id}`); otro usuario recibe 403 | Cerrado | 3.4, FRD RF-07 (eliminado, ver historial de git) | `backend/routers/auth.py:impersonate_user` |
+| R-ACC-51 | El token de suplantacion lleva `scope = impersonated`, `admin_user_id` del PA y caduca a los 10 min | Cerrado | 3.4, FRD RF-07 (eliminado, ver historial de git) | `backend/routers/auth.py:impersonate_user`. Hallazgo #79: el refresh lo prolonga |
+| R-ACC-52 | La sesion del PA se guarda en `admin_access_token` y `admin_refresh_token`, y `POST /admin/stop-impersonation` la restaura | Cerrado | FRD RF-07 (eliminado, ver historial de git) | `backend/routers/auth.py:impersonate_user`, `backend/routers/auth.py:stop_impersonation` |
 | R-ACC-53 | **Retirada (P4, 2026-11-22), sustituida por R-ACC-66 y R-ACC-67.** Crear, editar o borrar turnos durante una suplantacion registra en `audit_logs` el usuario suplantado y el PA. Con la suplantacion de solo lectura ya no hay escrituras que registrar | Retirada | 3.4, P4 | `backend/routers/work_logs.py:record_impersonation_audit` |
 | R-ACC-66 | Durante una suplantacion toda peticion con metodo distinto de GET, HEAD u OPTIONS responde 403, salvo `stop-impersonation`, `logout` y `switch-scope` entre las empresas del suplantado (R-ACC-42); el refresh no entra aqui (#79) | Cerrado | P4, Repaso 2026-11-25 (D3) | objetivo (hoy la suplantacion escribe) |
 | R-ACC-67 | Cada suplantacion queda auditada: inicio y fin se registran en `audit_logs` con el PA y el usuario suplantado | Cerrado | P4 | objetivo (hoy solo se registran las escrituras, R-ACC-53) |

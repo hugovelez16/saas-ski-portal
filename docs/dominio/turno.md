@@ -9,7 +9,7 @@ panel y la billing basica. Las reglas de quien escribe segun el modo de empresa
 estan en `acceso.md` (R-ACC-70 y R-ACC-71) y no se repiten. El calculo del
 importe, las tarifas, los impuestos y la billing basica (pagina de facturacion y
 costes) son de `tarifa.md` (`R-TAR`, #69). Lo historico esta en la seccion 6 de
-[logica-negocio-empresa.md](../empresa/logica-negocio-empresa.md); donde
+`logica-negocio-empresa.md` (eliminado, ver historial de git); donde
 contradiga a [revision-base.md](../producto/revision-base.md) manda este
 fichero. Las reglas con origen S, T o P vienen de las decisiones de la revision de base
 (2026-11-22).

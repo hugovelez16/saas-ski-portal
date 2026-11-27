@@ -5,8 +5,8 @@ Entidad de dominio: `backend/src/domain/entities/company_member.py`.
 
 La [membresia](../glosario.md) es la relacion de un usuario con una empresa: lleva
 su rol en ella, su estado y sus tarifas. Es el eje del modelo. Este fichero
-sustituye a las secciones 2.3 y 5 de `logica-negocio-empresa.md`, que quedan como
-historico (O25 cerrada en el repaso 2026-11-25).
+sustituye a las secciones 2.3 y 5 de `logica-negocio-empresa.md` (eliminado, ver historial de git)
+(O25 cerrada en el repaso 2026-11-25).
 
 Las reglas de acceso se enlazan, no se repiten (`acceso.md`): R-ACC-18 a R-ACC-23
 (comprobaciones), R-ACC-26 a R-ACC-32 (roles y prohibicion de membresia al PA),

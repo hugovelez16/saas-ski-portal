@@ -147,7 +147,7 @@ empresa para la misma clave.
 
 | Capa | Ajuste | Quien lo cambia | Nota |
 |---|---|---|---|
-| Plataforma (codigo) | Catalogo de `settings` y sus defaults (`backend/contracts.py`) | Despliegue | No es tabla (4.4 de `logica-negocio-empresa.md`) |
+| Plataforma (codigo) | Catalogo de `settings` y sus defaults (`backend/contracts.py`) | Despliegue | No es tabla (4.4 de `logica-negocio-empresa.md`, eliminado, ver historial de git) |
 | Plataforma (BD) | Catalogo de modulos (`app_modules`) | PA | Sin `price_monthly` ni `target_scope` en v1 (P10) |
 | Plataforma (futuro) | Limites del plan (monitores, responsables) | PA | O12. Se modelan con suscripciones cuando haya facturacion |
 | Empresa | `name`, `is_active`, `is_managed` | PA | Columnas |

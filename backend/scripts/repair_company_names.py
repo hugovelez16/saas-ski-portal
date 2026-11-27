@@ -1,6 +1,6 @@
 """Reparacion de nombres de empresa previa a la migracion de longitud (PR-06).
 
-Reglas (docs/empresa/plan-implementacion-empresa.md, seccion 9.2):
+Reglas (plan-implementacion-empresa.md, seccion 9.2; eliminado, ver historial de git):
 - Nombre vacio o solo espacios -> "Empresa " + str(id)[:8].
 - Espacios sobrantes al inicio o al final -> strip().
 - Mas de 120 caracteres tras strip -> recorte a 120. El nombre original completo

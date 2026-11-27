@@ -10,8 +10,8 @@ aislamiento de datos. Puede ser **gestionada** (`is_managed = true`) o **autonom
 
 Describe el comportamiento objetivo tras la revision de base (#114,
 2026-11-22, [revision-base.md](../producto/revision-base.md)); donde contradice
-a la seccion 4 de [logica-negocio-empresa.md](../empresa/logica-negocio-empresa.md),
-manda este fichero y esa seccion queda como historico. En la columna Codigo,
+a la seccion 4 de `logica-negocio-empresa.md` (eliminado, ver historial de git),
+manda este fichero. En la columna Codigo,
 `pendiente de implementar (issue de seguimiento)` marca que el codigo actual
 difiere de la regla; las citas se comprobaron con `grep` el 2026-11-22.
 
@@ -78,7 +78,7 @@ empresa exige ademas las comprobaciones de R-ACC-18 a R-ACC-23.
 | R-EMP-20 | No hay concepto separado de baja: se usa solo "suspender" (`is_active = false`, solo PA) y no se borra nada. El acceso exige los dos interruptores activos: empresa activa y membresia activa (R-MEM-17) | Cerrado | 4.3, Repaso 2026-11-25 (ronda 2 2.1) | `backend/models.py` (`Company.is_active`) |
 | R-EMP-21 | Borrar una empresa con miembros, turnos o suscripciones responde 409 y dice que lo impide; sin cascadas. Con la empresa vacia, el borrado se audita | Cerrado | 4.3 | `backend/src/application/use_cases/company/delete_company.py` |
 | R-EMP-22 | Una empresa sin manager es un estado valido: el PA anade un manager o cambia el rol de un worker. No hay guardia de ultimo manager | Cerrado | 4.3 (E7), P3 | `backend/routers/v2/members.py:set_member_role` |
-| R-EMP-23 | Suspender o reactivar la empresa no cambia sus membresias ni los turnos; los miembros conservan su rol y su estado | Cerrado | analisis-entidad-empresa.md 10.1 | `backend/src/application/use_cases/company/update_company.py` solo cambia la columna |
+| R-EMP-23 | Suspender o reactivar la empresa no cambia sus membresias ni los turnos; los miembros conservan su rol y su estado | Cerrado | analisis-entidad-empresa.md 10.1 (eliminado, ver historial de git) | `backend/src/application/use_cases/company/update_company.py` solo cambia la columna |
 
 ### Empresa suspendida
 

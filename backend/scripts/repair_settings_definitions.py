@@ -5,7 +5,7 @@ retiradas (allow_tutorial, allow_coordination, is_managed, business_logic.cost_m
 billing.cost_markup_percent), validas (modelo CompanySettings) y desconocidas. Clasifica los tipos de
 `companies.worklog_definitions` por su `unit` e `is_range`.
 
-Reglas (docs/empresa/plan-implementacion-empresa.md, seccion 9):
+Reglas (plan-implementacion-empresa.md, seccion 9; eliminado, ver historial de git):
 - Claves desconocidas de primer nivel -> MANUAL (bloquean la migracion). Solo se eliminan con
   --apply --drop-unknown CLAVE[,CLAVE]. Nunca se eliminan mapeadas, retiradas ni validas.
 - billing con claves distintas de price_type y cost_markup_percent -> MANUAL (billing desaparece).
