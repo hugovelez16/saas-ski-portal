@@ -61,4 +61,4 @@ Si la escuela paga el mantenimiento en todos los meses inactivos entre dos tempo
 
 ## Recuento de monitores
 
-Los monitores facturables de un mes son el maximo de monitores activos en ese mes. Esta definicion es la que determina los monitores adicionales sobre los incluidos en el plan.
+Los monitores facturables de un mes son el maximo de monitores activos simultaneamente en ese mes. Esta definicion es la que determina los monitores adicionales sobre los incluidos en el plan.

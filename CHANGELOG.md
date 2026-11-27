@@ -33,6 +33,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - La aplicacion muestra la version desplegada (`vX.Y.Z`, `vX.Y.Z-dev.N` o `dev` en local) en el pie del layout autenticado, y `GET /health` devuelve tambien `version`; ambas se inyectan como build-arg `APP_VERSION` desde `deploy-dev` y `deploy-prod` (#58)
 
 ### Cambiado
+- Documentacion: se consolidan en `docs/dominio/` las decisiones del repaso de dominio (D1-D9 y ronda 2), pasan a `Cerrado` las reglas confirmadas, se cierran O17 a O28 en `docs/preguntas-abiertas.md` (con O16 abierto solo en cobro B2C aplazado) y se precisa el recuento simultaneo de monitores en `docs/planes-y-precios.md` (#129)
 - Documentacion: se consolidan las decisiones de la revision de base del producto (P1-P17 y ajustes, tarifas e impuestos S1-S10) en `docs/producto/revision-base.md`, con las reglas `R-ACC-64` a `R-ACC-79` nuevas y las retiradas en `docs/dominio/acceso.md` y los cierres en `docs/preguntas-abiertas.md` (#114)
 - Documentacion: la empresa con `is_managed = false` se llama "autonoma" y no "libre" en `docs/dominio/acceso.md` (R-ACC-71 y casos limite) y en ADR-0009; "libre" queda reservado a la futura unidad de tipo de turno (#120)
 - `deploy-prod` deja de desplegar por webhook y crea el tag git `vX.Y.Z`; `docker-compose.prod.yml` exige `IMAGE_TAG`, y el despliegue y el rollback de produccion se hacen cambiando esa variable en Komodo (`docs/operaciones/despliegue.md`, ADR-0001) (#111)
