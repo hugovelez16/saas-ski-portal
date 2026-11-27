@@ -283,12 +283,18 @@ async def refresh_access_token(request: Request, response: Response, db: Session
         auth.revoke_session(db, refresh_token)
         raise HTTPException(status_code=401, detail="Una sesion impersonada no se puede renovar")
 
+    raw_cid = payload.get("cid")
+    raw_view_as = payload.get("view_as")
+    if user.role == models.UserRole.admin and raw_cid and not crud.get_company(db, raw_cid):
+        raw_cid = None
+        raw_view_as = None
+
     new_access_token, _ = auth.generate_user_tokens(
         db,
         user,
-        company_id=payload.get("cid"),
+        company_id=raw_cid,
         scope=payload.get("scope"),
-        view_as=payload.get("view_as"),
+        view_as=raw_view_as,
     )
 
     # Set as cookie
