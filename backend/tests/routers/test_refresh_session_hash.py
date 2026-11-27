@@ -1,6 +1,6 @@
 """Pruebas del almacenamiento por hash SHA-256, caducidad y revocacion de refresh tokens (#132)."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import auth
 
@@ -17,7 +17,7 @@ def test_create_session_stores_sha256_hash_and_expires_at(db):
     assert session.refresh_token_hash != refresh_token
     assert len(session.refresh_token_hash) == 64
     assert session.expires_at is not None
-    assert session.expires_at > datetime.utcnow()
+    assert session.expires_at > datetime.now(UTC)
     assert session.revoked_at is None
 
 
@@ -65,7 +65,7 @@ def test_refresh_with_revoked_at_set_returns_401(client, db):
     user = make_user(db)
     refresh_token = auth.create_refresh_token({"sub": str(user.id)})
     session = auth.create_session(db, str(user.id), refresh_token)
-    session.revoked_at = datetime.utcnow() - timedelta(seconds=10)
+    session.revoked_at = datetime.now(UTC) - timedelta(seconds=10)
     db.commit()
     client.cookies.set("refresh_token", refresh_token)
 
@@ -81,7 +81,7 @@ def test_refresh_with_expired_session_returns_401(client, db):
         db,
         str(user.id),
         refresh_token,
-        expires_at=datetime.utcnow() - timedelta(minutes=1),
+        expires_at=datetime.now(UTC) - timedelta(minutes=1),
     )
     client.cookies.set("refresh_token", refresh_token)
 

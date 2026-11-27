@@ -107,6 +107,27 @@ class _SqliteUUID(sqltypes.Uuid):
 SQLiteDialect_pysqlite.colspecs[sqltypes.Uuid] = _SqliteUUID
 
 
+class _SqliteTZDateTime(SQLiteDialect_pysqlite.colspecs[sqltypes.DateTime]):
+    """En SQLite devuelve datetime con tzinfo=UTC cuando timezone=True, igualando PostgreSQL timestamptz."""
+
+    cache_ok = True
+
+    def result_processor(self, dialect, coltype):
+        base = super().result_processor(dialect, coltype)
+        from datetime import UTC
+
+        def process(value):
+            val = base(value) if base else value
+            if val is not None and self.timezone and val.tzinfo is None:
+                return val.replace(tzinfo=UTC)
+            return val
+
+        return process
+
+
+SQLiteDialect_pysqlite.colspecs[sqltypes.DateTime] = _SqliteTZDateTime
+
+
 def pytest_collection_modifyitems(config, items):
     if TEST_DATABASE_URL:
         return

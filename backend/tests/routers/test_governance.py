@@ -164,8 +164,8 @@ def test_worker_cannot_edit_or_delete_shifts_in_managed_company(client, db, worl
         company_id=world.managed_company.id,
         user_id=world.worker_user.id,
         type="particular",
-        start_date=models.datetime.utcnow().date(),
-        end_date=models.datetime.utcnow().date(),
+        start_date=models.datetime.now(models.UTC).date(),
+        end_date=models.datetime.now(models.UTC).date(),
         duration=2.0,
     )
     db.add(log)
