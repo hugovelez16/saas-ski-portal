@@ -175,7 +175,9 @@ class UserSession(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
-    refresh_token = Column(String, unique=True, nullable=False)
+    refresh_token_hash = Column(String(64), unique=True, nullable=False)
+    expires_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
     device_name = Column(String, nullable=True)
     ip_address = Column(String, nullable=True)
 
