@@ -5,6 +5,7 @@ from datetime import datetime
 from database import Base
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -51,18 +53,24 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     first_name = Column(String)
     last_name = Column(String)
-    role = Column(Enum(UserRole), default=UserRole.user)
-    is_active = Column(Boolean, default=True)  # System Login Access
+    role = Column(Enum(UserRole), nullable=False, default=UserRole.user, server_default="user")
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")  # System Login Access
 
     # Auth & Security
-    must_change_password = Column(Boolean, default=False)
+    must_change_password = Column(Boolean, nullable=False, default=False, server_default="false")
 
     # TOTP 2FA Evolution
-    is_2fa_enabled = Column(Boolean, default=False)
+    is_2fa_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
     otp_secret = Column(String, nullable=True)  # Cifrado con Fernet (ENCRYPTION_KEY) via auth.encrypt_secret
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
 
     work_logs = relationship("WorkLog", back_populates="user")
     company_memberships = relationship("CompanyMember", back_populates="user")
@@ -92,8 +100,14 @@ class Company(Base):
     is_managed = Column(Boolean, default=False, server_default="false", nullable=False)
 
     settings = Column(JSONB, default=dict)  # Global company settings
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
 
     members = relationship(
         "CompanyMember",
@@ -118,8 +132,14 @@ class CompanyMember(Base):
     # Structure example: { "particular": { "base_rate": 25.0, "is_gross": true, "tax_overrides": {...} } }
 
     settings = Column(JSONB, default=dict)  # User-specific UI/Feature overrides
-    joined_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    joined_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
 
     user = relationship("User", back_populates="company_memberships")
     company = relationship("Company", back_populates="members")
@@ -133,6 +153,7 @@ class WorkLog(Base):
     __table_args__ = (
         Index("ix_work_logs_company_start_date", "company_id", "start_date"),
         Index("ix_work_logs_user_start_date", "user_id", "start_date"),
+        CheckConstraint("end_date >= start_date", name="ck_work_logs_end_date_gte_start_date"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -150,7 +171,7 @@ class WorkLog(Base):
     duration = Column(Numeric(10, 2), nullable=True)
 
     net_amount = Column(Numeric(10, 2), nullable=True)
-    gross_amount = Column(Numeric(10, 2), default=0.0)
+    gross_amount = Column(Numeric(10, 2), nullable=False, default=0.0, server_default="0")
 
     extra_data = Column(JSONB, default=dict)  # Stores dynamic extras: {"has_night": true, etc.}
 
@@ -160,8 +181,14 @@ class WorkLog(Base):
     calculation_snapshot = Column(JSONB, nullable=True)
     # Stores a copy of rates, definitions and logic used for this calculation.
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
 
     user = relationship("User", back_populates="work_logs")
     company = relationship("Company", back_populates="work_logs")
@@ -186,9 +213,9 @@ class UserSession(Base):
     device_name = Column(String, nullable=True)
     ip_address = Column(String, nullable=True)
 
-    is_active = Column(Boolean, default=True)
-    last_active = Column(DateTime, default=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    last_active = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
 
     user = relationship("User", back_populates="sessions")
 
@@ -207,7 +234,7 @@ class AuditLog(Base):
     new_value = Column(JSONB, nullable=True)
     reason = Column(Text, nullable=True)
     extra_data = Column(JSONB, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SubscriptionScope(str, enum.Enum):
@@ -234,7 +261,7 @@ class AppModule(Base):
     code_name = Column(String, unique=True, nullable=False)  # e.g. "worker_daily_report", "export_pdf"
     name = Column(String, nullable=False)  # Display name
     description = Column(Text, nullable=True)
-    is_active = Column(Boolean, default=True)  # Is the module available to subscribe to?
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")  # Is the module available to subscribe to?
 
     # Which scopes can subscribe to this module?
     # "both" means company OR user can subscribe.
@@ -245,8 +272,14 @@ class AppModule(Base):
     # Future: pricing info (not used yet)
     price_monthly = Column(Numeric(10, 2), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
 
     subscriptions = relationship("ModuleSubscription", back_populates="module")
 
@@ -259,6 +292,16 @@ class ModuleSubscription(Base):
     """
 
     __tablename__ = "module_subscriptions"
+    __table_args__ = (
+        Index(
+            "uq_module_subscriptions_active_company",
+            "module_id",
+            "company_id",
+            unique=True,
+            postgresql_where=text("status = 'active' AND company_id IS NOT NULL"),
+            sqlite_where=text("status = 'active' AND company_id IS NOT NULL"),
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     module_id = Column(UUID(as_uuid=True), ForeignKey("app_modules.id"), nullable=False)
@@ -275,8 +318,14 @@ class ModuleSubscription(Base):
 
     notes = Column(Text, nullable=True)  # Admin notes (e.g. "Regalo promo", "Pago Stripe #123")
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
 
     module = relationship("AppModule", back_populates="subscriptions")
     company = relationship("Company")
