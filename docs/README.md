@@ -15,6 +15,7 @@ Las reglas generales estan en [../CLAUDE.md](../CLAUDE.md).
 | [empresa/logica-negocio-empresa.md](empresa/logica-negocio-empresa.md) | Comportamiento objetivo de empresa, roles, acceso, membresia y turnos | Dominio provisional: cualquier tarea de empresa, permisos o turnos cuya entidad aun no tenga fichero en `dominio/`. Lee solo la seccion que cite la issue |
 | [functional_requirements_document.md](functional_requirements_document.md) | Requisitos funcionales de la plataforma | Para entender una funcionalidad existente fuera de empresa |
 | [producto/revision-base.md](producto/revision-base.md) | Propuesta: modelo minimo, matriz de permisos, configuracion por capas, recortes y reglas de estructura para la migracion, con cuestionario | Antes de disenar reglas de dominio, permisos o la migracion hexagonal, mientras siga en estado Propuesta |
+| [producto/cobros.md](producto/cobros.md) | Modelo objetivo de cobro, reparto portal/Odoo, flujo mensual, fases 0-4 y datos conocidos de Odoo | Tareas de planes, limites, cobros o integracion con Odoo |
 | [planes-y-precios.md](planes-y-precios.md) | Planes comerciales y cambio de plan | Tareas de landing, planes o modulos de pago |
 | [auditoria-propuesta-iliberis.md](auditoria-propuesta-iliberis.md) | Lo prometido al cliente frente a lo que hace el codigo | Antes de prometer o priorizar funcionalidades |
 | [operaciones/backups.md](operaciones/backups.md) | Backups de produccion y restauracion | Tareas de infra, migraciones destructivas o despliegue |
