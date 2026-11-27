@@ -5,6 +5,7 @@ This module handles password hashing, token creation/verification, and current u
 It uses OAuth2 with Password Flow and JWT tokens.
 """
 
+import hashlib
 import os
 import secrets
 import uuid
@@ -22,6 +23,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from redis_config import redis_manager
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 # Cryptographic Configuration
@@ -528,10 +530,35 @@ def verify_totp_with_protection(user: models.User, code: str) -> bool:
 # --- Session Management ---
 
 
-def create_session(db: Session, user_id: str, refresh_token: str, device_name: str = None, ip_address: str = None):
+def hash_refresh_token(refresh_token: str) -> str:
+    """Devuelve el hash SHA-256 hexadecimal del refresh token."""
+    return hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
+
+
+def _extract_refresh_expires_at(refresh_token: str) -> datetime:
+    """Extrae la caducidad UTC naive del JWT de refresh o usa el TTL por defecto."""
+    try:
+        claims = jwt.get_unverified_claims(refresh_token)
+        exp = claims.get("exp")
+        if isinstance(exp, (int, float)):
+            return datetime.utcfromtimestamp(exp)
+    except JWTError:
+        pass
+    return datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+
+
+def create_session(
+    db: Session,
+    user_id: str,
+    refresh_token: str,
+    device_name: str = None,
+    ip_address: str = None,
+    expires_at: datetime | None = None,
+):
     session = models.UserSession(
         user_id=user_id,
-        refresh_token=refresh_token,
+        refresh_token_hash=hash_refresh_token(refresh_token),
+        expires_at=expires_at or _extract_refresh_expires_at(refresh_token),
         device_name=device_name,
         ip_address=ip_address,
         last_active=datetime.utcnow(),
@@ -542,17 +569,33 @@ def create_session(db: Session, user_id: str, refresh_token: str, device_name: s
 
 
 def get_session_by_token(db: Session, refresh_token: str):
+    now = datetime.utcnow()
+    token_hash = hash_refresh_token(refresh_token)
     return (
         db.query(models.UserSession)
-        .filter(models.UserSession.refresh_token == refresh_token, models.UserSession.is_active == True)
+        .filter(
+            models.UserSession.refresh_token_hash == token_hash,
+            models.UserSession.is_active == True,
+            models.UserSession.revoked_at.is_(None),
+            or_(models.UserSession.expires_at.is_(None), models.UserSession.expires_at > now),
+        )
         .first()
     )
 
 
 def revoke_session(db: Session, refresh_token: str):
-    session = get_session_by_token(db, refresh_token)
+    token_hash = hash_refresh_token(refresh_token)
+    session = (
+        db.query(models.UserSession)
+        .filter(
+            models.UserSession.refresh_token_hash == token_hash,
+            models.UserSession.is_active == True,
+        )
+        .first()
+    )
     if session:
         session.is_active = False
+        session.revoked_at = datetime.utcnow()
         db.commit()
     return session
 

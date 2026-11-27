@@ -22,6 +22,9 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ## [Unreleased]
 
+### Seguridad
+- **Sesiones de refresh**: `user_sessions` guarda el hash SHA-256 (`refresh_token_hash`) en lugar del JWT en claro, registra `expires_at` y `revoked_at`, y rechaza con 401 sesiones caducadas o revocadas (#132)
+
 ### Anadido
 - **Reglas de modulos**: `docs/dominio/modulo.md` con las reglas `R-MOD-01` a `R-MOD-22` segun la revision de base (catalogo, suscripciones solo de empresa, duplicados con 409, guardia de modulo, modulos efectivos, `billing`, `target_scope`, `price_monthly` y `settings.modules` retirados, planes comerciales); pregunta abierta O26 (lo vendido frente a lo implementado) y se alinean las filas de modulos del glosario (#70)
 - **Reglas de tarifas**: `docs/dominio/tarifa.md` con las reglas `R-TAR-01` a `R-TAR-29` segun la revision de base (tarifa por miembro y tipo, bruto o neto por miembro, impuestos propios, liquidacion de un turno con ejemplos contrastados con los tests, pluses, importe manual y `price_type` retirados, billing basica); preguntas abiertas O27 y O28 y referencia a O17 (#69)

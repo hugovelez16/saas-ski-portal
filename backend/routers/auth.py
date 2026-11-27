@@ -622,7 +622,12 @@ async def disable_2fa(
 @router.get("/sessions", response_model=list[schemas.SessionResponse])
 async def list_sessions(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
     """Lists all active sessions for the user."""
-    return [s for s in current_user.sessions if s.is_active]
+    now = datetime.utcnow()
+    return [
+        s
+        for s in current_user.sessions
+        if s.is_active and s.revoked_at is None and (s.expires_at is None or s.expires_at > now)
+    ]
 
 
 @router.delete("/sessions/{session_id}")
@@ -640,6 +645,7 @@ async def revoke_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     session.is_active = False
+    session.revoked_at = datetime.utcnow()
     db.commit()
     return {"message": "Session revoked"}
 
