@@ -47,10 +47,10 @@ facturacion y costes) no es un modulo: sus reglas estan en `R-TAR`.
 |---|---|---|---|---|
 | R-MOD-01 | `code_name` es unico en el catalogo; crear un modulo con un `code_name` existente es un error | Cerrado | 8 | `backend/models.py:AppModule`, `backend/routers/modules.py:create_module` (responde 400) |
 | R-MOD-02 | Solo el PA crea y edita modulos del catalogo; el manager y el worker reciben 403 | Cerrado | 8, matriz de revision-base.md | `backend/routers/modules.py:_require_admin` |
-| R-MOD-03 | Los modulos vendidos y vigentes son dos: parte diario (`worker_daily_report`, "Cuadrante compartido" en `planes-y-precios.md`) e Informes (`reports`) | Cerrado | P17; `planes-y-precios.md` | `backend/migrations/versions/2314c15d1a0f_seed_default_modules.py`, `0fb22f01dd7d_seed_billing_and_reports_modules.py` |
+| R-MOD-03 | Los modulos vendidos y vigentes son dos: `worker_daily_report` (con `name` y `description` de "Cuadrante compartido" en el catalogo) e Informes (`reports`). El modulo de notificaciones push (`push_notifications`) se crea ya en el catalogo como inactivo (`is_active = false`) | Cerrado | P17, O26, Repaso 2026-11-25; `planes-y-precios.md` | `backend/migrations/versions/2314c15d1a0f_seed_default_modules.py`, `0fb22f01dd7d_seed_billing_and_reports_modules.py`; nombre y `push_notifications`: pendiente de implementar (issue de seguimiento) |
 | R-MOD-04 | `billing` no es un modulo del catalogo hasta el billing avanzado (O11); se retira del catalogo y del menu | Cerrado | P17 | pendiente de implementar (issue de seguimiento): `0fb22f01dd7d_seed_billing_and_reports_modules.py` siembra `billing` |
-| R-MOD-05 | Un modulo con `is_active = false` no vale como modulo contratado y no se puede suscribir | Confirmar | 8 | `backend/crud.py:user_has_module` (ignora el inactivo); pendiente de implementar (issue de seguimiento): el alta de suscripcion no lo comprueba |
-| R-MOD-06 | Cualquier usuario verificado lista el catalogo activo; solo el PA ve tambien los inactivos | Confirmar | 8 | `backend/routers/modules.py:list_modules` |
+| R-MOD-05 | Un modulo con `is_active = false` no vale como modulo contratado y no se puede suscribir | Cerrado | 8, Repaso 2026-11-25 | `backend/crud.py:user_has_module` (ignora el inactivo); pendiente de implementar (issue de seguimiento): el alta de suscripcion no lo comprueba |
+| R-MOD-06 | Cualquier usuario verificado lista el catalogo activo; solo el PA ve tambien los inactivos | Cerrado | 8, Repaso 2026-11-25 | `backend/routers/modules.py:list_modules` |
 
 ### Suscripciones
 
@@ -58,7 +58,7 @@ facturacion y costes) no es un modulo: sus reglas estan en `R-TAR`.
 |---|---|---|---|---|
 | R-MOD-07 | Una suscripcion une una empresa y un modulo, con `status`, `expires_at` (opcional) y `notes` | Cerrado | 8, P10 | `backend/models.py:ModuleSubscription` |
 | R-MOD-08 | Solo el PA crea, cambia o cancela suscripciones; el manager y el worker reciben 403 | Cerrado | 8, matriz | `backend/routers/modules.py:create_subscription`, `update_subscription` |
-| R-MOD-09 | Cancelar una suscripcion es pasarla a `cancelled`; el registro se conserva | Confirmar | 8 | pendiente de implementar (issue de seguimiento): hoy existe tambien `DELETE /modules/subscriptions/{sub_id}`, que borra la fila |
+| R-MOD-09 | Cancelar una suscripcion es pasarla a `cancelled`; el registro se conserva | Cerrado | 8, Repaso 2026-11-25 | pendiente de implementar (issue de seguimiento): hoy existe tambien `DELETE /modules/subscriptions/{sub_id}`, que borra la fila |
 | R-MOD-10 | El manager lista solo las suscripciones de su empresa activa (sin datos de usuario) y no las modifica | Cerrado | 8, matriz | `backend/routers/modules.py:list_subscriptions` |
 | R-MOD-11 | Una suscripcion `active` o `trial` y no vencida es vigente; `cancelled`, `expired` o con `expires_at` pasado no valen | Cerrado | 8 | `backend/crud.py:user_has_module` |
 | R-MOD-12 | Crear o reactivar una suscripcion `active` o `trial` de la misma empresa y modulo que otra vigente responde 409 | Cerrado | 8 | `backend/crud.py:_ensure_no_live_duplicate` |
@@ -76,12 +76,12 @@ facturacion y costes) no es un modulo: sus reglas estan en `R-TAR`.
 
 | ID | Regla | Estado | Origen | Codigo |
 |---|---|---|---|---|
-| R-MOD-17 | Las suscripciones de usuario (`scope = user`, `user_id`) no existen en v1; vuelven con el alta publica B2C | Retirada (Abierto, O16) | P10 | pendiente de implementar (issue de seguimiento): `SubscriptionScope.user` y el alta de usuario siguen vivos |
+| R-MOD-17 | **Retirada.** Las suscripciones de usuario (`scope = user`, `user_id`) se eliminan definitivamente: tambien en el alta publica B2C los modulos se contratan como suscripcion de la empresa del usuario (R-ACC-06) | Retirada | P10, O16, Repaso 2026-11-25 | pendiente de implementar (issue de seguimiento): `SubscriptionScope.user` y el alta de usuario siguen vivos |
 | R-MOD-18 | `AppModule.target_scope` y `AppModule.price_monthly` se eliminan | Retirada | P10, S9 | pendiente de implementar (issue de seguimiento): siguen en `backend/models.py` |
 | R-MOD-19 | `settings.modules` se elimina: la unica fuente de modulos contratados es `module_subscriptions` | Retirada | P9, S9 | pendiente de implementar (issue de seguimiento): `frontend/src/app/(app)/manager/daily-reports/page.tsx` aun lee `settings.modules` |
 | R-MOD-20 | Pista Verde paga Cuadrante compartido (5 EUR/mes) e Informes (15 EUR/mes); Azul y Roja los incluyen | Cerrado | `planes-y-precios.md` | no aplica en codigo |
 | R-MOD-21 | Un modulo nuevo no queda incluido en ningun plan automaticamente: su precio por plan se decide al lanzarlo | Cerrado | `planes-y-precios.md` | no aplica en codigo |
-| R-MOD-22 | Los limites del plan (monitores y responsables) se modelaran con suscripciones y limites por modulo cuando haya facturacion | Abierto (O12) | O12 | sin implementar: ningun codigo aplica los limites |
+| R-MOD-22 | Cada empresa tiene un plan que fija el PA (si es personalizado, el PA escribe sus numeros). Los limites de monitores y responsables se aplican bloqueando el alta o la invitacion de miembros al superarlos (detalle de cobro y avisos en #130). El recuento mensual de monitores es el maximo de monitores activos simultaneamente en el mes (`planes-y-precios.md`) | Cerrado | O12, O26, Repaso 2026-11-25 (ronda 2 6.1) | pendiente de implementar (issue de seguimiento): ningun codigo aplica los limites |
 
 ## Casos limite
 
