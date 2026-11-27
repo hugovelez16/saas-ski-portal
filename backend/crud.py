@@ -7,7 +7,7 @@ It abstracts the database queries for creating, reading, updating, and deleting 
 
 import json
 import uuid
-from datetime import date
+from datetime import UTC, date
 from datetime import datetime as _dt
 from typing import Any
 
@@ -34,7 +34,8 @@ def get_user_by_email(db: Session, email: str):
     Returns:
         models.User: The user object if found, otherwise None.
     """
-    return db.query(models.User).filter(models.User.email == email).first()
+    normalized = email.strip().lower()
+    return db.query(models.User).filter(func.lower(models.User.email) == normalized).first()
 
 
 def get_user(db: Session, user_id: str):
@@ -1165,7 +1166,7 @@ def _ensure_no_live_duplicate(db: Session, module_id, company_id, user_id, exclu
     query = db.query(models.ModuleSubscription.id).filter(
         models.ModuleSubscription.module_id == module_id,
         models.ModuleSubscription.status.in_([models.SubscriptionStatus(s) for s in _LIVE_SUBSCRIPTION_STATUSES]),
-        or_(models.ModuleSubscription.expires_at.is_(None), models.ModuleSubscription.expires_at > _dt.utcnow()),
+        or_(models.ModuleSubscription.expires_at.is_(None), models.ModuleSubscription.expires_at > _dt.now(UTC)),
     )
     if company_id is not None:
         query = query.filter(models.ModuleSubscription.company_id == company_id)
@@ -1241,7 +1242,7 @@ def user_has_module(db: Session, user_id: str, company_id: str | None, code_name
     Una suscripción está activa si status == "active" o "trial"
     Y no ha expirado (expires_at is NULL o expires_at > now).
     """
-    now = _dt.utcnow()
+    now = _dt.now(UTC)
     active_statuses = [models.SubscriptionStatus.active, models.SubscriptionStatus.trial]
 
     # Buscar el módulo

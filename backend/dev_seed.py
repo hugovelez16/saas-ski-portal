@@ -55,7 +55,9 @@ def ensure_dev_admin_user(db: Session) -> models.User:
             print(f"[DevSeed] Empresa '{admin_company_name}' creada exitosamente.")
 
     # 2. Buscar o crear usuario administrador
-    user = db.query(models.User).filter(models.User.email == admin_email).first()
+    from sqlalchemy import func
+
+    user = db.query(models.User).filter(func.lower(models.User.email) == admin_email.strip().lower()).first()
     if not user:
         hashed_password = auth.get_password_hash(admin_password)
         user = models.User(

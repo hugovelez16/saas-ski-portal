@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import access_policy
@@ -510,7 +510,7 @@ async def impersonate_user(
         {
             "scope": "impersonated",
             "admin_user_id": str(current_user.id),
-            "exp": datetime.utcnow() + timedelta(minutes=10),
+            "exp": datetime.now(UTC) + timedelta(minutes=10),
         }
     )
     access_token = auth.jwt.encode(payload, auth.PRIVATE_KEY, algorithm=auth.ALGORITHM)
@@ -622,11 +622,13 @@ async def disable_2fa(
 @router.get("/sessions", response_model=list[schemas.SessionResponse])
 async def list_sessions(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
     """Lists all active sessions for the user."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     return [
         s
         for s in current_user.sessions
-        if s.is_active and s.revoked_at is None and (s.expires_at is None or s.expires_at > now)
+        if s.is_active
+        and s.revoked_at is None
+        and (s.expires_at is None or (s.expires_at.replace(tzinfo=UTC) if s.expires_at.tzinfo is None else s.expires_at) > now)
     ]
 
 
@@ -645,7 +647,7 @@ async def revoke_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     session.is_active = False
-    session.revoked_at = datetime.utcnow()
+    session.revoked_at = datetime.now(UTC)
     db.commit()
     return {"message": "Session revoked"}
 
