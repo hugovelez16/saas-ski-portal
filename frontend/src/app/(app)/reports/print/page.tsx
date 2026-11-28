@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { parse } from "date-fns";
 import { useAuth } from "@/context/AuthContext";
-import { getMyCompanies, getCompaniesDetailed } from "@/lib/api/companies";
+import { getCompany, getCompaniesDetailed } from "@/lib/api/companies";
 import { getAllWorkLogs, getWorkLogSummary } from "@/lib/api/work-logs";
 import { PrintableReport } from "@/components/reports/PrintableReport";
 import { Loader2 } from "lucide-react";
@@ -24,8 +24,12 @@ export default function PrintReportPage() {
     const isAdmin = user?.role === 'admin' || user?.isPlatformAdmin;
 
     const { data: companies = [], isLoading: companiesLoading } = useQuery({
-        queryFn: isAdmin ? getCompaniesDetailed : getMyCompanies,
-        queryKey: isAdmin ? ['allCompanies'] : ['myCompanies'],
+        queryFn: async () => {
+            if (isAdmin) return getCompaniesDetailed({ asAdmin: true });
+            if (!companyId || companyId === 'all') return [];
+            return [await getCompany(companyId)];
+        },
+        queryKey: isAdmin ? ['allCompanies'] : ['company', companyId],
         enabled: !!user
     });
 

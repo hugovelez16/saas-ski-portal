@@ -41,6 +41,13 @@ export interface MemberDeleteOut {
     reason: string | null;
 }
 
+/** Elemento minimo del selector de empresas (`GET /v2/me/companies`, R-ACC-81). */
+export interface MyCompanyItem {
+    id: string;
+    name: string;
+    role: string;
+}
+
 /** Vista completa (solo PA actuando). */
 export interface CompanyFull {
     id: string;

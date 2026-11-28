@@ -15,7 +15,7 @@ import {
 import { PlusCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
-import { getMyCompanies } from "@/lib/api/companies";
+import { getCompany, getMyCompanies } from "@/lib/api/companies";
 import type { WorkLog, WorkLogCreate } from "@/lib/types";
 import { WorkLogForm } from "./work-log-form";
 import { createWorkLog, updateWorkLog } from "@/lib/api/work-logs";
@@ -83,23 +83,24 @@ export function UserCreateWorkLogDialog({
     const { toast } = useToast();
     const { user: authUser } = useAuth();
 
-    // Fetch companies
-    // Fetch companies if not provided
-    const { data: fetchedCompanies = [] } = useQuery({
-        queryFn: getMyCompanies,
-        queryKey: ["myCompanies"],
-        enabled: !providedCompanies,
+    // Fetch active company details if not provided (R-ACC-81: /v2/me/companies no incluye definiciones)
+    const activeCompanyId = user?.activeCompanyId || authUser?.activeCompanyId;
+    const { data: activeCompany } = useQuery({
+        queryFn: () => getCompany(activeCompanyId as string),
+        queryKey: ["company", activeCompanyId],
+        enabled: !providedCompanies && Boolean(activeCompanyId),
     });
 
-    const companies = providedCompanies || fetchedCompanies;
-
-    // Rol del usuario que opera en la empresa del turno. No se usa `companies` (en la ficha de
-    // usuario contiene los roles del titular). Sin dato, no se ofrece recalcular.
     const { data: myCompanies = [] } = useQuery({
         queryFn: getMyCompanies,
         queryKey: ["myCompanies"],
-        enabled: Boolean(logToEdit),
+        enabled: Boolean(logToEdit) || (!providedCompanies && !activeCompanyId),
     });
+
+    const companies = providedCompanies || (activeCompany ? [activeCompany] : myCompanies);
+
+    // Rol del usuario que opera en la empresa del turno. No se usa `companies` (en la ficha de
+    // usuario contiene los roles del titular). Sin dato, no se ofrece recalcular.
     const turnCompanyRole = myCompanies.find((c) => c.id === logToEdit?.companyId)?.role;
     const canRecalculate = Boolean(
         authUser?.isPlatformAdmin || authUser?.role === 'admin' || turnCompanyRole === 'manager'

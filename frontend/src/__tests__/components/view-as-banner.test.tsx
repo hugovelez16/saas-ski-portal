@@ -3,15 +3,17 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ViewAsBanner } from "@/components/view-as-banner";
 
 const switchScope = vi.fn();
+const stopImpersonation = vi.fn();
 let mockUser: Record<string, unknown> | null = null;
 
 vi.mock("@/context/AuthContext", () => ({
-  useAuth: () => ({ user: mockUser, switchScope }),
+  useAuth: () => ({ user: mockUser, switchScope, stopImpersonation }),
 }));
 
 describe("ViewAsBanner", () => {
   beforeEach(() => {
     switchScope.mockReset();
+    stopImpersonation.mockReset();
     mockUser = null;
   });
 
@@ -52,5 +54,22 @@ describe("ViewAsBanner", () => {
     const { container } = render(<ViewAsBanner />);
 
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("muestra el banner de suplantacion y llama a stopImpersonation al salir", () => {
+    mockUser = {
+      id: "worker-1",
+      firstName: "Ana",
+      email: "ana@vesotel.com",
+      isImpersonated: true,
+      isReadOnlyView: true,
+      activeCompanyId: "c1",
+    };
+
+    render(<ViewAsBanner />);
+    expect(screen.getByText("Suplantando a Ana (solo lectura)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Finalizar suplantación" }));
+
+    expect(stopImpersonation).toHaveBeenCalledTimes(1);
   });
 });

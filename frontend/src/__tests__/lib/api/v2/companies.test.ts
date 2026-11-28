@@ -143,13 +143,14 @@ describe('API v2 Companies client', () => {
     });
 
     describe('listMyCompanies', () => {
-        it('GET /v2/me/companies and returns data', async () => {
-            (mockedApi.get as any).mockResolvedValue({ data: [{ id: 'c-1' }] });
+        it('GET /v2/me/companies and returns minimal selector items (id, name, role)', async () => {
+            const items = [{ id: 'c-1', name: 'Escuela Sierra', role: 'manager' }];
+            (mockedApi.get as any).mockResolvedValue({ data: items });
 
             const result = await listMyCompanies();
 
             expect(mockedApi.get).toHaveBeenCalledWith('/v2/me/companies');
-            expect(result).toEqual([{ id: 'c-1' }]);
+            expect(result).toEqual(items);
         });
     });
 

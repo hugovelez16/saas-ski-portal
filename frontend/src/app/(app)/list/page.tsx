@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useAuth } from "@/context/AuthContext";
 import api, { describeLoadError } from "@/lib/api";
 import { getUserRates } from "@/lib/api/settings";
-import { getMyCompanies } from "@/lib/api/companies";
+import { getCompany } from "@/lib/api/companies";
 import type { WorkLog, UserCompanyRate, Company, CompanyMember } from "@/lib/types";
 import { mapMemberToLegacyRate } from "@/lib/utils/rates";
 import {
@@ -78,9 +78,12 @@ export default function ListPage() {
 
   const fetchSettings = async () => {
     try {
-      const [rates, comps] = await Promise.all([getUserRates(), getMyCompanies()]);
+      const [rates, activeComp] = await Promise.all([
+        getUserRates(),
+        currentCompanyId ? getCompany(currentCompanyId) : Promise.resolve(null),
+      ]);
       setUserRates(rates.map(r => mapMemberToLegacyRate(r)));
-      setCompanies(comps);
+      setCompanies(activeComp ? [activeComp] : []);
     } catch (error) {
       console.error("Error fetching rates", error);
     }

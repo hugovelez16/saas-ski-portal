@@ -19,7 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
-import { getMyCompanies } from "@/lib/api/companies";
+import { getCompany } from "@/lib/api/companies";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -37,14 +37,15 @@ export function WorkLogDetailsDialog({ log, open, onOpenChange, companies: initi
     const { user } = useAuth();
     const [applyToGroup, setApplyToGroup] = React.useState(false);
 
-    // Fetch companies if not provided (cached by React Query)
-    const { data: myCompanies = [] } = useQuery({
-        queryKey: ["myCompanies"],
-        queryFn: getMyCompanies,
-        enabled: open && !initialCompanies,
+    // Fetch active company details if not provided (R-ACC-81: /v2/me/companies no incluye definiciones)
+    const activeCompanyId = user?.activeCompanyId;
+    const { data: activeCompany } = useQuery({
+        queryKey: ["company", activeCompanyId],
+        queryFn: () => getCompany(activeCompanyId as string),
+        enabled: open && !initialCompanies && Boolean(activeCompanyId),
     });
 
-    const companies = initialCompanies || myCompanies;
+    const companies = initialCompanies || (activeCompany ? [activeCompany] : []);
 
     // Empresa del turno: sus reglas (gestionada o autonoma) deciden si se puede editar o borrar
     const logCompany = log ? companies?.find(c => c.id === log.companyId) ?? null : null;

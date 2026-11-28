@@ -30,6 +30,13 @@ function twoFactorErrorMessage(err: unknown): string {
   return "Código incorrecto o expirado"
 }
 
+// Mensaje de error segun el estado devuelto por /token (R-ACC-10)
+function loginErrorMessage(err: unknown): string {
+  const status = (err as { response?: { status?: number } })?.response?.status
+  if (status === 403) return "Tu cuenta ha sido suspendida. Contacta con soporte"
+  return "Credenciales inválidas, código incorrecto o error de conexión"
+}
+
 export default function LoginPage() {
   const { login, devLogin, verify2FA } = useAuth()
   const router = useRouter()
@@ -95,7 +102,7 @@ export default function LoginPage() {
       setError(
         showTwoFactor
           ? twoFactorErrorMessage(err)
-          : "Credenciales inválidas, código incorrecto o error de conexión"
+          : loginErrorMessage(err)
       );
     } finally {
       setIsLoading(false)

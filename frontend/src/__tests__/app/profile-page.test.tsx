@@ -31,9 +31,11 @@ vi.mock("@/lib/api/settings", () => ({
 }));
 
 vi.mock("@/lib/api/companies", () => ({
-    getMyCompanies: vi.fn(async () => [
-        { id: "company-1", name: "Escuela Norte", worklogDefinitions: {} },
-    ]),
+    getCompany: vi.fn(async () => ({
+        id: "company-1",
+        name: "Escuela Norte",
+        worklogDefinitions: {},
+    })),
 }));
 
 vi.mock("@/lib/api/users", () => ({
