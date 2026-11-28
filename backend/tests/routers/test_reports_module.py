@@ -45,7 +45,6 @@ def _subscribe_company(
     sub = models.ModuleSubscription(
         module_id=module.id,
         company_id=company.id,
-        scope=models.SubscriptionScope.company,
         status=status,
         expires_at=expires_at,
     )
