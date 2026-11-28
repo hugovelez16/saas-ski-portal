@@ -17,6 +17,8 @@ import {
     getWorkLogsPage,
     getAllWorkLogs,
     getWorkLogSummary,
+    getWorkLogReport,
+    getAllWorkLogReport,
     createWorkLog,
     previewWorkLogRecalculation,
     updateWorkLog,
@@ -171,6 +173,60 @@ describe('Work Logs API Client', () => {
                 },
             });
             expect(result).toEqual(summary);
+        });
+    });
+
+    describe('getWorkLogReport & getAllWorkLogReport', () => {
+        const sampleSummary = {
+            startDate: '2026-01-01',
+            endDate: '2026-01-31',
+            totals: { logsCount: 2, totalHours: 4, totalNet: 80, totalGross: 100, uniqueDays: 1, activeUsers: 1 },
+            byType: [],
+            byDay: [],
+            byUser: [],
+        };
+
+        it('should GET /work-logs/reports with snake_case params', async () => {
+            (mockedApi.get as any).mockResolvedValue({
+                data: { items: rowsOf(0, 2), total: 2, summary: sampleSummary },
+            });
+
+            const result = await getWorkLogReport({
+                companyId: 'c-1',
+                userId: 'u-1',
+                startDate: '2026-01-01',
+                endDate: '2026-01-31',
+                includeLogs: false,
+            });
+
+            expect(mockedApi.get).toHaveBeenCalledWith('/work-logs/reports', {
+                params: {
+                    company_id: 'c-1',
+                    user_id: 'u-1',
+                    start_date: '2026-01-01',
+                    end_date: '2026-01-31',
+                    skip: undefined,
+                    limit: undefined,
+                    include_logs: false,
+                },
+            });
+            expect(result.summary).toEqual(sampleSummary);
+        });
+
+        it('should page /work-logs/reports in getAllWorkLogReport when total exceeds pageSize', async () => {
+            (mockedApi.get as any)
+                .mockResolvedValueOnce({ data: { items: rowsOf(0, 2), total: 3, summary: sampleSummary } })
+                .mockResolvedValueOnce({ data: { items: rowsOf(2, 1), total: 3, summary: sampleSummary } });
+
+            const result = await getAllWorkLogReport(
+                { companyId: 'c-1', startDate: '2026-01-01', endDate: '2026-01-31' },
+                { pageSize: 2 }
+            );
+
+            expect(mockedApi.get).toHaveBeenCalledTimes(2);
+            expect(result.items).toHaveLength(3);
+            expect(result.total).toBe(3);
+            expect(result.summary).toEqual(sampleSummary);
         });
     });
 

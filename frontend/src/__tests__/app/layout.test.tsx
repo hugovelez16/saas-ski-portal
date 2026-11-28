@@ -106,7 +106,7 @@ describe('AppLayout Sidebar Integration for Platform Admin', () => {
         expect(screen.getByText('Módulos')).toBeInTheDocument();
     });
 
-    it('Scenario 2: Platform Admin in Querkus context (only billing active) should NOT see Parte Diario or Informes', () => {
+    it('Scenario 2: Platform Admin in Querkus context (sin modulos activos) debe ver Facturación y NO Parte Diario ni Informes', () => {
         // Mock Search Params returning Querkus ID
         vi.mocked(useSearchParams).mockReturnValue({
             get: vi.fn((key) => key === 'companyId' ? 'querkus-id' : null),
@@ -126,13 +126,11 @@ describe('AppLayout Sidebar Integration for Platform Admin', () => {
             logout: vi.fn(),
         } as unknown as ReturnType<typeof useAuth>);
 
-        // Mock Querkus modules: billing only
+        // Sin modulos contratados en Querkus: Facturación sigue visible por ser basica
         vi.mocked(useModules).mockReturnValue({
-            modules: [
-                { id: 'm-billing', codeName: 'billing', name: 'Facturación', isActive: true }
-            ],
+            modules: [],
             isLoading: false,
-            hasModule: (code: string) => code === 'billing',
+            hasModule: () => false,
         } as unknown as ReturnType<typeof useModules>);
 
         render(
@@ -144,13 +142,11 @@ describe('AppLayout Sidebar Integration for Platform Admin', () => {
         // Group label should be active company name
         expect(screen.getByText('Querkus')).toBeInTheDocument();
 
-        // Manager default items
+        // Manager default items (incluye Facturación sin modulo billing)
         expect(screen.getByText('Dashboard')).toBeInTheDocument();
         expect(screen.getByText('Calendario')).toBeInTheDocument();
         expect(screen.getByText('Usuarios')).toBeInTheDocument();
         expect(screen.getByText('Turnos')).toBeInTheDocument();
-
-        // Billing is active for Querkus
         expect(screen.getByText('Facturación')).toBeInTheDocument();
 
         // Parte Diario and Informes should NOT be in the document
@@ -178,10 +174,9 @@ describe('AppLayout Sidebar Integration for Platform Admin', () => {
             logout: vi.fn(),
         } as unknown as ReturnType<typeof useAuth>);
 
-        // Mock Surf in Comporta modules: all active
+        // Mock Surf in Comporta modules: reports y worker_daily_report activos
         vi.mocked(useModules).mockReturnValue({
             modules: [
-                { id: 'm-billing', codeName: 'billing', name: 'Facturación', isActive: true },
                 { id: 'm-reports', codeName: 'reports', name: 'Informes', isActive: true },
                 { id: 'm-daily', codeName: 'worker_daily_report', name: 'Parte Diario', isActive: true }
             ],
@@ -204,10 +199,73 @@ describe('AppLayout Sidebar Integration for Platform Admin', () => {
         expect(screen.getByText('Usuarios')).toBeInTheDocument();
         expect(screen.getByText('Turnos')).toBeInTheDocument();
 
-        // Active modules in the sidebar
+        // Active modules + Facturación basica in the sidebar
         expect(screen.getByText('Parte Diario')).toBeInTheDocument();
         expect(screen.getByText('Facturación')).toBeInTheDocument();
         expect(screen.getByText('Informes')).toBeInTheDocument();
+    });
+
+    it('Manager regular sin modulos contratados ve Facturación y no ve Informes ni Parte Diario', () => {
+        vi.mocked(useAuth).mockReturnValue({
+            user: {
+                id: 'manager-id',
+                email: 'laura@vesotel.com',
+                firstName: 'Laura',
+                role: 'user',
+                isPlatformAdmin: false,
+                activeRole: 'manager',
+                activeCompanyId: 'querkus-id',
+            },
+            loading: false,
+            logout: vi.fn(),
+        } as unknown as ReturnType<typeof useAuth>);
+
+        vi.mocked(useModules).mockReturnValue({
+            modules: [],
+            isLoading: false,
+            hasModule: () => false,
+        } as unknown as ReturnType<typeof useModules>);
+
+        render(
+            <AppLayout>
+                <div>Contenido manager</div>
+            </AppLayout>
+        );
+
+        expect(screen.getByText('Facturación')).toBeInTheDocument();
+        expect(screen.queryByText('Parte Diario')).not.toBeInTheDocument();
+        expect(screen.queryByText('Informes')).not.toBeInTheDocument();
+    });
+
+    it('Worker regular sin modulo reports no ve Facturación ni Informes Personales', () => {
+        vi.mocked(useAuth).mockReturnValue({
+            user: {
+                id: 'worker-id',
+                email: 'ana@vesotel.com',
+                firstName: 'Ana',
+                role: 'user',
+                isPlatformAdmin: false,
+                activeRole: 'worker',
+                activeCompanyId: 'querkus-id',
+            },
+            loading: false,
+            logout: vi.fn(),
+        } as unknown as ReturnType<typeof useAuth>);
+
+        vi.mocked(useModules).mockReturnValue({
+            modules: [],
+            isLoading: false,
+            hasModule: () => false,
+        } as unknown as ReturnType<typeof useModules>);
+
+        render(
+            <AppLayout>
+                <div>Contenido worker</div>
+            </AppLayout>
+        );
+
+        expect(screen.queryByText('Facturación')).not.toBeInTheDocument();
+        expect(screen.queryByText('Informes Personales')).not.toBeInTheDocument();
     });
 
     it('omite LegalFooter del pie del layout operativo pero mantiene AppVersion y el enlace legal directo en Sidebar', () => {

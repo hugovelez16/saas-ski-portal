@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { getCompany, getCompanyMembers, getCompaniesDetailed } from "@/lib/api/companies";
 import { getUsers } from "@/lib/api/users";
-import { getAllWorkLogs, getWorkLogSummary } from "@/lib/api/work-logs";
+import { getAllWorkLogReport, getWorkLogReport } from "@/lib/api/work-logs";
 import { useModules } from "@/hooks/useModules";
 import { Company } from "@/lib/types";
 
@@ -34,18 +34,18 @@ export default function ReportsPage() {
     const router = useRouter();
     const { toast } = useToast();
 
-    const isAdmin = user?.role === 'admin';
-    const { hasModule } = useModules(user?.activeCompanyId ?? undefined);
+    const isAdmin = Boolean(user?.role === 'admin' || user?.isPlatformAdmin);
+    const { hasModule, isLoading: loadingModules } = useModules(user?.activeCompanyId ?? undefined);
 
     // -- Queries -- 
-    const { data: companies = [] } = useQuery({
+    const { data: companies = [], isLoading: loadingCompanies } = useQuery({
         queryFn: async () => {
             if (isAdmin) return getCompaniesDetailed({ asAdmin: true });
             if (!user?.activeCompanyId) return [];
             return [await getCompany(user.activeCompanyId)];
         },
         queryKey: isAdmin ? ['allCompanies'] : ['company', user?.activeCompanyId],
-        enabled: !!user
+        enabled: !!user && (isAdmin || hasModule("reports"))
     });
 
     // -- Accessible Companies (Modules Filter) --
@@ -86,7 +86,7 @@ export default function ReportsPage() {
             return [];
         },
         queryKey: ['reportUsers', selectedCompanyId, isAdmin],
-        enabled: !!selectedCompanyId
+        enabled: !!selectedCompanyId && (isAdmin || hasModule("reports"))
     });
 
     // Normalize users list for the selector
@@ -135,14 +135,14 @@ export default function ReportsPage() {
 
     const isAdminOrManager = useMemo(() => {
         if (!user) return false;
-        if (user.role === 'admin') return true;
+        if (isAdmin) return true;
         if (selectedCompanyId) {
             const company = companies.find(c => c.id === selectedCompanyId);
-            const role = String(company?.role || '').toLowerCase();
+            const role = String(company?.role || user.activeRole || '').toLowerCase();
             return ['manager', 'admin', 'owner'].includes(role);
         }
         return false;
-    }, [user, companies, selectedCompanyId]);
+    }, [user, isAdmin, companies, selectedCompanyId]);
 
     // Force individual mode for non-managers
     useEffect(() => {
@@ -155,6 +155,14 @@ export default function ReportsPage() {
     // Text Summary State
     const [textDialogOpen, setTextDialogOpen] = useState(false);
     const [generatedText, setGeneratedText] = useState("");
+
+    if (user && (loadingModules || (hasModule("reports") && loadingCompanies))) {
+        return (
+            <div className="container mx-auto py-8 max-w-3xl px-4 flex justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+        );
+    }
 
     // Fallback UI if no accessible companies
     if (user && accessibleCompanies.length === 0) {
@@ -259,22 +267,18 @@ export default function ReportsPage() {
         return scope;
     };
 
-    // Filas de detalle (PDF individual, texto, CSV): paginadas hasta el total del rango
-    const fetchLogs = async (start: Date, end: Date) => {
-        return getAllWorkLogs({
+    // Datos del informe (resumen y opcionalmente filas de detalle) desde GET /work-logs/reports
+    const fetchReportData = async (start: Date, end: Date, includeLogs: boolean) => {
+        const params = {
             ...buildScope(),
             startDate: format(start, 'yyyy-MM-dd'),
-            endDate: format(end, 'yyyy-MM-dd')
-        });
-    };
-
-    // Totales y desgloses por trabajador del rango, calculados por el backend
-    const fetchSummary = async (start: Date, end: Date) => {
-        return getWorkLogSummary({
-            ...buildScope(),
-            startDate: format(start, 'yyyy-MM-dd'),
-            endDate: format(end, 'yyyy-MM-dd')
-        });
+            endDate: format(end, 'yyyy-MM-dd'),
+            includeLogs,
+        };
+        if (!includeLogs) {
+            return getWorkLogReport(params);
+        }
+        return getAllWorkLogReport(params);
     };
 
 
@@ -292,10 +296,10 @@ export default function ReportsPage() {
         try {
             const { pdf } = await import("@react-pdf/renderer");
 
-            // Fetch Data: empresa usa el resumen del backend; individual usa filas de detalle
             // Totales y desgloses: siempre del resumen. Filas de detalle solo para el informe individual.
-            const summary = await fetchSummary(range.start, range.end);
-            const logs = reportType === 'company' ? [] : await fetchLogs(range.start, range.end);
+            const reportData = await fetchReportData(range.start, range.end, reportType !== 'company');
+            const summary = reportData.summary;
+            const logs = reportData.items;
             const hasRows = summary.totals.logsCount > 0;
             if (!hasRows) {
                 setError("No hay registros dentro del rango seleccionado.");
@@ -383,7 +387,8 @@ export default function ReportsPage() {
         setLoading('text');
 
         try {
-            const logs = await fetchLogs(range.start, range.end);
+            const reportData = await fetchReportData(range.start, range.end, true);
+            const logs = reportData.items;
             if (!logs || logs.length === 0) {
                 setError(`No hay registros. (Empresa: ${selectedCompanyId || 'N/A'}, Usuario: ${selectedUserId}, Fechas: ${format(range.start, 'yyyy-MM-dd')} al ${format(range.end, 'yyyy-MM-dd')})`);
                 setLoading(null);
@@ -395,7 +400,7 @@ export default function ReportsPage() {
             
             const { generateTextReport } = await import("@/lib/reports/textGenerators");
             
-            const summary = await fetchSummary(range.start, range.end);
+            const summary = reportData.summary;
 
             const fullText = generateTextReport(logs, {
                 company,
@@ -436,7 +441,8 @@ export default function ReportsPage() {
         setLoading('csv');
 
         try {
-            const logs = await fetchLogs(range.start, range.end);
+            const reportData = await fetchReportData(range.start, range.end, true);
+            const logs = reportData.items;
             if (!logs || logs.length === 0) {
                 setError("No hay registros.");
                 setLoading(null);
@@ -455,8 +461,12 @@ export default function ReportsPage() {
             });
             const csv = generateCsv(csvConfig)(data);
             download(csvConfig)(csv);
-        } catch (e) { setLoading(null); }
-        setLoading(null);
+        } catch (e) {
+            console.error(e);
+            setError("Error al generar el CSV.");
+        } finally {
+            setLoading(null);
+        }
     };
 
 
