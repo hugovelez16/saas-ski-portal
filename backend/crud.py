@@ -1724,3 +1724,27 @@ def get_audit_logs(
         .all()
     )
     return total, rows
+
+
+def count_purgeable_audit_logs(db: Session, *, before: _dt, excluded_action: str = "audit.purged") -> int:
+    """Cuenta los registros de auditoria anteriores a `before`, excluyendo los apuntes de purga."""
+    return (
+        db.query(models.AuditLog)
+        .filter(
+            models.AuditLog.created_at < before,
+            models.AuditLog.action != excluded_action,
+        )
+        .count()
+    )
+
+
+def purge_audit_logs(db: Session, *, before: _dt, excluded_action: str = "audit.purged") -> int:
+    """Borra los registros anteriores a `before` (salvo los apuntes de purga) sin hacer commit."""
+    return (
+        db.query(models.AuditLog)
+        .filter(
+            models.AuditLog.created_at < before,
+            models.AuditLog.action != excluded_action,
+        )
+        .delete(synchronize_session=False)
+    )

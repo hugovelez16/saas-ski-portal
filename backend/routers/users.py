@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import access_policy
+import audit
 import auth
 import crud
 import email_utils
@@ -125,6 +126,17 @@ def toggle_user_status(
         raise HTTPException(status_code=404, detail="User not found")
     crud.ensure_platform_admin_invariants(db, current_user, target, new_role=None, new_is_active=is_active)
 
+    old_is_active = bool(target.is_active)
+    if old_is_active != is_active:
+        audit.record_audit(
+            db,
+            action=audit.AuditAction.USER_STATUS_CHANGED,
+            actor_id=current_user.id,
+            target_user_id=target.id,
+            old_value={"is_active": old_is_active},
+            new_value={"is_active": is_active},
+        )
+
     user = crud.update_user_status(db, user_id=str(user_id), is_active=is_active)
     return {"message": "Status updated", "is_active": user.is_active}
 
@@ -210,14 +222,12 @@ def reset_user_2fa(
         models.UserSession.user_id == user.id, models.UserSession.is_active.is_(True)
     ).update({"is_active": False, "revoked_at": datetime.now(UTC)}, synchronize_session=False)
 
-    db.add(
-        models.AuditLog(
-            action="2fa_reset",
-            impersonated_user_id=user.id,
-            admin_user_id=current_user.id,
-            actor_user_id=current_user.id,
-            extra_data={"target_email": user.email},
-        )
+    audit.record_audit(
+        db,
+        action=audit.AuditAction.TWO_FA_RESET,
+        actor_id=current_user.id,
+        target_user_id=user.id,
+        extra={"target_email": user.email},
     )
     db.commit()
 
@@ -240,6 +250,17 @@ def update_user(
     crud.ensure_platform_admin_invariants(
         db, current_user, target, new_role=user.role, new_is_active=user.is_active
     )
+
+    old_is_active = bool(target.is_active)
+    if user.is_active is not None and old_is_active != user.is_active:
+        audit.record_audit(
+            db,
+            action=audit.AuditAction.USER_STATUS_CHANGED,
+            actor_id=current_user.id,
+            target_user_id=target.id,
+            old_value={"is_active": old_is_active},
+            new_value={"is_active": user.is_active},
+        )
 
     db_user = crud.update_user(db, str(user_id), user)
     if not db_user:

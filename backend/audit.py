@@ -33,6 +33,11 @@ class AuditAction:
     MEMBER_ROLE_CHANGED = "member.role_changed"
     MEMBER_RATES_CHANGED = "member.rates_changed"
     USER_STATUS_CHANGED = "user.status_changed"
+    USER_PLATFORM_ADMIN_GRANTED = "user.platform_admin_granted"
+    IMPERSONATION_STARTED = "impersonation.started"
+    IMPERSONATION_ENDED = "impersonation.ended"
+    AUDIT_PURGED = "audit.purged"
+    TWO_FA_RESET = "2fa_reset"
 
 
 def _to_json_safe(value: Any) -> Any:
@@ -59,12 +64,10 @@ def record_audit(
     El llamador es responsable de confirmar la transaccion junto con la operacion
     auditada, de forma que la entrada y el cambio se persistan o se descarten juntos.
     Los valores no serializables (UUID, fechas) se convierten a string.
-    `admin_user_id` se rellena con `actor_id` por compatibilidad con el esquema previo.
     """
     row = models.AuditLog(
         action=action,
         actor_user_id=actor_id,
-        admin_user_id=actor_id,
         company_id=company_id,
         target_user_id=target_user_id,
         old_value=_to_json_safe(old_value),

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import access_policy
+import audit
 import auth
 import crud
 import dev_seed
@@ -476,11 +477,54 @@ async def switch_scope(
     return {"access_token": "cookie", "token_type": "bearer", "requires_2fa": False}
 
 
+def _extract_impersonation_ids(request: Request) -> tuple[UUID, UUID] | None:
+    """Extrae (admin_user_id, target_user_id) de un token de suplantacion firmado por el servidor."""
+    candidates = [
+        auth.get_token_from_request(request),
+        request.cookies.get("refresh_token"),
+    ]
+    for token in candidates:
+        if not token:
+            continue
+        try:
+            payload = auth.jwt.decode(
+                token,
+                auth.PUBLIC_KEY,
+                algorithms=[auth.ALGORITHM],
+                options={"verify_exp": False},
+            )
+        except auth.JWTError:
+            continue
+        if payload.get("scope") != "impersonated":
+            continue
+        admin_raw = payload.get("admin_user_id")
+        target_raw = payload.get("sub")
+        if not admin_raw or not target_raw:
+            continue
+        try:
+            return UUID(str(admin_raw)), UUID(str(target_raw))
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
 @router.post("/admin/stop-impersonation")
-async def stop_impersonation(request: Request, response: Response):
+async def stop_impersonation(request: Request, response: Response, db: Session = Depends(get_db)):
     """
     SRE: Restore Admin session from backup cookies.
     """
+    impersonation_ids = _extract_impersonation_ids(request)
+    if impersonation_ids is not None:
+        admin_uuid, target_uuid = impersonation_ids
+        actor_uuid = admin_uuid if db.get(models.User, admin_uuid) is not None else None
+        audit.record_audit(
+            db,
+            action=audit.AuditAction.IMPERSONATION_ENDED,
+            actor_id=actor_uuid,
+            target_user_id=target_uuid,
+        )
+        db.commit()
+
     admin_access = request.cookies.get("admin_access_token")
     admin_refresh = request.cookies.get("admin_refresh_token")
 
@@ -568,7 +612,15 @@ def execute_impersonate_user(
             max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         )
 
-    # Create Session for the target user (marked as impersonated in audit)
+    audit.record_audit(
+        db,
+        action=audit.AuditAction.IMPERSONATION_STARTED,
+        actor_id=current_user.id,
+        target_user_id=target_user.id,
+        extra={"target_email": target_user.email},
+    )
+
+    # Create Session for the target user (create_session hace commit de la transaccion)
     auth.create_session(
         db,
         user_id=str(target_user.id),
