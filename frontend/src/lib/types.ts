@@ -93,7 +93,6 @@ export interface CompanySettings {
     };
     worker_experience: {
         input_mode: 'manual_single' | 'timer' | 'bulk';
-        allow_manual_amount: boolean;
     };
     ui_customization: {
         labels: {
@@ -261,7 +260,6 @@ export interface WorkLogCreate {
     description?: string | null;
     pickupPoint?: string | null;
     extraData?: WorkLogExtraData;
-    amount?: number; // Manual override
     date?: string | null;
     hasCoordination?: boolean;
     hasNight?: boolean;
@@ -271,6 +269,22 @@ export interface WorkLogCreate {
 
 export interface WorkLogBulkCreate extends Omit<WorkLogCreate, 'userId'> {
     userIds: string[];
+}
+
+export interface WorkLogRecalculatePreview {
+    workLogId: string;
+    currentNetAmount: number;
+    currentGrossAmount: number;
+    currentDuration: number;
+    newNetAmount: number;
+    newGrossAmount: number;
+    newDuration: number;
+    applyToGroup: boolean;
+    groupCount: number;
+    currentGroupNetAmount?: number | null;
+    currentGroupGrossAmount?: number | null;
+    newGroupNetAmount?: number | null;
+    newGroupGrossAmount?: number | null;
 }
 
 /**

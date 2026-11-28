@@ -1271,7 +1271,7 @@ SETTINGS_OUTSIDE_CONTRACT = [
     pytest.param({"clave_inventada": 1}, id="clave_desconocida"),
     pytest.param({"business_logic": {"price_type": "bruto"}}, id="price_type_fuera_de_enum"),
     pytest.param({"worker_experience": {"input_mode": "voz"}}, id="input_mode_fuera_de_enum"),
-    pytest.param({"worker_experience": {"allow_manual_amount": "si"}}, id="allow_manual_amount_no_bool"),
+    pytest.param({"worker_experience": {"allow_manual_amount": True}}, id="allow_manual_amount_retirada"),
     pytest.param({"ui_customization": {"labels": {"worklog": "x" * 61}}}, id="label_de_61_caracteres"),
 ]
 
@@ -1319,7 +1319,7 @@ def test_get_company_pa_returns_settings_with_defaults(client, db):
     assert settings["business_logic"]["price_type"] == "net"
     assert "cost_markup" not in settings["business_logic"]
     assert settings["worker_experience"]["input_mode"] == "manual_single"
-    assert settings["worker_experience"]["allow_manual_amount"] is False
+    assert "allow_manual_amount" not in settings["worker_experience"]
     assert settings["modules"] == {}
     labels = settings["ui_customization"]["labels"]
     assert {key: value for key, value in labels.items() if value is not None} == {}

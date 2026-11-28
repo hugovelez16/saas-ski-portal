@@ -17,7 +17,7 @@ import models
 import schemas
 import work_log_rules
 from access_policy import PolicyError
-from contracts import MissingWorklogUnitError, resolve_taxes
+from contracts import MissingWorklogDatesError, MissingWorklogUnitError, resolve_taxes
 from redis_config import logger, redis_manager
 from sqlalchemy import distinct, func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -81,16 +81,18 @@ MSG_NO_ACTIVE_MEMBERSHIP = "El usuario no tiene una membresia activa en esta emp
 
 
 class MissingRateError(ValueError):
-    """El turno no tiene tarifa aplicable ni importe manual (el router lo traduce a 400)."""
+    """El turno no tiene tarifa aplicable (el router lo traduce a 400, R-TUR-14)."""
 
 
-MSG_MANUAL_AMOUNT_CHOICE = (
-    "Este turno tiene un importe manual: indica si se conserva el importe o se calcula por tarifa"
-)
+class UnknownWorkLogTypeError(ValueError):
+    """El tipo de turno no existe en worklog_definitions de la empresa (el router lo traduce a 400, R-TUR-13)."""
 
 
-class ManualAmountChoiceError(ValueError):
-    """Un turno manual cambia datos de calculo sin importe explicito ni recalculo (el router lo traduce a 409)."""
+def _resolve_worklog_type_def(defs: dict | None, work_type: Any) -> dict:
+    key = work_type.value if hasattr(work_type, "value") else str(work_type)
+    if not isinstance(defs, dict) or key not in defs or not isinstance(defs[key], dict):
+        raise UnknownWorkLogTypeError(f"El tipo de turno '{key}' no existe en la configuracion de la empresa.")
+    return defs[key]
 
 
 def get_company_member(db: Session, user_id: Any, company_id: Any, *, only_active: bool = False):
@@ -134,24 +136,8 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     - False (o ausente): la tarifa es neta; no se deduce ningun impuesto y neto = base + extras.
       El bruto devuelto es solo informativo (neto / (1 - suma de tasas) si la suma es < 1).
     `settings.price_type` NO interviene aqui: solo decide la vista del dashboard.
-    Un importe manual (`amount` / `net_amount`) no aplica impuestos.
     """
-    # 1. Manual Amount Override
-    manual_amount = log_data.get("amount")
-    if manual_amount is None:
-        manual_amount = log_data.get("net_amount")
-
-    if manual_amount is not None:
-        amount = _safe_float(manual_amount)
-        return {
-            "net_amount": amount,
-            "gross_amount": amount,
-            "rate_applied": 0.0,
-            "duration": 0.0,
-            "snapshot": {"type": "manual_override", "net_amount": amount},
-        }
-
-    # 2. Extract configuration
+    # 1. Extract configuration
     unit = get_worklog_unit(company_def)
     base_rate = _safe_float(user_rate.get("base_rate", 0))
     is_gross = user_rate.get("is_gross", False)
@@ -164,7 +150,7 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
 
     duration = 0.0
 
-    # 3. Calculate Base Amount by Unit
+    # 2. Calculate Base Amount by Unit
     if unit == "hours":
         duration = _safe_float(log_data.get("duration_hours") or 0)
         if not duration and log_data.get("start_time") and log_data.get("end_time"):
@@ -182,12 +168,11 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     elif unit == "days":
         start_date = log_data.get("start_date")
         end_date = log_data.get("end_date")
-        if start_date and end_date:
-            delta = end_date - start_date
-            duration = _safe_float(delta.days + 1)
-            amount_base = duration * base_rate
-        else:
-            amount_base = 0.0
+        if not start_date or not end_date:
+            raise MissingWorklogDatesError("Un turno con unidad 'days' requiere fecha de inicio y de fin")
+        delta = end_date - start_date
+        duration = _safe_float(delta.days + 1)
+        amount_base = duration * base_rate
     else:  # fixed
         duration = 1.0
         amount_base = base_rate
@@ -341,20 +326,18 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
     member = get_company_member(db, user_id, str(company_id), only_active=True)
 
     if not company or not member:
-        # Defensa en profundidad: el router ya exige membresia activa (T1)
-        raise ValueError(MSG_NO_ACTIVE_MEMBERSHIP)
+        # Defensa en profundidad: el router ya exige membresia activa (R-TUR-03)
+        raise PolicyError(403, MSG_NO_ACTIVE_MEMBERSHIP)
     defs = company.worklog_definitions or {}
     rates = member.rates_config or {}
 
-    # Identify work type definition and rate
+    # Identify work type definition and rate (R-TUR-13, R-TUR-14)
     work_type = work_log.type.value if hasattr(work_log.type, "value") else work_log.type
-    type_def = defs.get(work_type, {"unit": "hours", "label": work_type})
+    type_def = _resolve_worklog_type_def(defs, work_type)
     type_rate = rates.get(work_type, {})
 
-    # Validation: Ensure rate is set (and non-zero) unless it's a manual override
-    has_manual_override = getattr(work_log, "amount", None) is not None or work_log.net_amount is not None
-    if not has_manual_override and _safe_float(type_rate.get("base_rate", 0)) <= 0:
-        raise ValueError(
+    if _safe_float(type_rate.get("base_rate", 0)) <= 0:
+        raise MissingRateError(
             f"No se ha encontrado un precio (rate) configurado para el tipo '{work_type}' para este usuario."
         )
 
@@ -372,8 +355,8 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
     # Use Dynamic Engine (passing the adjusted work_log_data)
     calc = calculate_dynamic_work_log(work_log_data, type_def, type_rate, company.tax_config if company else None)
 
-    # Remove calculated and renamed fields
-    for k in ["net_amount", "gross_amount", "rate_applied", "duration", "amount"]:
+    # Remove calculated fields
+    for k in ["net_amount", "gross_amount", "rate_applied", "duration"]:
         work_log_data.pop(k, None)
 
     # El grupo solo lo genera el backend (bulk): se descarta un group_id colado en extra_data
@@ -409,32 +392,30 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
     tax_config = company.tax_config if company else None
     defs = company.worklog_definitions or {} if company else {}
 
-    # Identify work type definition
-    work_type = work_log_bulk.type.value if hasattr(work_log_bulk.type, "value") else work_log_bulk.type
-    type_def = defs.get(work_type, {"unit": "hours", "label": work_type})
-
-    created_logs = []
-
-    # Todo o nada: se comprueba a todos los usuarios antes de crear ningun turno
+    # Todo o nada: se comprueba a todos los usuarios antes de crear ningun turno (R-TUR-03)
     members = {}
     user_ids = list(dict.fromkeys(work_log_bulk.user_ids))  # sin duplicados: un turno por usuario
     for user_id in user_ids:
         member = get_company_member(db, str(user_id), str(company_id), only_active=True)
         if member is None:
-            raise ValueError(MSG_NO_ACTIVE_MEMBERSHIP)
+            raise PolicyError(403, MSG_NO_ACTIVE_MEMBERSHIP)
         members[user_id] = member
+
+    # Identify work type definition (R-TUR-13)
+    work_type = work_log_bulk.type.value if hasattr(work_log_bulk.type, "value") else work_log_bulk.type
+    type_def = _resolve_worklog_type_def(defs, work_type)
+
+    created_logs = []
 
     for user_id in user_ids:
         member = members[user_id]
         rates = member.rates_config or {}
         type_rate = rates.get(work_type, {})
 
-        # Validation: Ensure rate is set (and non-zero) unless it's a manual override
-        has_manual_override = getattr(work_log_bulk, "amount", None) is not None or work_log_bulk.net_amount is not None
-        if not has_manual_override and _safe_float(type_rate.get("base_rate", 0)) <= 0:
+        if _safe_float(type_rate.get("base_rate", 0)) <= 0:
             user_obj = db.query(models.User).filter(models.User.id == user_id).first()
             user_name = f"{user_obj.first_name} {user_obj.last_name}" if user_obj else str(user_id)
-            raise ValueError(
+            raise MissingRateError(
                 f"El usuario {user_name} no tiene un precio (rate) configurado para el tipo '{work_type}'."
             )
 
@@ -459,8 +440,7 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
         calc = calculate_dynamic_work_log(individual_log_data, type_def, type_rate, tax_config)
 
         # Prepare DB Obj
-        # Remove calculated and renamed fields
-        for k in ["net_amount", "gross_amount", "rate_applied", "duration", "amount"]:
+        for k in ["net_amount", "gross_amount", "rate_applied", "duration"]:
             individual_log_data.pop(k, None)
 
         # group_id no es una columna: vive en extra_data y lo genera siempre el backend
@@ -757,7 +737,6 @@ def update_work_log(
     company_id: Any,
     apply_to_group: bool = False,
     recalculate_with_current_rates: bool = False,
-    keep_manual_amount: bool = False,
 ):
     """
     SaaS Evolution: Updates using the dynamic engine.
@@ -802,8 +781,11 @@ def update_work_log(
                         work_log,
                         recalculate_with_current_rates=recalculate_with_current_rates,
                         commit=False,
-                        keep_manual_amount=keep_manual_amount,
                     )
+                except PolicyError as e:
+                    owner = log.user
+                    name = f"{owner.first_name} {owner.last_name}" if owner else str(log.user_id)
+                    raise PolicyError(e.status_code, f"{name}: {e.detail}") from e
                 except ValueError as e:
                     owner = log.user
                     name = f"{owner.first_name} {owner.last_name}" if owner else str(log.user_id)
@@ -830,8 +812,119 @@ def update_work_log(
         db_work_log,
         work_log,
         recalculate_with_current_rates=recalculate_with_current_rates,
-        keep_manual_amount=keep_manual_amount,
     )
+
+
+def preview_work_log_recalculation(
+    db: Session,
+    work_log_id: str,
+    work_log: schemas.WorkLogUpdate,
+    *,
+    company_id: Any,
+    apply_to_group: bool = False,
+    recalculate_with_current_rates: bool = True,
+) -> dict[str, Any] | None:
+    """
+    Calcula sin persistir el importe actual frente al nuevo para un turno (y su grupo si procede),
+    usado en el aviso previo de cambio de tipo o recalculo con tarifa vigente (R-TUR-20, R-TUR-21).
+    """
+    db_work_log = (
+        db.query(models.WorkLog)
+        .filter(models.WorkLog.id == work_log_id, models.WorkLog.company_id == company_id)
+        .first()
+    )
+    if not db_work_log:
+        return None
+
+    group_id = db_work_log.extra_data.get("group_id") if db_work_log.extra_data else None
+
+    if apply_to_group and group_id:
+        logs_in_group = (
+            db.query(models.WorkLog)
+            .filter(
+                models.WorkLog.company_id == db_work_log.company_id,
+                models.WorkLog.extra_data["group_id"].as_string() == str(group_id),
+            )
+            .all()
+        )
+        payload = work_log.model_dump(exclude_unset=True)
+        for log in logs_in_group:
+            _check_update_dates(log, payload)
+
+        curr_group_net = 0.0
+        curr_group_gross = 0.0
+        new_group_net = 0.0
+        new_group_gross = 0.0
+        primary_calc = None
+
+        for log in logs_in_group:
+            try:
+                _, calc = _compute_updated_work_log_values(
+                    db,
+                    log,
+                    work_log,
+                    recalculate_with_current_rates=recalculate_with_current_rates,
+                )
+            except PolicyError as e:
+                owner = log.user
+                name = f"{owner.first_name} {owner.last_name}" if owner else str(log.user_id)
+                raise PolicyError(e.status_code, f"{name}: {e.detail}") from e
+            except ValueError as e:
+                owner = log.user
+                name = f"{owner.first_name} {owner.last_name}" if owner else str(log.user_id)
+                e.args = (f"{name}: {e}",)
+                raise
+
+            c_net = float(log.net_amount or 0.0)
+            c_gross = float(log.gross_amount or 0.0)
+            curr_group_net += c_net
+            curr_group_gross += c_gross
+            new_group_net += float(calc["net_amount"]) if calc is not None else c_net
+            new_group_gross += float(calc["gross_amount"]) if calc is not None else c_gross
+            if str(log.id) == work_log_id:
+                primary_calc = calc
+
+        curr_net = round(float(db_work_log.net_amount or 0.0), 2)
+        curr_gross = round(float(db_work_log.gross_amount or 0.0), 2)
+        curr_dur = round(float(db_work_log.duration or 0.0), 2)
+        return {
+            "work_log_id": db_work_log.id,
+            "current_net_amount": curr_net,
+            "current_gross_amount": curr_gross,
+            "current_duration": curr_dur,
+            "new_net_amount": round(float(primary_calc["net_amount"]), 2) if primary_calc is not None else curr_net,
+            "new_gross_amount": (
+                round(float(primary_calc["gross_amount"]), 2) if primary_calc is not None else curr_gross
+            ),
+            "new_duration": round(float(primary_calc["duration"]), 2) if primary_calc is not None else curr_dur,
+            "apply_to_group": True,
+            "group_count": len(logs_in_group),
+            "current_group_net_amount": round(curr_group_net, 2),
+            "current_group_gross_amount": round(curr_group_gross, 2),
+            "new_group_net_amount": round(new_group_net, 2),
+            "new_group_gross_amount": round(new_group_gross, 2),
+        }
+
+    _, calc = _compute_updated_work_log_values(
+        db,
+        db_work_log,
+        work_log,
+        recalculate_with_current_rates=recalculate_with_current_rates,
+    )
+    curr_net = round(float(db_work_log.net_amount or 0.0), 2)
+    curr_gross = round(float(db_work_log.gross_amount or 0.0), 2)
+    curr_dur = round(float(db_work_log.duration or 0.0), 2)
+    return {
+        "work_log_id": db_work_log.id,
+        "current_net_amount": curr_net,
+        "current_gross_amount": curr_gross,
+        "current_duration": curr_dur,
+        "new_net_amount": round(float(calc["net_amount"]), 2) if calc is not None else curr_net,
+        "new_gross_amount": round(float(calc["gross_amount"]), 2) if calc is not None else curr_gross,
+        "new_duration": round(float(calc["duration"]), 2) if calc is not None else curr_dur,
+        "apply_to_group": False,
+        "group_count": 1,
+    }
 
 
 def _check_update_dates(db_work_log: models.WorkLog, new_data: dict):
@@ -845,19 +938,16 @@ def _check_update_dates(db_work_log: models.WorkLog, new_data: dict):
         raise ValueError("start_date no puede ser posterior a end_date")
 
 
-def _update_single_work_log(
+def _compute_updated_work_log_values(
     db: Session,
     db_work_log: models.WorkLog,
     work_log: schemas.WorkLogUpdate,
     *,
     recalculate_with_current_rates: bool = False,
-    commit: bool = True,
-    keep_manual_amount: bool = False,
-):
-    # Merge existing and new data
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     current_data = {c.name: getattr(db_work_log, c.name) for c in db_work_log.__table__.columns}
     new_data = work_log.model_dump(exclude_unset=True)
-    # Empresa y usuario no se pueden cambiar (T3); `amount` y `group_id` no son columnas
+    # Empresa y usuario no se pueden cambiar (R-TUR-02); `group_id` no es columna
     for key in ("user_id", "company_id", "group_id"):
         new_data.pop(key, None)
     if "extra_data" in new_data:
@@ -870,62 +960,45 @@ def _update_single_work_log(
     merged_data = {**current_data, **new_data}
     _check_update_dates(db_work_log, new_data)
 
-    # Los importes los fija el motor de calculo, nunca el cliente (salvo el importe manual explicito)
-    snapshot = db_work_log.calculation_snapshot or {}
-    was_manual = snapshot.get("type") == "manual_override"
-    manual_value = new_data.get("amount") if new_data.get("amount") is not None else new_data.get("net_amount")
-    if keep_manual_amount and was_manual:
-        # "Conservar importe": cada turno manual (tambien en un grupo) mantiene el suyo; los calculados no se ven afectados
-        manual_value = db_work_log.net_amount
-    for key in ("amount", "net_amount", "gross_amount", "duration"):
+    # Los importes los fija el motor de calculo del servidor, nunca el cliente (R-TUR-17, R-TUR-18)
+    for key in ("net_amount", "gross_amount", "duration"):
         new_data.pop(key, None)
 
     type_changed = "type" in new_data and new_data["type"] != db_work_log.type
-    # La columna es Numeric (Decimal): se compara redondeado a 2 decimales, no Decimal contra float
-    explicit_manual = manual_value is not None and (
-        was_manual
-        or db_work_log.net_amount is None
-        or round(float(manual_value), 2) != round(float(db_work_log.net_amount), 2)
-    )
-
     inputs_changed = _recalc_inputs_changed(db_work_log, new_data)
 
-    if was_manual and inputs_changed and not explicit_manual and not recalculate_with_current_rates:
-        # Turno manual con datos de calculo modificados: el cliente debe elegir conservar el importe o calcular
-        raise ManualAmountChoiceError(MSG_MANUAL_AMOUNT_CHOICE)
-
-    if not (recalculate_with_current_rates or explicit_manual or inputs_changed):
-        # T5: solo cambian campos sin efecto en el importe (p. ej. la descripcion): el snapshot no se toca
-        for key, value in new_data.items():
-            setattr(db_work_log, key, value)
-        return _finish_updated_work_log(db, db_work_log, commit)
+    if not (recalculate_with_current_rates or inputs_changed):
+        # R-TUR-19: solo cambian campos sin efecto en el importe (p. ej. la descripcion): el snapshot no se toca
+        return new_data, None
 
     owner_id = str(db_work_log.user_id)
     company_id = merged_data.get("company_id")
     company = db.query(models.Company).filter(models.Company.id == company_id).first()
     defs = company.worklog_definitions or {} if company else {}
     work_type = merged_data.get("type")
+    snapshot = db_work_log.calculation_snapshot or {}
 
     if type_changed or recalculate_with_current_rates:
-        # Tarifa, definicion e impuestos vigentes: exige membresia activa
+        # Tarifa, definicion e impuestos vigentes: exige membresia activa (R-TUR-03)
         member = get_company_member(db, owner_id, str(company_id), only_active=True)
         if member is None:
-            raise ValueError(MSG_NO_ACTIVE_MEMBERSHIP)
-        type_def = defs.get(work_type, {"unit": "hours", "label": str(work_type)})
+            raise PolicyError(403, MSG_NO_ACTIVE_MEMBERSHIP)
+        type_def = _resolve_worklog_type_def(defs, work_type)
         type_rate = (member.rates_config or {}).get(work_type, {})
         tax_config = company.tax_config if company else None
     else:
         # Mismo tipo: se conservan la definicion, la tarifa y los impuestos con los que se guardo el turno.
-        # Un snapshot sin esos datos (turno manual o antiguo) cae a los vigentes.
+        # Un snapshot sin esos datos (turno antiguo) cae a los vigentes.
         member = get_company_member(db, owner_id, str(company_id))
-        type_def = snapshot.get("definition") or defs.get(work_type, {"unit": "hours", "label": str(work_type)})
+        snap_def = snapshot.get("definition")
+        type_def = snap_def if isinstance(snap_def, dict) else _resolve_worklog_type_def(defs, work_type)
         type_rate = snapshot.get("rate_applied")
         if not isinstance(type_rate, dict):
             type_rate = (member.rates_config or {}).get(work_type, {}) if member else {}
         tax_applied = snapshot.get("tax_applied")
         tax_config = tax_applied if isinstance(tax_applied, dict) else (company.tax_config if company else None)
 
-    if not explicit_manual and _safe_float(type_rate.get("base_rate", 0)) <= 0:
+    if _safe_float(type_rate.get("base_rate", 0)) <= 0:
         raise MissingRateError(
             f"No se ha encontrado un precio (rate) configurado para el tipo '{work_type}' para este usuario."
         )
@@ -938,16 +1011,33 @@ def _update_single_work_log(
             merged_data["end_date"] = merged_data["start_date"] + timedelta(days=1)
             new_data["end_date"] = merged_data["end_date"]
 
-    calc_input = {**merged_data, "amount": None, "net_amount": manual_value if explicit_manual else None}
-    calc = calculate_dynamic_work_log(calc_input, type_def, type_rate, tax_config)
+    calc = calculate_dynamic_work_log(merged_data, type_def, type_rate, tax_config)
+    return new_data, calc
+
+
+def _update_single_work_log(
+    db: Session,
+    db_work_log: models.WorkLog,
+    work_log: schemas.WorkLogUpdate,
+    *,
+    recalculate_with_current_rates: bool = False,
+    commit: bool = True,
+):
+    new_data, calc = _compute_updated_work_log_values(
+        db,
+        db_work_log,
+        work_log,
+        recalculate_with_current_rates=recalculate_with_current_rates,
+    )
 
     for key, value in new_data.items():
         setattr(db_work_log, key, value)
 
-    db_work_log.net_amount = calc["net_amount"]
-    db_work_log.gross_amount = calc["gross_amount"]
-    db_work_log.duration = calc["duration"]
-    db_work_log.calculation_snapshot = calc["snapshot"]
+    if calc is not None:
+        db_work_log.net_amount = calc["net_amount"]
+        db_work_log.gross_amount = calc["gross_amount"]
+        db_work_log.duration = calc["duration"]
+        db_work_log.calculation_snapshot = calc["snapshot"]
 
     return _finish_updated_work_log(db, db_work_log, commit)
 

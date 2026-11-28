@@ -21,24 +21,8 @@ class WorkLogCalculationService:
         rate_definition: RateDefinition,
         tax_configuration: TaxConfiguration,
         options: Optional[Dict[str, bool]] = None,
-        manual_net_amount: Optional[Decimal] = None,
     ) -> CalculationSnapshot:
-        # 1. Anulacion manual directa si el usuario especifica un importe fijo
-        if manual_net_amount is not None:
-            quantized = manual_net_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            return CalculationSnapshot(
-                gross_amount=quantized,
-                net_amount=quantized,
-                rate_applied=Decimal("0.00"),
-                duration=0.0,
-                display_lines=[
-                    DisplayLine(type="income", label="Importe Manual", value=float(quantized)),
-                    DisplayLine(type="subtotal", label="Total", value=float(quantized)),
-                ],
-                metadata={"type": "manual_override", "net_amount": float(quantized)},
-            )
-
-        # 2. Calculo base segun unidad y duracion
+        # 1. Calculo base segun unidad y duracion
         base_rate = rate_definition.base_rate
         duration_value = duration.value
         dec_duration = Decimal(str(duration_value))

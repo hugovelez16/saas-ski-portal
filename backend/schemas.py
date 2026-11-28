@@ -41,8 +41,6 @@ class WorkLogBase(CamelModel):
     start_time: time | None = Field(None, alias="startTime")
     end_time: time | None = Field(None, alias="endTime")
     duration: float | None = None
-    net_amount: float | None = Field(None, alias="netAmount")
-    gross_amount: float | None = Field(None, alias="grossAmount")
     extra_data: dict[str, Any] | None = Field(default={}, alias="extraData")
     description: str | None = None
     company_id: UUID | None = Field(None, alias="companyId")
@@ -63,12 +61,9 @@ def _validate_worklog_dates(start: dt_date | None, end: dt_date | None) -> None:
 
 
 class WorkLogInput(WorkLogBase):
-    """Reglas de entrada de turnos. No se aplican a WorkLogResponse para no romper la lectura de turnos antiguos."""
+    """Reglas de entrada de turnos. Los importes los calcula siempre el servidor (R-TUR-17, R-TUR-18)."""
 
     duration: float | None = Field(None, ge=0)
-    net_amount: float | None = Field(None, alias="netAmount", ge=0)
-    gross_amount: float | None = Field(None, alias="grossAmount", ge=0)
-    amount: float | None = Field(None, ge=0)  # Allow manual amount override
 
     @model_validator(mode="after")
     def _check_dates(self):
@@ -103,9 +98,6 @@ class WorkLogUpdate(CamelModel):
     start_time: time | None = Field(None, alias="startTime")
     end_time: time | None = Field(None, alias="endTime")
     duration: float | None = Field(None, ge=0)
-    net_amount: float | None = Field(None, alias="netAmount", ge=0)
-    gross_amount: float | None = Field(None, alias="grossAmount", ge=0)
-    amount: float | None = Field(None, ge=0)
     extra_data: dict[str, Any] | None = Field(None, alias="extraData")
     description: str | None = None
     user_id: UUID | None = Field(None, alias="userId")
@@ -139,7 +131,7 @@ class WorkLogResponse(WorkLogBase):
 
     id: UUID
     user_id: UUID
-    amount: float | None = None
+    net_amount: float | None = Field(None, alias="netAmount")
     gross_amount: float | None = Field(None, alias="grossAmount")
     group_id: UUID | None = Field(None, alias="groupId")
     warnings: list[WorkLogWarning] = []
@@ -159,6 +151,24 @@ class WorkLogResponse(WorkLogBase):
             except ValueError:
                 pass
         return self
+
+
+class WorkLogRecalculatePreviewResponse(CamelModel):
+    """Previsualizacion comparativa (importe actual frente al nuevo) antes de confirmar recalculo o cambio de tipo."""
+
+    work_log_id: UUID
+    current_net_amount: float
+    current_gross_amount: float
+    current_duration: float
+    new_net_amount: float
+    new_gross_amount: float
+    new_duration: float
+    apply_to_group: bool = False
+    group_count: int = 1
+    current_group_net_amount: float | None = None
+    current_group_gross_amount: float | None = None
+    new_group_net_amount: float | None = None
+    new_group_gross_amount: float | None = None
 
 
 # UserDeviceResponse removed. Use SessionResponse instead.

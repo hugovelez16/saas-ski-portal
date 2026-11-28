@@ -1,5 +1,11 @@
 import api from '../api';
-import { WorkLog, WorkLogCreate, BillingSummaryItem, WorkLogSummary } from '@/lib/types';
+import {
+    WorkLog,
+    WorkLogCreate,
+    BillingSummaryItem,
+    WorkLogSummary,
+    WorkLogRecalculatePreview,
+} from '@/lib/types';
 
 export interface WorkLogsPageParams {
     companyId?: string;
@@ -126,9 +132,21 @@ export const createWorkLog = async (data: WorkLogCreate): Promise<WorkLog> => {
 export interface UpdateWorkLogOptions {
     /** Recalcula el importe con las tarifas actuales (solo manager y platform admin). */
     recalculateWithCurrentRates?: boolean;
-    /** Cada turno manual conserva su propio importe (cualquier rol, tambien en apply_to_group). */
-    keepManualAmount?: boolean;
 }
+
+export const previewWorkLogRecalculation = async (
+    id: string,
+    data: Partial<WorkLogCreate> = {},
+    applyToGroup: boolean = false,
+    options?: UpdateWorkLogOptions
+): Promise<WorkLogRecalculatePreview> => {
+    const recalculate = options?.recalculateWithCurrentRates ?? true;
+    const response = await api.post<WorkLogRecalculatePreview>(
+        `/work-logs/${id}/recalculate-preview?apply_to_group=${applyToGroup}&recalculate_with_current_rates=${recalculate}`,
+        data
+    );
+    return response.data;
+};
 
 export const updateWorkLog = async (
     id: string,
@@ -137,8 +155,7 @@ export const updateWorkLog = async (
     options?: UpdateWorkLogOptions
 ): Promise<WorkLog> => {
     const rateQuery = options?.recalculateWithCurrentRates ? '&recalculate_with_current_rates=true' : '';
-    const manualQuery = options?.keepManualAmount ? '&keep_manual_amount=true' : '';
-    const response = await api.put(`/work-logs/${id}?apply_to_group=${applyToGroup}${rateQuery}${manualQuery}`, data);
+    const response = await api.put(`/work-logs/${id}?apply_to_group=${applyToGroup}${rateQuery}`, data);
     return response.data;
 };
 

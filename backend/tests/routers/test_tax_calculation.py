@@ -176,21 +176,6 @@ def test_legacy_override_ss_is_not_applied_when_net():
     assert result["snapshot"]["tax_applied"].get("social_security") == 0.05
 
 
-# --- importe manual ---
-
-
-@pytest.mark.parametrize("field", ["amount", "net_amount"])
-def test_manual_amount_does_not_apply_taxes(field):
-    rate = {"base_rate": 100.0, "is_gross": True}
-
-    result = _calc(rate, COMPANY_TAXES, log={field: 77.0, "duration_hours": 2.0})
-
-    assert result["net_amount"] == pytest.approx(77.0)
-    assert result["gross_amount"] == pytest.approx(77.0)
-    assert result["snapshot"]["type"] == "manual_override"
-    assert "tax_applied" not in result["snapshot"]
-
-
 # --- snapshot y lineas del ticket ---
 
 

@@ -16,6 +16,8 @@ import crud
 import models
 import pytest
 import schemas
+from access_policy import PolicyError
+from contracts import MissingWorklogDatesError
 
 from tests.factories import as_user, make_company, make_member, make_user, make_work_log
 
@@ -29,6 +31,11 @@ PA_CLAIMS = {"is_admin": True}
 MANAGER_CLAIMS = {"role": "manager"}
 WORKER_CLAIMS = {"role": "worker"}
 
+DEFAULT_RATES = {
+    "particular": {"base_rate": 20.0, "is_gross": False, "tax_overrides": {}},
+    "tutorial": {"base_rate": 100.0, "is_gross": False, "tax_overrides": {}},
+}
+
 
 # --- Helpers ---
 
@@ -40,7 +47,6 @@ def _body(user, company, **extra):
         "endDate": "2026-01-10",
         "startTime": "09:00:00",
         "endTime": "11:00:00",
-        "netAmount": 40.0,
         "userId": str(user.id),
         "companyId": str(company.id),
     }
@@ -71,7 +77,7 @@ def _stored(db, log_id):
 
 def _member(db, company, *, role="worker", is_active=True):
     user = make_user(db)
-    make_member(db, user, company, role=role, is_active=is_active)
+    make_member(db, user, company, role=role, is_active=is_active, rates_config=DEFAULT_RATES)
     return user
 
 
@@ -113,7 +119,7 @@ def test_t1_manager_cannot_create_log_for_user_without_active_membership(client,
 
     resp = client.post("/work-logs", json=_body(target, company))
 
-    assert resp.status_code == 422, resp.text
+    assert resp.status_code == 403, resp.text
     assert MSG_NO_ACTIVE_MEMBER in str(resp.json()["detail"])
     assert _count_logs(db) == 0
 
@@ -129,7 +135,7 @@ def test_t1_pa_cannot_create_log_for_user_without_active_membership(client, db, 
 
     resp = client.post("/work-logs", json=_body(target, company))
 
-    assert resp.status_code == 422, resp.text
+    assert resp.status_code == 403, resp.text
     assert MSG_NO_ACTIVE_MEMBER in str(resp.json()["detail"])
     assert _count_logs(db) == 0
 
@@ -147,7 +153,7 @@ def test_t1_bulk_rejects_whole_batch_when_one_user_has_no_active_membership(clie
 
     resp = client.post("/work-logs/bulk", json=_bulk_body(company, [valid_a, invalid, valid_b]))
 
-    assert resp.status_code == 422, resp.text
+    assert resp.status_code == 403, resp.text
     assert MSG_NO_ACTIVE_MEMBER in str(resp.json()["detail"])
     assert _count_logs(db) == 0
 
@@ -302,14 +308,14 @@ def test_t3_update_accepts_body_without_user_and_company_ids(client, db):
     log = make_work_log(db, worker, company)
     as_user(client, manager, company, claims=MANAGER_CLAIMS)
 
-    body = _without(_body(worker, company, netAmount=55.0), "userId", "companyId")
+    body = _without(_body(worker, company, endTime="12:00:00"), "userId", "companyId")
     resp = client.put(f"/work-logs/{log.id}", json=body)
 
     assert resp.status_code == 200, resp.text
     stored = _stored(db, log.id)
     assert stored.user_id == worker.id
     assert stored.company_id == company.id
-    assert stored.net_amount == 55.0
+    assert stored.net_amount == 60.0
 
 
 # --- T4: groupId controlado por el servidor ---
@@ -366,12 +372,12 @@ def test_t4_apply_to_group_updates_only_same_group_and_company(client, db):
     log_other_company = make_work_log(db, outsider, other_company, extra_data={"group_id": group})
     as_user(client, manager, company, claims=MANAGER_CLAIMS)
 
-    resp = client.put(f"/work-logs/{log_a.id}?apply_to_group=true", json=_body(worker_a, company, netAmount=99.0))
+    resp = client.put(f"/work-logs/{log_a.id}?apply_to_group=true", json=_body(worker_a, company, endTime="12:00:00"))
 
     assert resp.status_code == 200, resp.text
-    assert _stored(db, log_a.id).net_amount == 99.0
+    assert _stored(db, log_a.id).net_amount == 60.0
     stored_b = _stored(db, log_b.id)
-    assert stored_b.net_amount == 99.0
+    assert stored_b.net_amount == 60.0
     assert stored_b.user_id == worker_b.id
     assert _stored(db, log_other_group.id).net_amount == 40.0
     stored_other = _stored(db, log_other_company.id)
@@ -466,16 +472,67 @@ def test_t6_negative_duration_returns_422(client, db):
     assert _count_logs(db) == 0
 
 
-def test_t6_negative_net_amount_returns_422(client, db):
+@pytest.mark.parametrize("amount_key", ["netAmount", "amount", "grossAmount"])
+def test_r_tur_18_client_amounts_are_ignored_on_create_and_update(client, db, amount_key):
     company = make_company(db)
     manager = _member(db, company, role="manager")
     worker = _member(db, company)
     as_user(client, manager, company, claims=MANAGER_CLAIMS)
 
-    resp = client.post("/work-logs", json=_body(worker, company, netAmount=-5.0))
+    created = client.post("/work-logs", json=_body(worker, company, **{amount_key: 999.0}))
+    assert created.status_code == 200, created.text
+    log_id = created.json()["id"]
+    # 2 h * 20 EUR/h = 40 EUR, el importe enviado por el cliente no se usa (R-TUR-17, R-TUR-18)
+    assert float(_stored(db, uuid.UUID(log_id)).net_amount) == 40.0
+
+    updated = client.put(f"/work-logs/{log_id}", json={"endTime": "12:00:00", amount_key: 999.0})
+    assert updated.status_code == 200, updated.text
+    assert float(_stored(db, uuid.UUID(log_id)).net_amount) == 60.0
+
+
+def test_r_tur_12_days_unit_without_end_date_returns_422(client, db):
+    company = make_company(
+        db,
+        worklog_definitions={"tutorial": {"unit": "days", "label": "Tutorial", "fields": []}},
+    )
+    manager = _member(db, company, role="manager")
+    worker = _member(db, company)
+    as_user(client, manager, company, claims=MANAGER_CLAIMS)
+
+    body = _without(_body(worker, company, type="tutorial"), "endDate", "startTime", "endTime")
+    resp = client.post("/work-logs", json=body)
 
     assert resp.status_code == 422, resp.text
     assert _count_logs(db) == 0
+
+
+def test_r_tur_12_calculate_dynamic_work_log_days_without_dates_raises():
+    with pytest.raises(MissingWorklogDatesError):
+        crud.calculate_dynamic_work_log(
+            {"start_date": date(2026, 1, 10), "end_date": None},
+            {"unit": "days", "label": "Tutorial"},
+            {"base_rate": 100.0},
+        )
+
+
+def test_r_tur_13_unknown_worklog_type_returns_400(client, db):
+    company = make_company(db)
+    manager = _member(db, company, role="manager")
+    worker = _member(db, company)
+    as_user(client, manager, company, claims=MANAGER_CLAIMS)
+
+    post_resp = client.post("/work-logs", json=_body(worker, company, type="inventado"))
+    assert post_resp.status_code == 400, post_resp.text
+    assert _count_logs(db) == 0
+
+    bulk_resp = client.post("/work-logs/bulk", json=_bulk_body(company, [worker], type="inventado"))
+    assert bulk_resp.status_code == 400, bulk_resp.text
+    assert _count_logs(db) == 0
+
+    log = make_work_log(db, worker, company)
+    put_resp = client.put(f"/work-logs/{log.id}", json={"type": "inventado"})
+    assert put_resp.status_code == 400, put_resp.text
+    assert _stored(db, log.id).type == "particular"
 
 
 def test_t6_malformed_work_log_id_returns_422_on_delete_and_put(client, db):
@@ -553,9 +610,10 @@ def test_m5_crud_create_rejects_inactive_member_and_creates_nothing(db):
     make_member(db, worker, company, role="worker", is_active=False)
     payload = schemas.WorkLogCreate.model_validate(_body(worker, company))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(PolicyError) as exc_info:
         crud.create_work_log(db, payload)
 
+    assert exc_info.value.status_code == 403
     assert _count_logs(db) == 0
 
 

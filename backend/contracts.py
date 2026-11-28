@@ -20,6 +20,10 @@ class MissingWorklogUnitError(ValueError):
     """El tipo de turno no tiene `unit` en su definicion. Se traduce a HTTP 422 en main.py."""
 
 
+class MissingWorklogDatesError(ValueError):
+    """Un turno con unidad `days` no tiene fecha de inicio o de fin (R-TUR-12). Se traduce a HTTP 422 en main.py."""
+
+
 TAX_NAME_MAX = 50
 TAX_MAX_ENTRIES = 20
 
@@ -158,10 +162,6 @@ class WorkerExperience(BaseModel):
     """Tipo: Literal["manual_single", "timer", "bulk"]. Default "manual_single".
     Modo de introduccion de jornadas que muestra la interfaz al trabajador."""
 
-    allow_manual_amount: bool = False
-    """Tipo: bool. Default False.
-    Si es True, el trabajador puede introducir el importe manualmente."""
-
 
 class UiLabels(BaseModel):
     """Etiquetas personalizables de la interfaz (dentro de `ui_customization.labels`)."""
@@ -199,7 +199,7 @@ class CompanySettings(BaseModel):
     Reglas de negocio; `price_type` solo afecta a la vista del dashboard (P-10)."""
 
     worker_experience: WorkerExperience = Field(default_factory=WorkerExperience)
-    """Clave `worker_experience`. Tipo: WorkerExperience. Default: input_mode="manual_single", allow_manual_amount=False.
+    """Clave `worker_experience`. Tipo: WorkerExperience. Default: input_mode="manual_single".
     Comportamiento de registro de jornadas para trabajadores."""
 
     ui_customization: UiCustomization = Field(default_factory=UiCustomization)

@@ -51,7 +51,7 @@ def test_company_settings_defaults_match_contract():
     assert dumped["business_logic"]["price_type"] == "net"
     assert "cost_markup" not in dumped["business_logic"]
     assert dumped["worker_experience"]["input_mode"] == "manual_single"
-    assert dumped["worker_experience"]["allow_manual_amount"] is False
+    assert "allow_manual_amount" not in dumped["worker_experience"]
     assert dumped["modules"] == {}
     # `labels` es un objeto con `worklog` y `client` sin valor: no hay etiquetas personalizadas.
     labels = dumped["ui_customization"]["labels"]
@@ -68,7 +68,7 @@ def test_company_settings_accepts_valid_full_document():
     settings = _settings(
         {
             "business_logic": {"price_type": "gross"},
-            "worker_experience": {"input_mode": "timer", "allow_manual_amount": True},
+            "worker_experience": {"input_mode": "timer"},
             "ui_customization": {"labels": {"worklog": "Turno", "client": "Cliente"}},
             "modules": {"tutorials": True},
             "allowed_rates": None,
@@ -95,7 +95,7 @@ def test_company_settings_accepts_valid_full_document():
         pytest.param({"business_logic": {"clave_inventada": 1}}, id="clave_desconocida_anidada"),
         pytest.param({"business_logic": {"price_type": "bruto"}}, id="price_type_fuera_de_enum"),
         pytest.param({"worker_experience": {"input_mode": "voz"}}, id="input_mode_fuera_de_enum"),
-        pytest.param({"worker_experience": {"allow_manual_amount": "si"}}, id="allow_manual_amount_no_bool"),
+        pytest.param({"worker_experience": {"allow_manual_amount": True}}, id="allow_manual_amount_retirada"),
         pytest.param({"modules": "tutorials"}, id="modules_no_es_objeto"),
         pytest.param({"ui_customization": {"labels": {"worklog": "x" * 61}}}, id="label_de_61_caracteres"),
     ],

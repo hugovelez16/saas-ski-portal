@@ -19,6 +19,8 @@ vi.mock('@/lib/api/companies', () => ({
 
 vi.mock('@/lib/api/work-logs', () => ({
     getWorkLogs: vi.fn().mockResolvedValue([]),
+    previewWorkLogRecalculation: vi.fn(),
+    updateWorkLog: vi.fn(),
 }));
 
 vi.mock('@/lib/api/settings', () => ({
@@ -113,6 +115,7 @@ describe('Permisos de turnos en la UI', () => {
 
             expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'Eliminar' })).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'Recalcular con tarifa vigente' })).toBeNull();
         });
 
         it('manager ve Editar y Eliminar en empresa gestionada', () => {
@@ -121,6 +124,7 @@ describe('Permisos de turnos en la UI', () => {
 
             expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'Eliminar' })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Recalcular con tarifa vigente' })).toBeInTheDocument();
         });
 
         it('PA en vista de solo lectura no ve Editar ni Eliminar', () => {

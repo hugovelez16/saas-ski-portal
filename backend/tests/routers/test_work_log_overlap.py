@@ -35,21 +35,26 @@ def _company(db):
     return make_company(db, worklog_definitions=_definitions())
 
 
+DEFAULT_RATES = {
+    "particular": {"base_rate": 20.0, "is_gross": False, "tax_overrides": {}},
+    "tutorial": {"base_rate": 100.0, "is_gross": False, "tax_overrides": {}},
+}
+
+
 def _member(db, company, *, role="worker"):
     user = make_user(db)
-    make_member(db, user, company, role=role)
+    make_member(db, user, company, role=role, rates_config=DEFAULT_RATES)
     return user
 
 
 def _body(user, company, **extra):
-    """Turno con importe manual (no necesita tarifa). Por defecto 10:00-11:00 del 2026-01-10."""
+    """Turno calculado por tarifa (sin importe manual). Por defecto 10:00-11:00 del 2026-01-10."""
     body = {
         "type": "particular",
         "startDate": "2026-01-10",
         "endDate": "2026-01-10",
         "startTime": "10:00:00",
         "endTime": "11:00:00",
-        "netAmount": 40.0,
         "userId": str(user.id),
         "companyId": str(company.id),
     }
@@ -195,8 +200,8 @@ def test_post_same_user_in_other_company_does_not_warn(client, db):
     company_b = _company(db)
     manager_a = _member(db, company_a, role="manager")
     worker = make_user(db)
-    make_member(db, worker, company_a)
-    make_member(db, worker, company_b)
+    make_member(db, worker, company_a, rates_config=DEFAULT_RATES)
+    make_member(db, worker, company_b, rates_config=DEFAULT_RATES)
     make_work_log(db, worker, company_b, start_time=time(9, 0), end_time=time(11, 0))
     as_user(client, manager_a, company_a, claims=MANAGER_CLAIMS)
 

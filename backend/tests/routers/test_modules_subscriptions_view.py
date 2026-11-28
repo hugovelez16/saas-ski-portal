@@ -19,7 +19,7 @@ TAX_CONFIG = {"social_security": 0.0648}
 DEFINITIONS = {"particular": {"unit": "hours", "label": "Particular", "fields": []}}
 COMPANY_SETTINGS = {
     "business_logic": {"price_type": "gross"},
-    "worker_experience": {"input_mode": "timer", "allow_manual_amount": True},
+    "worker_experience": {"input_mode": "timer"},
     "modules": {"daily_report": True},
     "allowed_rates": ["particular"],
 }
