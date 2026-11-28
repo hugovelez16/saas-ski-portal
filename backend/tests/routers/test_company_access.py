@@ -326,8 +326,6 @@ def _create_company_module(db, company, code_name):
     subscription = models.ModuleSubscription(
         module_id=module.id,
         company_id=company.id,
-        user_id=None,
-        scope=models.SubscriptionScope.company,
         status=models.SubscriptionStatus.active,
     )
     db.add(subscription)

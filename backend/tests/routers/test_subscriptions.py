@@ -1,7 +1,5 @@
 """
-Pruebas HTTP de validacion de suscripciones y modulos (PR-14, items B3 y B4 del catalogo):
-esquemas cerrados, coherencia scope/company_id/user_id, compatibilidad con el target_scope
-del modulo y 409 en altas duplicadas activas/trial [P-15].
+Pruebas HTTP de catalogo de modulos y suscripciones solo de empresa (R-MOD-05, R-MOD-09, R-MOD-12, R-MOD-17, R-MOD-18).
 """
 
 import uuid
@@ -15,9 +13,11 @@ PA_CLAIMS = {"is_admin": True}
 MSG_DUPLICATE_COMPANY = "La empresa ya tiene este modulo activo"
 
 
-def _module(db, target_scope: str = "both") -> models.AppModule:
+def _module(db, *, is_active: bool = True) -> models.AppModule:
     module = models.AppModule(
-        code_name=f"mod_{uuid.uuid4().hex[:6]}", name="Modulo", is_active=True, target_scope=target_scope
+        code_name=f"mod_{uuid.uuid4().hex[:6]}",
+        name="Modulo",
+        is_active=is_active,
     )
     db.add(module)
     db.commit()
@@ -32,17 +32,15 @@ def _pa(client, db):
 
 
 def _payload(module, **overrides) -> dict:
-    data = {"moduleId": str(module.id), "scope": "company", "status": "active"}
+    data = {"moduleId": str(module.id), "status": "active"}
     data.update(overrides)
     return data
 
 
-def _existing(db, module, *, company=None, user=None, status="active"):
+def _existing(db, module, *, company, status="active"):
     sub = models.ModuleSubscription(
         module_id=module.id,
-        company_id=company.id if company else None,
-        user_id=user.id if user else None,
-        scope=models.SubscriptionScope.company if company else models.SubscriptionScope.user,
+        company_id=company.id,
         status=models.SubscriptionStatus(status),
     )
     db.add(sub)
@@ -58,25 +56,48 @@ def test_create_company_subscription_ok(client, db):
     resp = client.post("/modules/subscriptions", json=_payload(module, companyId=str(company.id)))
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["scope"] == "company"
+    body = resp.json()
+    assert body["companyId"] == str(company.id)
+    assert "scope" not in body
+    assert "userId" not in body
 
 
-def test_create_user_subscription_ok(client, db):
+def test_module_response_omits_target_scope_and_price_monthly(client, db):
     _pa(client, db)
-    module, user = _module(db), make_user(db)
+    module = _module(db)
 
-    resp = client.post("/modules/subscriptions", json=_payload(module, scope="user", userId=str(user.id)))
+    resp = client.get(f"/modules/{module.id}")
 
     assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "targetScope" not in body
+    assert "priceMonthly" not in body
 
 
-def test_invalid_scope_is_422(client, db):
+def test_create_subscription_for_inactive_module_returns_4xx(client, db):
+    """R-MOD-05: no se puede suscribir un modulo con is_active = false."""
     _pa(client, db)
-    module, company = _module(db), make_company(db)
+    module, company = _module(db, is_active=False), make_company(db)
 
-    resp = client.post("/modules/subscriptions", json=_payload(module, scope="otra", companyId=str(company.id)))
+    resp = client.post("/modules/subscriptions", json=_payload(module, companyId=str(company.id)))
 
-    assert resp.status_code == 422
+    assert 400 <= resp.status_code < 500, resp.text
+    assert db.query(models.ModuleSubscription).filter_by(module_id=module.id, company_id=company.id).count() == 0
+
+
+def test_reactivate_subscription_for_inactive_module_returns_4xx(client, db):
+    """R-MOD-05: no se puede reactivar una suscripcion si su modulo esta inactivo."""
+    _pa(client, db)
+    module, company = _module(db, is_active=True), make_company(db)
+    sub = _existing(db, module, company=company, status="cancelled")
+    module.is_active = False
+    db.commit()
+
+    resp = client.put(f"/modules/subscriptions/{sub.id}", json={"status": "active"})
+
+    assert 400 <= resp.status_code < 500, resp.text
+    db.refresh(sub)
+    assert sub.status == models.SubscriptionStatus.cancelled
 
 
 def test_invalid_status_is_422(client, db):
@@ -88,60 +109,11 @@ def test_invalid_status_is_422(client, db):
     assert resp.status_code == 422
 
 
-def test_company_scope_without_company_id_is_422(client, db):
+def test_company_subscription_without_company_id_is_422(client, db):
     _pa(client, db)
     module = _module(db)
 
     resp = client.post("/modules/subscriptions", json=_payload(module))
-
-    assert resp.status_code == 422
-
-
-def test_user_scope_without_user_id_is_422(client, db):
-    _pa(client, db)
-    module = _module(db)
-
-    resp = client.post("/modules/subscriptions", json=_payload(module, scope="user"))
-
-    assert resp.status_code == 422
-
-
-def test_company_scope_with_user_id_is_422(client, db):
-    _pa(client, db)
-    module, company, user = _module(db), make_company(db), make_user(db)
-
-    resp = client.post(
-        "/modules/subscriptions", json=_payload(module, companyId=str(company.id), userId=str(user.id))
-    )
-
-    assert resp.status_code == 422
-
-
-def test_user_scope_with_company_id_is_422(client, db):
-    _pa(client, db)
-    module, company, user = _module(db), make_company(db), make_user(db)
-
-    resp = client.post(
-        "/modules/subscriptions", json=_payload(module, scope="user", companyId=str(company.id), userId=str(user.id))
-    )
-
-    assert resp.status_code == 422
-
-
-def test_company_only_module_rejects_user_subscription(client, db):
-    _pa(client, db)
-    module, user = _module(db, target_scope="company"), make_user(db)
-
-    resp = client.post("/modules/subscriptions", json=_payload(module, scope="user", userId=str(user.id)))
-
-    assert resp.status_code == 422
-
-
-def test_user_only_module_rejects_company_subscription(client, db):
-    _pa(client, db)
-    module, company = _module(db, target_scope="user"), make_company(db)
-
-    resp = client.post("/modules/subscriptions", json=_payload(module, companyId=str(company.id)))
 
     assert resp.status_code == 422
 
@@ -163,16 +135,6 @@ def test_duplicate_trial_company_subscription_is_409(client, db):
     _existing(db, module, company=company, status="trial")
 
     resp = client.post("/modules/subscriptions", json=_payload(module, companyId=str(company.id), status="trial"))
-
-    assert resp.status_code == 409
-
-
-def test_duplicate_active_user_subscription_is_409(client, db):
-    _pa(client, db)
-    module, user = _module(db), make_user(db)
-    _existing(db, module, user=user, status="active")
-
-    resp = client.post("/modules/subscriptions", json=_payload(module, scope="user", userId=str(user.id)))
 
     assert resp.status_code == 409
 
@@ -207,7 +169,8 @@ def test_update_with_invalid_status_is_422(client, db):
     assert resp.status_code == 422
 
 
-def test_update_with_valid_status_ok(client, db):
+def test_cancel_subscription_keeps_row_with_cancelled_status(client, db):
+    """R-MOD-09: cancelar pasa la suscripcion a cancelled y conserva la fila en BD."""
     _pa(client, db)
     module, company = _module(db), make_company(db)
     sub = _existing(db, module, company=company)
@@ -216,6 +179,23 @@ def test_update_with_valid_status_ok(client, db):
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "cancelled"
+    row = db.query(models.ModuleSubscription).filter_by(id=sub.id).first()
+    assert row is not None
+    assert row.status == models.SubscriptionStatus.cancelled
+
+
+def test_delete_subscription_endpoint_is_removed(client, db):
+    """R-MOD-09: el borrado fisico DELETE de suscripciones ya no existe en v1 ni en /v2/admin."""
+    _pa(client, db)
+    module, company = _module(db), make_company(db)
+    sub = _existing(db, module, company=company)
+
+    resp_v1 = client.delete(f"/modules/subscriptions/{sub.id}")
+    resp_v2 = client.delete(f"/v2/admin/modules/subscriptions/{sub.id}")
+
+    assert resp_v1.status_code == 405
+    assert resp_v2.status_code == 405
+    assert db.query(models.ModuleSubscription).filter_by(id=sub.id).first() is not None
 
 
 def test_reactivating_cancelled_duplicate_is_409(client, db):
@@ -229,22 +209,7 @@ def test_reactivating_cancelled_duplicate_is_409(client, db):
     assert resp.status_code == 409
 
 
-def test_module_create_with_invalid_target_scope_is_422(client, db):
-    _pa(client, db)
-
-    resp = client.post("/modules", json={"codeName": "x_mod", "name": "X", "targetScope": "otro"})
-
-    assert resp.status_code == 422
-
-
-def test_module_update_with_invalid_target_scope_is_422(client, db):
-    _pa(client, db)
-    module = _module(db)
-
-    resp = client.put(f"/modules/{module.id}", json={"targetScope": "otro"})
-
-    assert resp.status_code == 422
-
-
-def test_crud_get_subscriptions_is_removed():
+def test_crud_removed_functions_and_enum():
     assert not hasattr(crud, "get_subscriptions")
+    assert not hasattr(crud, "delete_subscription")
+    assert not hasattr(models, "SubscriptionScope")

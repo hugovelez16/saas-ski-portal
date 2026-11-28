@@ -180,7 +180,6 @@ def seed_initial_data(db: Session = None) -> bool:
                         id=uuid.uuid4(),
                         module_id=mod.id,
                         company_id=company.id,
-                        scope="company",
                         status="active",
                         created_at=now,
                         updated_at=now,

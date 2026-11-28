@@ -51,7 +51,6 @@ def test_module_subscription_partial_unique_rejects_duplicate_active_company(db)
     first = models.ModuleSubscription(
         module_id=module.id,
         company_id=company.id,
-        scope=models.SubscriptionScope.company,
         status=models.SubscriptionStatus.active,
     )
     db.add(first)
@@ -60,7 +59,6 @@ def test_module_subscription_partial_unique_rejects_duplicate_active_company(db)
     duplicate = models.ModuleSubscription(
         module_id=module.id,
         company_id=company.id,
-        scope=models.SubscriptionScope.company,
         status=models.SubscriptionStatus.active,
     )
     db.add(duplicate)
@@ -78,15 +76,29 @@ def test_module_subscription_partial_unique_allows_cancelled_plus_active(db):
     cancelled = models.ModuleSubscription(
         module_id=module.id,
         company_id=company.id,
-        scope=models.SubscriptionScope.company,
         status=models.SubscriptionStatus.cancelled,
     )
     active = models.ModuleSubscription(
         module_id=module.id,
         company_id=company.id,
-        scope=models.SubscriptionScope.company,
         status=models.SubscriptionStatus.active,
     )
     db.add_all([cancelled, active])
     db.flush()
     assert active.id is not None
+
+
+def test_module_subscription_rejects_null_company_id(db):
+    module = models.AppModule(code_name=f"mod_{uuid.uuid4().hex[:6]}", name="Mod Test", is_active=True)
+    db.add(module)
+    db.flush()
+
+    bad = models.ModuleSubscription(
+        module_id=module.id,
+        company_id=None,
+        status=models.SubscriptionStatus.active,
+    )
+    db.add(bad)
+    with pytest.raises(IntegrityError):
+        db.flush()
+    db.rollback()

@@ -45,14 +45,13 @@ def _assert_no_leak(text):
 
 
 def test_subscriptions_manager_gets_brief_company(client, db, world):
-    module = models.AppModule(code_name="mod_views", name="Modulo", is_active=True, target_scope="both")
+    module = models.AppModule(code_name="mod_views", name="Modulo", is_active=True)
     db.add(module)
     db.commit()
     db.add(
         models.ModuleSubscription(
             module_id=module.id,
             company_id=world.company.id,
-            scope=models.SubscriptionScope.company,
             status=models.SubscriptionStatus("active"),
         )
     )

@@ -258,11 +258,6 @@ class AuditLog(Base):
     )
 
 
-class SubscriptionScope(str, enum.Enum):
-    company = "company"  # Suscripción asignada a toda una empresa
-    user = "user"  # Suscripción asignada a un usuario individual
-
-
 class SubscriptionStatus(str, enum.Enum):
     active = "active"
     trial = "trial"
@@ -272,28 +267,19 @@ class SubscriptionStatus(str, enum.Enum):
 
 class AppModule(Base):
     """
-    Catálogo de módulos/funcionalidades disponibles en la plataforma.
-    Solo el Platform Admin puede crear/editar módulos.
+    Catalogo de modulos/funcionalidades disponibles en la plataforma.
+    Solo el Platform Admin puede crear/editar modulos.
     """
 
     __tablename__ = "app_modules"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    code_name = Column(String, unique=True, nullable=False)  # e.g. "worker_daily_report", "export_pdf"
+    code_name = Column(String, unique=True, nullable=False)  # e.g. "worker_daily_report", "reports"
     name = Column(String, nullable=False)  # Display name
     description = Column(Text, nullable=True)
     is_active = Column(
         Boolean, nullable=False, default=True, server_default="true"
     )  # Is the module available to subscribe to?
-
-    # Which scopes can subscribe to this module?
-    # "both" means company OR user can subscribe.
-    # "company" means only company-level subs.
-    # "user" means only user-level subs.
-    target_scope = Column(String, default="both")  # "company" | "user" | "both"
-
-    # Future: pricing info (not used yet)
-    price_monthly = Column(Numeric(10, 2), nullable=True)
 
     created_at = Column(
         DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
@@ -310,32 +296,25 @@ class AppModule(Base):
 
 
 class ModuleSubscription(Base):
-    """
-    Suscripción activa a un módulo.
-    Puede ser de empresa (company_id != NULL, user_id == NULL)
-    o de usuario (user_id != NULL, company_id == NULL).
-    """
+    """Suscripcion de una empresa a un modulo del catalogo."""
 
     __tablename__ = "module_subscriptions"
     __table_args__ = (
+        CheckConstraint("company_id IS NOT NULL", name="ck_module_subscriptions_company_id_not_null"),
         Index(
             "uq_module_subscriptions_active_company",
             "module_id",
             "company_id",
             unique=True,
-            postgresql_where=text("status = 'active' AND company_id IS NOT NULL"),
-            sqlite_where=text("status = 'active' AND company_id IS NOT NULL"),
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
         ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     module_id = Column(UUID(as_uuid=True), ForeignKey("app_modules.id"), nullable=False)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
 
-    # Exactly ONE of these must be set (enforced at application level)
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-
-    scope = Column(Enum(SubscriptionScope), nullable=False)
     status = Column(Enum(SubscriptionStatus), nullable=False, default=SubscriptionStatus.active)
 
     # Optional expiry (NULL = never expires)
@@ -356,7 +335,6 @@ class ModuleSubscription(Base):
 
     module = relationship("AppModule", back_populates="subscriptions")
     company = relationship("Company")
-    user = relationship("User")
 
 
 class CompanyInvitation(Base):

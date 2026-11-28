@@ -90,6 +90,9 @@ async def create_user_admin(
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    if user.company_id:
+        crud.ensure_company_member_limit(db, str(user.company_id), target_role=models.CompanyRole.worker)
+
     # Option A: Random unusable Password
     import secrets
 

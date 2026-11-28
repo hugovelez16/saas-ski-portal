@@ -419,8 +419,6 @@ class PasswordResetConfirm(CamelModel):
 # ─── Módulos y Suscripciones ───────────────────────────────────────────────
 
 
-ModuleTargetScope = Literal["company", "user", "both"]
-SubscriptionScopeValue = Literal["company", "user"]
 SubscriptionStatusValue = Literal["active", "trial", "cancelled", "expired"]
 
 
@@ -431,8 +429,6 @@ class AppModuleCreate(CamelModel):
     name: str
     description: str | None = None
     is_active: bool = True
-    target_scope: ModuleTargetScope = "both"
-    price_monthly: float | None = None
 
 
 class AppModuleUpdate(CamelModel):
@@ -441,8 +437,6 @@ class AppModuleUpdate(CamelModel):
     name: str | None = None
     description: str | None = None
     is_active: bool | None = None
-    target_scope: ModuleTargetScope | None = None
-    price_monthly: float | None = None
 
 
 class AppModuleResponse(CamelModel):
@@ -453,31 +447,18 @@ class AppModuleResponse(CamelModel):
     name: str
     description: str | None = None
     is_active: bool
-    target_scope: str
-    price_monthly: float | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class ModuleSubscriptionCreate(CamelModel):
-    """Schema para crear una suscripción a un módulo."""
+    """Schema para crear una suscripción de empresa a un módulo."""
 
     module_id: UUID = Field(..., alias="moduleId")
-    company_id: UUID | None = Field(None, alias="companyId")
-    user_id: UUID | None = Field(None, alias="userId")
-    scope: SubscriptionScopeValue
+    company_id: UUID = Field(..., alias="companyId")
     status: SubscriptionStatusValue = "active"
     expires_at: datetime | None = Field(None, alias="expiresAt")
     notes: str | None = None
-
-    @model_validator(mode="after")
-    def _scope_matches_target(self):
-        """El scope exige su destino y excluye el otro."""
-        if self.scope == "company" and (self.company_id is None or self.user_id is not None):
-            raise ValueError("Una suscripción de empresa requiere companyId y no admite userId.")
-        if self.scope == "user" and (self.user_id is None or self.company_id is not None):
-            raise ValueError("Una suscripción de usuario requiere userId y no admite companyId.")
-        return self
 
 
 class ModuleSubscriptionUpdate(CamelModel):
@@ -489,13 +470,11 @@ class ModuleSubscriptionUpdate(CamelModel):
 
 
 class ModuleSubscriptionResponse(CamelModel):
-    """Schema de respuesta de una suscripción."""
+    """Schema de respuesta de una suscripción de empresa."""
 
     id: UUID
     module_id: UUID = Field(..., alias="moduleId")
-    company_id: UUID | None = Field(None, alias="companyId")
-    user_id: UUID | None = Field(None, alias="userId")
-    scope: str
+    company_id: UUID = Field(..., alias="companyId")
     status: str
     expires_at: datetime | None = Field(None, alias="expiresAt")
     notes: str | None = None
@@ -503,7 +482,6 @@ class ModuleSubscriptionResponse(CamelModel):
     updated_at: datetime
     module: AppModuleResponse | None = None
     company: CompanyResponse | None = None
-    user: UserResponse | None = None
 
 
 class CompanyBriefResponse(CamelModel):

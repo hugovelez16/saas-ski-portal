@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const { permissions } = vi.hoisted(() => ({
@@ -104,5 +104,54 @@ describe("CompanyConfigurationTab", () => {
         expect(screen.getByText("Ajustes de Plataforma")).toBeInTheDocument();
         expect(screen.getAllByRole("button", { name: /Ver JSON/i }).length).toBeGreaterThanOrEqual(4);
         expect(screen.getByRole("link", { name: /Gestionar Módulos/ })).toBeInTheDocument();
+    });
+
+    it("PA guarda ajustes de plataforma con plan personalizado y limites numericos", () => {
+        permissions.isPlatformAdmin = true;
+        permissions.role = "admin";
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const customCompany = {
+            ...company,
+            platformSettings: { plan: "personalizado", limits: { max_monitors: 15, max_managers: 3 }, modules: {} },
+        };
+        render(
+            <QueryClientProvider client={client}>
+                <CompanyConfigurationTab company={customCompany} />
+            </QueryClientProvider>
+        );
+
+        const monitorsInput = screen.getByLabelText("Limite de monitores") as HTMLInputElement;
+        const managersInput = screen.getByLabelText("Limite de responsables") as HTMLInputElement;
+        expect(monitorsInput).not.toBeDisabled();
+        expect(managersInput).not.toBeDisabled();
+
+        fireEvent.change(monitorsInput, { target: { value: "20" } });
+        fireEvent.change(managersInput, { target: { value: "4" } });
+        fireEvent.click(screen.getByRole("button", { name: /Guardar Ajustes de Plataforma/i }));
+
+        expect(monitorsInput.value).toBe("20");
+        expect(managersInput.value).toBe("4");
+    });
+
+    it("PA con plan comercial pista_verde bloquea edicion manual de limites con valores del preset", () => {
+        permissions.isPlatformAdmin = true;
+        permissions.role = "admin";
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const verdeCompany = {
+            ...company,
+            platformSettings: { plan: "pista_verde", limits: { max_monitors: 10, max_managers: 1 }, modules: {} },
+        };
+        render(
+            <QueryClientProvider client={client}>
+                <CompanyConfigurationTab company={verdeCompany} />
+            </QueryClientProvider>
+        );
+
+        const monitorsInput = screen.getByLabelText("Limite de monitores") as HTMLInputElement;
+        const managersInput = screen.getByLabelText("Limite de responsables") as HTMLInputElement;
+        expect(monitorsInput).toBeDisabled();
+        expect(managersInput).toBeDisabled();
+        expect(monitorsInput.value).toBe("10");
+        expect(managersInput.value).toBe("1");
     });
 });

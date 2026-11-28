@@ -195,11 +195,12 @@ async def set_member_status_admin(
     user_id: UUID,
     body: schemas.MemberStatusIn,
     actor: models.User = Depends(deps.require_platform_admin),
+    company_repo=Depends(v2_deps.get_company_repository),
     member_repo=Depends(v2_deps.get_member_repository),
     user_repo=Depends(v2_deps.get_user_repository),
     audit_log=Depends(v2_deps.get_audit_log),
 ):
-    detail = await SetMemberStatusUseCase(member_repo, user_repo, audit_log).execute(
+    detail = await SetMemberStatusUseCase(member_repo, user_repo, audit_log, company_repo).execute(
         actor_id=str(actor.id), company_id=str(company_id), user_id=str(user_id), is_active=body.is_active
     )
     return schemas.member_out(detail)
@@ -211,11 +212,12 @@ async def set_member_role_admin(
     user_id: UUID,
     body: schemas.MemberRoleIn,
     actor: models.User = Depends(deps.require_platform_admin),
+    company_repo=Depends(v2_deps.get_company_repository),
     member_repo=Depends(v2_deps.get_member_repository),
     user_repo=Depends(v2_deps.get_user_repository),
     audit_log=Depends(v2_deps.get_audit_log),
 ):
-    detail = await SetMemberRoleUseCase(member_repo, user_repo, audit_log).execute(
+    detail = await SetMemberRoleUseCase(member_repo, user_repo, audit_log, company_repo).execute(
         actor_id=str(actor.id), company_id=str(company_id), user_id=str(user_id), role=body.role
     )
     return schemas.member_out(detail)
@@ -405,7 +407,6 @@ def create_module_admin(
 @router.get("/modules/subscriptions", response_model=list[legacy_schemas.ModuleSubscriptionResponse])
 def list_subscriptions_admin(
     company_id: str | None = None,
-    user_id: str | None = None,
     module_id: str | None = None,
     db: Session = Depends(get_db),
 ):
@@ -414,11 +415,9 @@ def list_subscriptions_admin(
         .options(
             joinedload(models.ModuleSubscription.module),
             joinedload(models.ModuleSubscription.company),
-            joinedload(models.ModuleSubscription.user),
         )
         .filter(
             (models.ModuleSubscription.company_id == company_id) if company_id else True,
-            (models.ModuleSubscription.user_id == user_id) if user_id else True,
             (models.ModuleSubscription.module_id == module_id) if module_id else True,
         )
         .order_by(models.ModuleSubscription.created_at.desc())
@@ -443,15 +442,6 @@ def update_subscription_admin(
     actor: models.User = Depends(deps.require_platform_admin),
 ):
     return modules_router.update_subscription(sub_id=sub_id, data=data, db=db, current_user=actor)
-
-
-@router.delete("/modules/subscriptions/{sub_id}")
-def delete_subscription_admin(
-    sub_id: str,
-    db: Session = Depends(get_db),
-    actor: models.User = Depends(deps.require_platform_admin),
-):
-    return modules_router.delete_subscription(sub_id=sub_id, db=db, current_user=actor)
 
 
 @router.get("/modules/{module_id}", response_model=legacy_schemas.AppModuleResponse)
