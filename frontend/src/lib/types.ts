@@ -368,12 +368,15 @@ export interface BillingSummaryItem {
     totalGross: number;
     uniqueDays: number;
     logsCount: number;
+    isActive?: boolean;
+    userTotalNet?: number | null;
 }
 
 export interface DynamicBillingRow {
     userId: string;
     userName: string;
     userEmail: string;
+    isActive?: boolean;
     byType: Record<string, WorklogTypeSummary>;  // typeKey → summary
     totalNet: number;
     totalGross: number;

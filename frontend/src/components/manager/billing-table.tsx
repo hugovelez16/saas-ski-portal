@@ -1,6 +1,7 @@
 "use client";
 
 import { DataTable } from "@/components/ui/data-table";
+import { Badge } from "@/components/ui/badge";
 import { DynamicBillingRow } from "@/lib/types";
 import { useState, useMemo } from "react";
 import { BillingBreakdownDialog } from "./billing-breakdown-dialog";
@@ -22,9 +23,16 @@ export function BillingTable({ data, worklogDefs, isLoading }: BillingTableProps
                 header: 'Nombre del usuario',
                 cell: ({ row }) => (
                     <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                            {row.original.userName}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                {row.original.userName}
+                            </span>
+                            {row.original.isActive === false && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 h-5 text-muted-foreground">
+                                    Inactivo
+                                </Badge>
+                            )}
+                        </div>
                         <span className="text-xs text-muted-foreground">{row.original.userEmail}</span>
                     </div>
                 ),

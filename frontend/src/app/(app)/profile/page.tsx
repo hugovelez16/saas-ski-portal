@@ -40,7 +40,7 @@ import { getMyCompanies } from "@/lib/api/companies";
 import { updateMe, changePassword } from "@/lib/api/users";
 import { useAuth } from "@/context/AuthContext";
 import { Company, CompanyMember } from "@/lib/types";
-import { TaxOverridesFields, compactTaxOverrides } from "@/components/admin/tax-overrides-fields";
+import { TaxOverridesFields, compactTaxOverrides, exceedsMaxTaxSum } from "@/components/admin/tax-overrides-fields";
 
 // User Info Form
 const userFormSchema = z.object({
@@ -239,6 +239,15 @@ export default function ProfilePage() {
       toast({
         title: "Acción no permitida",
         description: "Esta empresa está en modo gestionado. Las tarifas son administradas por la dirección.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (exceedsMaxTaxSum(currentCompany?.taxConfig, data.taxOverrides)) {
+      toast({
+        title: "Error de validacion",
+        description: "La suma efectiva de impuestos no puede superar el 100%.",
         variant: "destructive"
       });
       return;
@@ -528,6 +537,7 @@ export default function ProfilePage() {
                                       value={field.value || {}}
                                       onChange={field.onChange}
                                       disabled={!canEditRates}
+                                      isManaged={isCompanyManaged}
                                     />
                                     <FormMessage />
                                   </FormItem>

@@ -32,7 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import { updateMemberRates } from "@/lib/api/companies";
 import { CompanyMember, Company } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
-import { TaxOverridesFields, compactTaxOverrides } from "@/components/admin/tax-overrides-fields";
+import { TaxOverridesFields, compactTaxOverrides, exceedsMaxTaxSum } from "@/components/admin/tax-overrides-fields";
 
 const rateFormSchema = z.object({
     rates: z.record(z.coerce.number().min(0)),
@@ -108,6 +108,14 @@ export function UserRatesEditDialog({ userId, company, member, userName, open: e
     });
 
     function onSubmit(data: RateFormValues) {
+        if (exceedsMaxTaxSum(company.taxConfig, data.taxOverrides)) {
+            toast({
+                title: "Error de validacion",
+                description: "La suma efectiva de impuestos no puede superar el 100%.",
+                variant: "destructive",
+            });
+            return;
+        }
         const ratesConfig: Record<string, any> = {};
         
         worklogKeys.forEach(key => {
@@ -229,6 +237,7 @@ export function UserRatesEditDialog({ userId, company, member, userName, open: e
                                                     companyTaxConfig={company.taxConfig || {}}
                                                     value={field.value || {}}
                                                     onChange={field.onChange}
+                                                    isManaged={Boolean(company.isManaged)}
                                                 />
                                                 <FormMessage />
                                             </FormItem>
