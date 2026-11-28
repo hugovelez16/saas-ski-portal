@@ -176,6 +176,8 @@ def test_seed_creates_when_no_platform_admin(db, monkeypatch):
     assert db.query(models.CompanyMember).filter_by(user_id=admin.id).count() == 0
 
     company = db.query(models.Company).filter_by(name=ADMIN_COMPANY).one()
+    # R-EMP-37: el seed no define impuestos por defecto.
+    assert company.tax_config == {}
     manager = db.query(models.User).filter_by(email="manager.demo@vesotel.com").one()
     worker = db.query(models.User).filter_by(email="worker.demo@vesotel.com").one()
     assert manager.role == models.UserRole.user
@@ -220,3 +222,19 @@ def test_dev_seed_creates_demo_members_and_no_pa_membership(db, monkeypatch):
         .role
         == models.CompanyRole.worker
     )
+
+
+def test_dev_seed_creates_company_without_default_tax_config(db, monkeypatch):
+    # R-EMP-37: dev_seed crea la empresa inicial sin tax_config por defecto.
+    monkeypatch.setenv("DEV_ADMIN_COMPANY", "Empresa Dev Vacia")
+    db.query(models.WorkLog).delete()
+    db.query(models.ModuleSubscription).delete()
+    db.query(models.CompanyInvitation).delete()
+    db.query(models.CompanyMember).delete()
+    db.query(models.Company).delete()
+    db.flush()
+
+    dev_seed.ensure_dev_admin_user(db)
+
+    created = db.query(models.Company).filter_by(name="Empresa Dev Vacia").one()
+    assert created.tax_config == {}
