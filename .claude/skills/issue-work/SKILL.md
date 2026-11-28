@@ -10,6 +10,15 @@ La issue es la especificacion. No necesitas la conversacion que la origino.
 Eres el orquestador: delegas la implementacion y las pruebas en subagentes y
 decides tu.
 
+## Delegacion (obligatoria)
+
+Ademas de la implementacion y las pruebas, delega lo mecanico: git, `gh`,
+esperar checks, merge, estados del Project y ediciones acotadas van a un
+subagente haiku (`general-purpose` con `model: haiku`, o `backend-dev`,
+`frontend-dev` y `tester`); la revision va a `code-reviewer` y a los demas
+revisores (sonnet). Tu decides, preguntas y verificas con un comando corto.
+Prohibidos los forks.
+
 ## Autorizacion (ADR-0002)
 
 Ejecutar esta skill sobre una issue en "Listo para agente" autoriza, solo para
