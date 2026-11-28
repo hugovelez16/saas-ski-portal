@@ -162,6 +162,20 @@ def read_work_logs(
     return work_logs
 
 
+def _validate_summary_date_range(start_date: date, end_date: date) -> None:
+    """Valida coherencia y limites del rango de fechas para resumenes e informes."""
+    if start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date no puede ser posterior a end_date")
+    max_end_date = date.today() + timedelta(days=_SUMMARY_MAX_AHEAD_DAYS)
+    if not (
+        _SUMMARY_MIN_DATE <= start_date <= max_end_date and _SUMMARY_MIN_DATE <= end_date <= max_end_date
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Las fechas deben estar entre {_SUMMARY_MIN_DATE.isoformat()} y {max_end_date.isoformat()}",
+        )
+
+
 @router.get("/summary", response_model=schemas.WorkLogSummaryResponse)
 def get_work_logs_summary(
     start_date: date,
@@ -175,16 +189,7 @@ def get_work_logs_summary(
     Agregados de turnos en un rango de fechas: totales, por tipo, por dia y por usuario.
     Misma visibilidad que GET /work-logs: los workers solo obtienen sus propios datos.
     """
-    if start_date > end_date:
-        raise HTTPException(status_code=422, detail="start_date no puede ser posterior a end_date")
-    max_end_date = date.today() + timedelta(days=_SUMMARY_MAX_AHEAD_DAYS)
-    if not (
-        _SUMMARY_MIN_DATE <= start_date <= max_end_date and _SUMMARY_MIN_DATE <= end_date <= max_end_date
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Las fechas deben estar entre {_SUMMARY_MIN_DATE.isoformat()} y {max_end_date.isoformat()}",
-        )
+    _validate_summary_date_range(start_date, end_date)
 
     target_company_id, final_user_id, only_active_companies = _resolve_work_log_scope(
         db, current_user, company_id, user_id, start_date, end_date
@@ -202,6 +207,75 @@ def get_work_logs_summary(
         only_active_companies=only_active_companies,
     )
     return schemas.WorkLogSummaryResponse(**summary)
+
+
+@router.get("/reports", response_model=schemas.WorkLogReportResponse)
+def get_work_logs_report(
+    start_date: date,
+    end_date: date,
+    company_id: UUID | None = None,
+    user_id: UUID | None = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=2000),
+    include_logs: bool = True,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
+    """
+    Datos del modulo de pago Informes (R-MOD-15, R-ACC-24): devuelve el resumen y las filas
+    paginadas exigiendo suscripcion vigente al modulo 'reports' en la empresa (salvo PA actuando).
+    """
+    _validate_summary_date_range(start_date, end_date)
+
+    effective_company_id = company_id or getattr(current_user, "active_company_id", None)
+    if effective_company_id is None:
+        if deps.acting_platform_admin(current_user):
+            raise HTTPException(status_code=422, detail="company_id es obligatorio para el administrador de plataforma")
+        raise PolicyError(403, access_policy.MSG_NO_ACCESS)
+
+    ctx = deps.authorize(
+        db,
+        current_user,
+        effective_company_id,
+        min_role=access_policy.ROLE_WORKER,
+        module="reports",
+    )
+
+    if ctx.role in _COMPANY_VIEW_ROLES:
+        final_user_id = user_id
+    elif user_id and str(user_id) != str(current_user.id):
+        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+    else:
+        final_user_id = current_user.id
+
+    summary = crud.get_work_log_summary(
+        db,
+        company_id=str(ctx.company_id),
+        user_id=str(final_user_id) if final_user_id else None,
+        start_date=start_date,
+        end_date=end_date,
+        only_active_companies=False,
+    )
+
+    if include_logs:
+        filters = {
+            "user_id": str(final_user_id) if final_user_id else None,
+            "company_id": str(ctx.company_id),
+            "start_date": start_date,
+            "end_date": end_date,
+            "only_active_companies": False,
+        }
+        items = crud.get_work_logs(db, skip=skip, limit=limit, **filters)
+        total = crud.count_work_logs(db, **filters)
+    else:
+        items = []
+        total = int(summary["totals"]["logs_count"])
+
+    return schemas.WorkLogReportResponse(
+        items=items,
+        total=total,
+        summary=schemas.WorkLogSummaryResponse(**summary),
+    )
 
 
 @router.get("/billing-summary", response_model=list[schemas.BillingSummaryItemResponse])
