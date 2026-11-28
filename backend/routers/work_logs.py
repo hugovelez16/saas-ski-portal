@@ -24,19 +24,8 @@ _SUMMARY_MAX_AHEAD_DAYS = 730
 
 
 def record_impersonation_audit(db: Session, current_user: models.User, action: str, extra_data: dict = None):
-    if getattr(current_user, "token_scope", None) == "impersonated":
-        admin_user_id = getattr(current_user, "admin_user_id", None)
-        if admin_user_id:
-            admin_uuid = UUID(admin_user_id) if isinstance(admin_user_id, str) else admin_user_id
-            audit_entry = models.AuditLog(
-                action=action,
-                impersonated_user_id=current_user.id,
-                admin_user_id=admin_uuid,
-                actor_user_id=admin_uuid,
-                extra_data=extra_data or {},
-            )
-            db.add(audit_entry)
-            db.commit()
+    """Retirada (R-AUD-26): las escrituras de turnos durante suplantacion ya no se registran."""
+    return None
 
 
 @router.post("", response_model=schemas.WorkLogResponse)
@@ -59,12 +48,6 @@ def create_work_log(
 
     try:
         new_log = crud.create_work_log(db=db, work_log=work_log)
-        record_impersonation_audit(
-            db,
-            current_user,
-            action="create_work_log",
-            extra_data={"work_log_id": str(new_log.id), "user_id": str(work_log.user_id)},
-        )
         return new_log
     except (MissingWorklogUnitError, MissingWorklogDatesError):
         raise
@@ -91,17 +74,6 @@ def create_work_log_bulk(
 
     try:
         logs = crud.create_work_log_bulk(db=db, work_log_bulk=work_log_bulk)
-        if logs:
-            record_impersonation_audit(
-                db,
-                current_user,
-                action="create_work_log_bulk",
-                extra_data={
-                    "company_id": str(work_log_bulk.company_id),
-                    "user_ids": [str(uid) for uid in work_log_bulk.user_ids],
-                    "group_id": logs.extra_data.get("group_id") if logs.extra_data else None,
-                },
-            )
         return logs  # Returns the first one created as a representative
     except (MissingWorklogUnitError, MissingWorklogDatesError):
         raise
@@ -312,12 +284,6 @@ def delete_work_log(
 
     _authorize_work_log_write(db, current_user, log)
 
-    record_impersonation_audit(
-        db,
-        current_user,
-        action="delete_work_log",
-        extra_data={"work_log_id": str(work_log_id), "user_id": str(log.user_id)},
-    )
     company_id = log.company_id
     crud.delete_work_log(db, str(work_log_id), company_id=company_id)
     if company_id:
@@ -424,16 +390,5 @@ def update_work_log(
         raise HTTPException(status_code=422, detail=str(e))
     if updated_log is None:
         raise _work_log_not_found(current_user)
-
-    record_impersonation_audit(
-        db,
-        current_user,
-        action="update_work_log",
-        extra_data={
-            "work_log_id": str(work_log_id),
-            "user_id": str(updated_log.user_id),
-            "apply_to_group": apply_to_group,
-        },
-    )
 
     return updated_log

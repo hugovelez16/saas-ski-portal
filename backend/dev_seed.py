@@ -3,6 +3,7 @@ Modulo de inicializacion automatica de usuario administrador de plataforma y emp
 """
 import os
 
+import audit
 import auth
 import models
 from contracts import validate_allowed_email_domain
@@ -123,13 +124,32 @@ def ensure_dev_admin_user(db: Session) -> models.User:
             must_change_password=False,
         )
         db.add(user)
+        db.flush()
+        audit.record_audit(
+            db,
+            action=audit.AuditAction.USER_PLATFORM_ADMIN_GRANTED,
+            actor_id=None,
+            target_user_id=user.id,
+            new_value={"role": models.UserRole.admin.value},
+            extra={"source": "dev_seed", "email": user.email},
+        )
         db.commit()
         db.refresh(user)
         print(f"[DevSeed] Usuario administrador '{admin_email}' creado exitosamente.")
     else:
         updated = False
         if user.role != models.UserRole.admin:
+            old_role = user.role.value
             user.role = models.UserRole.admin
+            audit.record_audit(
+                db,
+                action=audit.AuditAction.USER_PLATFORM_ADMIN_GRANTED,
+                actor_id=None,
+                target_user_id=user.id,
+                old_value={"role": old_role},
+                new_value={"role": models.UserRole.admin.value},
+                extra={"source": "dev_seed", "email": user.email},
+            )
             updated = True
         if not user.is_active:
             user.is_active = True

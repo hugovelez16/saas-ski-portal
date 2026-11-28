@@ -409,3 +409,21 @@ def read_audit_logs_admin(
 @router.get("/audit-logs/actions", response_model=list[str])
 def read_audit_actions_admin():
     return audit_router.KNOWN_ACTIONS
+
+
+@router.get("/audit-logs/purge-preview", response_model=legacy_schemas.AuditLogPurgePreview)
+def preview_audit_purge_admin(
+    before: datetime = Query(...),
+    db: Session = Depends(get_db),
+    actor: models.User = Depends(deps.require_platform_admin),
+):
+    return audit_router.preview_audit_purge(before=before, db=db, current_user=actor)
+
+
+@router.post("/audit-logs/purge", response_model=legacy_schemas.AuditLogPurgeResponse)
+def purge_audit_logs_admin(
+    body: legacy_schemas.AuditLogPurgeRequest,
+    db: Session = Depends(get_db),
+    actor: models.User = Depends(deps.require_platform_admin),
+):
+    return audit_router.purge_audit_logs(body=body, db=db, current_user=actor)

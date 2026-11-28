@@ -11,6 +11,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime
 
+import audit
 import auth
 import models
 from contracts import validate_allowed_email_domain
@@ -127,6 +128,15 @@ def seed_initial_data(db: Session = None) -> bool:
             must_change_password=False,
         )
         db.add(admin_user)
+        db.flush()
+        audit.record_audit(
+            db,
+            action=audit.AuditAction.USER_PLATFORM_ADMIN_GRANTED,
+            actor_id=None,
+            target_user_id=admin_user.id,
+            new_value={"role": models.UserRole.admin.value},
+            extra={"source": "seed", "email": admin_user.email},
+        )
         db.commit()
         db.refresh(admin_user)
 

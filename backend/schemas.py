@@ -710,3 +710,19 @@ class AuditLogItem(CamelModel):
 class AuditLogPage(CamelModel):
     total: int
     items: list[AuditLogItem]
+
+
+class AuditLogPurgePreview(CamelModel):
+    before: datetime
+    count: int
+
+
+class AuditLogPurgeRequest(CamelModel):
+    before: datetime
+    reason: str | None = Field(None, max_length=500)
+
+
+class AuditLogPurgeResponse(CamelModel):
+    before: datetime
+    deleted_count: int
+    audit_log_id: UUID
