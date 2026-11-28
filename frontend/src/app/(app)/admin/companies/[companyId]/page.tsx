@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { AddMemberDialog } from "@/components/admin/add-member-dialog";
 import { CompanyConfigurationTab } from "@/components/admin/company-configuration-tab";
+import { CompanyInvitationsSection } from "@/components/company/company-invitations-section";
 import { useAuth } from "@/context/AuthContext";
 import { CompanyMember, UserCompanyRate } from "@/lib/types";
 import { DailyReportView } from "@/components/admin/daily-report-view";
@@ -42,7 +43,7 @@ export default function CompanyDetailsPage() {
     });
 
     const company = companies.find(c => c.id === companyId);
-    const { canManageMembers, canEditCompany } = usePermissions();
+    const { canManageMembers, canInviteMembers, canEditCompany, isReadOnlyView } = usePermissions();
 
     const updateCompanyMutation = useMutation({
         mutationFn: (data: any) => updateCompany(companyId as string, data),
@@ -175,6 +176,9 @@ export default function CompanyDetailsPage() {
                 <TabsList className="bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
                     <TabsTrigger value="workers">Trabajadores ({workers.length})</TabsTrigger>
                     <TabsTrigger value="managers">Managers ({managers.length})</TabsTrigger>
+                    {canInviteMembers && (
+                        <TabsTrigger value="invitations">Invitaciones</TabsTrigger>
+                    )}
                     <TabsTrigger value="taxes">Tasas & IRPF</TabsTrigger>
                     <TabsTrigger value="settings">Ajustes UI</TabsTrigger>
                     {canEditCompany && (
@@ -228,6 +232,17 @@ export default function CompanyDetailsPage() {
                         </CardContent>
                     </Card>
                 </TabsContent>
+
+                {/* INVITATIONS TAB */}
+                {canInviteMembers && (
+                    <TabsContent value="invitations" className="pt-4">
+                        <CompanyInvitationsSection
+                            companyId={companyId as string}
+                            asAdmin
+                            canInvite={!isReadOnlyView}
+                        />
+                    </TabsContent>
+                )}
 
                 {/* TAXES TAB */}
                 <TabsContent value="taxes" className="pt-4">

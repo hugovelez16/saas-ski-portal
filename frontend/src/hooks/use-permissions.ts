@@ -13,6 +13,8 @@ export interface Permissions {
     canCreateWorkLog: boolean;
     canEditWorkLog: (log: { userId: string }) => boolean;
     canManageMembers: boolean;
+    canInviteMembers: boolean;
+    canToggleMemberStatus: (targetRole?: string | null) => boolean;
     canEditCompany: boolean;
     canEditRates: (targetUserId: string) => boolean;
 }
@@ -62,6 +64,9 @@ export function usePermissions(company?: CompanyResponse | null): Permissions {
         canEditWorkLog: (log) =>
             canWrite && (isManagerLike || (isAutonomousWorker && log.userId === userId)),
         canManageMembers: canWrite && isPlatformAdmin,
+        canInviteMembers: canWrite && isManagerLike,
+        canToggleMemberStatus: (targetRole?: string | null) =>
+            canWrite && (isPlatformAdmin || (role === 'manager' && targetRole === 'worker')),
         canEditCompany: canWrite && isPlatformAdmin,
         canEditRates: (targetUserId) =>
             canWrite && (isManagerLike || (isAutonomousWorker && targetUserId === userId)),

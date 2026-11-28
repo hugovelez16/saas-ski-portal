@@ -113,3 +113,31 @@ export interface ListCompaniesParams {
     skip?: number;
     limit?: number;
 }
+
+export type InvitationStatus = 'pending' | 'accepted' | 'cancelled' | 'expired';
+
+export interface InvitationOut {
+    id: string;
+    company_id: string;
+    email: string;
+    status: InvitationStatus;
+    invited_by_user_id: string;
+    invited_by_name: string | null;
+    expires_at: string;
+    accepted_at: string | null;
+    cancelled_at: string | null;
+    created_at: string | null;
+}
+
+export interface InvitationPreviewOut {
+    company_id: string;
+    company_name: string;
+    status: 'pending';
+    expires_at: string;
+}
+
+export interface InvitationAcceptOut {
+    company_id: string;
+    company_name: string;
+    membership: MemberOut;
+}
