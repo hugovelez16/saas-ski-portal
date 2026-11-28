@@ -82,6 +82,16 @@ export function sanitizeEvent(event: CaptureResult | null): CaptureResult | null
   };
 }
 
+// No reintenta peticiones rechazadas por autenticacion o permisos (401, 403);
+// el resto mantiene la politica por defecto de React Query (3 reintentos).
+export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  if (status === 401 || status === 403) {
+    return false;
+  }
+  return failureCount < 3;
+}
+
 function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
@@ -89,6 +99,7 @@ function makeQueryClient() {
         // With SSR, we usually want to set some default staleTime
         // to avoid refetching immediately on the client
         staleTime: 60 * 1000,
+        retry: shouldRetryQuery,
       },
     },
   })
