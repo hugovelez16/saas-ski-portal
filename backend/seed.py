@@ -104,7 +104,7 @@ def seed_initial_data(db: Session = None) -> bool:
         if not company:
             company = models.Company(
                 name=company_name,
-                tax_config={"social_security": 0.0648},
+                tax_config={},
                 worklog_definitions={
                     "particular": {"unit": "hours", "label": "Clase Particular", "options": [], "is_active": True},
                     "colectiva": {"unit": "hours", "label": "Clase Colectiva", "options": [], "is_active": True},

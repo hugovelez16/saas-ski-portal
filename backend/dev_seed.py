@@ -100,7 +100,7 @@ def ensure_dev_admin_user(db: Session) -> models.User:
         if not company:
             company = models.Company(
                 name=admin_company_name,
-                tax_config={"social_security": 0.0648},
+                tax_config={},
                 worklog_definitions={},
                 settings={},
             )
