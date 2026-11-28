@@ -1,10 +1,19 @@
 # Revision de base del producto
 
-Estado: **Propuesta**. Fecha: 2026-11-22. Issue: #102.
+Estado: **Decidida** (2026-11-22). Fecha de la propuesta: 2026-11-22. Issues:
+#102 (propuesta) y #114 (consolidacion de las decisiones).
 
 Diagnostico y propuesta antes del dominio (#66-#72) y la migracion hexagonal
-(O4). No cambia reglas `R-*` ni codigo; lo que hay que decidir esta en la
-seccion 7 (cuestionario para Docmost). Mediciones con `wc -l` y `grep`.
+(O4). El usuario respondio el cuestionario de la seccion 7 en Docmost y sus
+decisiones estan escritas en cada pregunta (P1-P17) y en la seccion 8
+(ajustes, tarifas e impuestos). **Donde una decision contradice el texto de la
+propuesta (secciones 1 a 6), manda la decision.** Las reglas `R-ACC` derivadas
+estan en [../dominio/acceso.md](../dominio/acceso.md). Mediciones con `wc -l` y
+`grep`.
+
+Terminologia: empresa "gestionada" (`is_managed = true`) y "autonoma"
+(`is_managed = false`). "Libre" queda reservado a la futura unidad de tipo de
+turno (S6).
 
 ## 1. Producto en una pagina
 
@@ -22,15 +31,16 @@ y los informes de la temporada.
   por plan y meses activos (`docs/planes-y-precios.md`): Pista Verde, Azul y
   Roja, con limites de monitores y responsables y dos modulos de pago
   (Cuadrante compartido e Informes).
-- **B2C, el monitor (futuro, O16).** Un monitor que trabaja para varias
-  escuelas apunta sus jornadas en una empresa propia, gratis o con un plan
-  personal. No existe hoy y no hay nada vendido.
+- **B2C, el alta publica (decidido en P1, O16).** No es otro producto: es un
+  alta automatica que crea una empresa con el nombre del usuario, con el como
+  unico worker y sin manager. No existe hoy y no hay nada vendido; se disena ya
+  en dominio y se implementa tras migrar Usuarios y Membresias.
 
 **v1 frente a futuro.**
 
 | Entra en v1 | Futuro (no se construye hasta que haya cliente o decision) |
 |---|---|
-| Alta de escuela, responsables y monitores (la hace hoy el PA en la puesta en marcha) | Registro publico y empresa propia B2C (O16) |
+| Alta de escuela y de responsables por el PA; alta de monitores por el PA y por el manager (P6) | Implementacion del alta publica B2C (O16): tras migrar Usuarios y Membresias |
 | Turnos, tipos de turno, tarifas por monitor, impuestos, creacion en lote | Billing avanzado (O11) |
 | Empresa gestionada o autonoma | Aprobacion de turnos, cierre de periodo |
 | Parte diario (Cuadrante compartido) e Informes como modulos de empresa | Invitaciones por email |
@@ -66,42 +76,48 @@ Siete tablas bastan. Lo que sigue es cada concepto actual con la propuesta.
 
 ## 3. Matriz de permisos
 
-Roles: PA actuando, manager y worker. El admin de empresa no aparece porque se
-propone eliminarlo (P3). "A" es empresa autonoma y "G" gestionada; si no se
-indica, vale para las dos. Toda accion sobre una empresa exige ademas membresia
-activa, empresa activa y empresa del token (R-ACC-18 a 23, 41).
+Matriz con las decisiones de 2026-11-22 aplicadas (P3, P4, P5, P6, P7, S1,
+S7, S8). Roles: PA actuando, manager y worker. El admin de empresa no aparece
+porque se elimina (P3). "L" es empresa autonoma (`is_managed = false`) y "G"
+gestionada; si no se indica, vale para las dos. Toda accion sobre una empresa
+exige ademas membresia activa, empresa activa y empresa del token (R-ACC-18 a
+23, 41).
 
 | Accion | PA | Manager | Worker |
 |---|---|---|---|
-| Crear empresa | SI | NO | NO |
-| Editar empresa (`name`, `tax_config`, `worklog_definitions`, `settings`) | SI | NO | NO |
-| Suspender o reactivar, cambiar `is_managed` | SI | NO | NO |
+| Crear empresa (con sus impuestos y tipos de turno iniciales) | SI | NO | NO |
+| Editar empresa (`name`, `settings`) | SI | NO | NO |
+| Editar tipos de turno e impuestos (`worklog_definitions`, `tax_config`), por un endpoint propio (S1) | SI | SI | NO |
+| Suspender o reactivar, cambiar `is_managed` (solo PA, S1) | SI | NO | NO |
 | Borrar empresa sin datos asociados | SI | NO | NO |
 | Ver empresa completa / reducida | SI / SI | NO / SI | NO / SI |
-| Anadir o desactivar un worker | SI | NO hoy; SI propuesto (P6) | NO |
+| Anadir o desactivar un worker (P6) | SI | SI | NO |
 | Anadir o desactivar un manager | SI | NO | NO |
-| Cambiar el rol de una membresia | SI | NO | NO |
-| Conceder o quitar el rol de PA | Fuera de la app (P5) | NO | NO |
+| Cambiar el rol de una membresia (P6) | SI | NO | NO |
+| Conceder o quitar el rol de PA | Fuera de la app: seed o comando, auditado (P5) | NO | NO |
 | Ver la lista de miembros | SI | SI | NO |
 | Reordenar miembros | SI | SI | NO |
 | Ver tarifas de todos | SI | SI | NO |
-| Editar tarifas ajenas | SI | SI | NO |
-| Editar tarifas propias | SI | SI | A: SI hoy (P7); G: NO |
-| Crear, editar, borrar turnos propios | SI | SI | A: SI; G: NO |
+| Editar tarifas ajenas (tarifa, bruto/neto, impuestos propios) | SI | SI | NO |
+| Editar tarifa, bruto/neto e impuestos propios (P7, S7) | SI | SI | L: SI; G: NO |
+| Crear, editar, borrar turnos propios | SI | SI | L: SI; G: NO |
 | Crear, editar, borrar turnos ajenos y en lote | SI | SI | NO |
-| Ver turnos propios / ajenos | SI / SI | SI / SI | SI / NO |
-| Billing basico | SI | SI | NO |
-| Parte diario (modulo) | SI | SI, con importes | SI, sin importes |
+| Ver turnos propios / ajenos | SI / SI | SI / SI | SI / NO, salvo en el parte diario (S8) |
+| Billing basico (pagina de facturacion y costes, P17) | SI | SI | NO |
+| Parte diario (modulo `worker_daily_report`) | SI | SI, con importes | SI: descripcion, horas y tipo de turnos ajenos, sin importes ni detalle (S8) |
 | Informes (modulo) | SI | SI, de equipo | Propios (hoy solo en el menu, ver seccion 5) |
 | Gestionar modulos y suscripciones | SI | NO | NO |
 | Crear usuarios, resetear contrasena o 2FA ajeno | SI | NO | NO |
 | Consultar auditoria | SI | NO | NO |
-| Suplantar o "ver como" | SI | NO | NO |
+| Suplantar, de solo lectura (P4) | SI | NO | NO |
+
+"Ver como" desaparece de la matriz (P4): queda la suplantacion de solo lectura
+y los usuarios demo manager y worker de cada empresa de prueba.
 
 **Regla de concesion.** Un rol nunca concede un rol igual o superior al suyo:
-el worker no concede nada, el manager como mucho da de alta workers (si se
-aprueba P6) y nunca toca el rol de nadie, y el rol de PA no lo concede ningun
-PA desde la aplicacion. El fallo ya ocurrido (un manager convertia a un worker
+el worker no concede nada, el manager da de alta y desactiva workers (P6) y
+nunca toca el rol de nadie, y el rol de PA no lo concede ningun
+PA desde la aplicacion (P5). El fallo ya ocurrido (un manager convertia a un worker
 en manager o PA porque el desplegable lo ofrecia y el update lo aplicaba) es
 exactamente la violacion de esta regla, y hoy solo la evita que cada endpoint
 recuerde poner `require_platform_admin`.
@@ -131,14 +147,12 @@ empresa para la misma clave.
 
 | Capa | Ajuste | Quien lo cambia | Nota |
 |---|---|---|---|
-| Plataforma (codigo) | Catalogo de `settings` y sus defaults (`backend/contracts.py`) | Despliegue | No es tabla (4.4 de `logica-negocio-empresa.md`) |
+| Plataforma (codigo) | Catalogo de `settings` y sus defaults (`backend/contracts.py`) | Despliegue | No es tabla (4.4 de `logica-negocio-empresa.md`, eliminado, ver historial de git) |
 | Plataforma (BD) | Catalogo de modulos (`app_modules`) | PA | Sin `price_monthly` ni `target_scope` en v1 (P10) |
 | Plataforma (futuro) | Limites del plan (monitores, responsables) | PA | O12. Se modelan con suscripciones cuando haya facturacion |
 | Empresa | `name`, `is_active`, `is_managed` | PA | Columnas |
 | Empresa | `tax_config`, `worklog_definitions` | PA | JSONB con contrato |
-| Empresa | `settings.business_logic.price_type` | PA | Solo afecta a la vista del dashboard |
-| Empresa | `settings.worker_experience` (modo de entrada, importe a mano) | PA | |
-| Empresa | `settings.ui_customization.labels` | PA | |
+| Empresa | `settings.default_is_gross` (bruto/neto por defecto, se copia a los miembros nuevos; unico ajuste de `settings`, validado por `CompanySettings`, S2) | PA | Los demas ajustes (`price_type`, `worker_experience`, `ui_customization`) estan eliminados (S3, S9) |
 | Empresa | Modulos contratados (`module_subscriptions`) | PA | Unica fuente de modulos |
 | Miembro | Rol, `is_active`, `sort_order` | PA (alta de worker: P6) | |
 | Miembro | `rates_config` (tarifa, bruto o neto, `tax_overrides`, `extras`) | PA, manager; worker en autonoma (P7) | |
@@ -236,6 +250,13 @@ tiene nada construido ni vendido.
 - [ ] B2B y B2C con plan personal de pago en v1
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** v1 = primera version de producto. El alta publica
+  (B2C) se disena ya en dominio y se implementa tras migrar Usuarios y
+  Membresias. El B2C no es otro producto: es un alta automatica que crea una
+  empresa con el nombre del usuario, con el como unico worker y sin manager;
+  impuestos y tipos de turno prefijados en el alta; al principio sin acceso de
+  manager. Mas adelante se decide si pasa a manager de su empresa (se
+  resolveria por rol, no por modo). Reglas: R-ACC-75 a R-ACC-77.
 
 ### P2. Empresa personal y turnos sin empresa
 
@@ -246,6 +267,8 @@ Quedan restos de la "empresa personal" y `work_logs.company_id` admite nulos.
 - [ ] Mantenerlo hasta decidir el B2C
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** se elimina la empresa personal;
+  `work_logs.company_id` pasa a NOT NULL.
 
 ### P3. Admin de empresa
 
@@ -256,6 +279,7 @@ Rol reservado que hoy se trata como manager y no se asigna.
 - [ ] Activarlo ya (crea tipos de turno y anade usuarios)
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** se elimina el rol admin de empresa (R-ACC-27).
 
 ### P4. "Ver como" y suplantacion
 
@@ -267,6 +291,10 @@ escribir como el usuario.
 - [ ] Mantener los dos como hoy
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** solo suplantacion de solo lectura (10 min,
+  auditada, con banner) y usuarios demo manager y worker por empresa de
+  prueba; se elimina `view_as`. Reglas: R-ACC-44 a R-ACC-49 y R-ACC-53
+  retiradas; R-ACC-66 a R-ACC-69 nuevas.
 
 ### P5. Quien concede el rol de PA
 
@@ -277,6 +305,8 @@ nombra a otro PA desde la aplicacion.
 - [ ] Un PA puede nombrar a otro PA desde la aplicacion, auditado
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** el rol PA solo se concede por seed o comando,
+  auditado (R-ACC-65).
 
 ### P6. Alta de monitores por el manager
 
@@ -288,6 +318,8 @@ incorpora monitores y depende del soporte.
 - [ ] El manager gestiona workers y otros managers
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** el manager anade y desactiva workers; nunca
+  cambia roles (R-ACC-64).
 
 ### P7. Tarifas propias del worker en empresa autonoma
 
@@ -297,6 +329,9 @@ Hoy el worker de una empresa autonoma edita su propia tarifa.
 - [ ] Mantenerlo: el worker edita las suyas en autonoma
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** distinta de la recomendada. En empresa no
+  gestionada (autonoma) el worker edita su tarifa, su bruto/neto y sus impuestos
+  propios (R-ACC-71). En gestionada es espectador (R-ACC-70).
 
 ### P8. Ajustes por miembro (`CompanyMember.settings`)
 
@@ -307,6 +342,8 @@ Aparcado en O10, pero con caso de uso, permiso y validador activos.
 - [ ] Usarlo ya para preferencias de interfaz del monitor
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** ver S1 a S10 (seccion 8). `CompanyMember.settings`
+  se elimina segun S9.
 
 ### P9. Ajustes duplicados o sin uso
 
@@ -318,6 +355,8 @@ usa nadie.
 - [ ] Mantenerlos
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** se eliminan los ajustes duplicados o sin uso
+  (`settings.modules`, `allowed_rates`; ver S9).
 
 ### P10. Suscripciones de usuario
 
@@ -327,6 +366,7 @@ El catalogo admite modulos de empresa y de usuario. Solo se venden de empresa.
 - [ ] Mantener las de usuario para el B2C futuro
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** solo suscripciones de empresa.
 
 ### P11. Cache Redis de acceso
 
@@ -336,6 +376,8 @@ El rol se cachea 60 s con invalidacion en cada cambio de membresia o empresa.
 - [ ] Mantenerla
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** se quita la cache Redis de acceso. Retira en
+  objetivo R-ACC-21 y R-ACC-22 (ver `acceso.md`, R-ACC-79).
 
 ### P12. RLS de PostgreSQL
 
@@ -346,6 +388,7 @@ O1 decidio aplicarla despues de migrar Turnos y Membresias.
 - [ ] Descartarla
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** RLS aplazada (O1).
 
 ### P13. Convivencia de v1 y v2
 
@@ -355,6 +398,7 @@ Hoy los endpoints de empresa existen en las dos versiones.
 - [ ] Mantener v1 hasta migrar todos los contextos
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** cada contexto migrado a v2 borra su v1.
 
 ### P14. Estructura de `backend/src/`
 
@@ -365,6 +409,8 @@ dentro de cada una.
 - [ ] Por capas, como hoy, con README por contexto en `application/use_cases/<contexto>/`
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** `backend/src/<contexto>/{domain,application,infrastructure}`
+  con README por contexto.
 
 ### P15. Limite de lineas por fichero
 
@@ -375,6 +421,8 @@ Hay ficheros de 1553, 686 y 657 lineas.
 - [ ] Sin limite
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** maximo 300 lineas por fichero y 120 por caso de
+  uso, con test en CI.
 
 ### P16. Matriz de permisos como fuente unica
 
@@ -386,6 +434,9 @@ endpoint.
 - [ ] Solo documentarla
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** matriz de permisos unica, una accion por
+  endpoint, test HTTP por fila de la matriz y acciones permitidas en
+  `GET /users/me`.
 
 ### P17. Modulos Informes y billing
 
@@ -397,3 +448,57 @@ sin billing avanzado (O11).
 - [ ] Dejarlo como esta
 - Otra:
 - Notas:
+- **Decision (2026-11-22):** se exige el modulo Informes en el backend y se
+  retira `billing` como modulo. "Billing basico" es la pagina actual de
+  facturacion y costes (PA y manager).
+
+## 8. Ajustes, tarifas e impuestos
+
+Decisiones de 2026-11-22 sobre como se configuran tarifas, impuestos y tipos
+de turno. Parten de las paginas de Docmost "Ajustes, tarifas e impuestos: como
+funciona hoy" y "Ajustes: respuestas a tus comentarios". Son decisiones de
+producto: el codigo actual puede no cumplirlas todavia; cada punto genera una
+issue de seguimiento (ver el PR de #114).
+
+### Decisiones S1 a S10
+
+| ID | Decision |
+|---|---|
+| S1 | El manager edita tipos de turno e impuestos de su empresa; el PA los crea en el alta. Requisito: esa edicion va en un endpoint propio, sin abrir al manager `is_active` ni `is_managed` (solo PA) |
+| S2 | Un ajuste bruto/neto por miembro (igual para todos sus tipos), con valor por defecto de empresa que se copia a los miembros nuevos |
+| S3 | Se elimina `price_type`. El panel del manager muestra siempre bruto y neto: cada turno guarda `gross_amount` y `net_amount` y las sumas son por columna (con T5) |
+| S4 | Impuestos propios del miembro elegidos de la lista de impuestos de la empresa. El servidor rechaza overrides con nombres que no existan en la empresa; al quitar un impuesto de empresa se limpian los overrides huerfanos |
+| S5 | Pluses = `options` del tipo de turno con valor en la tarifa del miembro (`extras`, fijo o por unidad). La pantalla de edicion lleva valor y "fijo / por unidad"; guardar tarifas nunca borra lo que la pantalla no toca. Futuro: cantidad editable por plus en el turno (nocturnidad = dias - 1, "2 festivos") |
+| S6 | Se eliminan el importe manual y `allow_manual_amount` (ramas de `crud.py`, error 409 y su dialogo). Despues, issue aparte: unidad "libre" con precio obligatorio, fecha de inicio obligatoria (fin = inicio) y horas opcionales; el precio se trata segun el bruto/neto del miembro; solo lo crea quien puede escribir turnos. Los turnos antiguos con `manual_override` se siguen leyendo sin migrar (con T2) |
+| S7 | Se mantiene la bandera `is_managed` (con S10 y T1). Gestionada = el worker es espectador en todo (turnos, tarifa, bruto/neto e impuestos). Autonoma = el worker escribe sus turnos y edita tarifa, bruto/neto e impuestos propios. No se crea modo "personal" hasta que tenga una regla propia (p. ej. no poder anadir miembros). Futuro: en gestionada el worker acepta la asignacion de turnos |
+| S8 | Parte diario (pantalla del modulo `worker_daily_report`): el worker ve descripcion, horas y tipo de turnos ajenos sin importes; no abre el dialogo de detalle de un turno ajeno. Comprobar que un worker con el modulo ve empresas (hoy el filtro exige manager) |
+| S9 | Se eliminan sin migracion de datos `CompanyMember.settings` (columna, endpoint, caso de uso, validador, `can_edit_member_settings`, dialogo muerto), `allowed_rates`, `worker_experience`, `ui_customization` y `settings.modules`. Antes, `manager/daily-reports/page.tsx` pasa a leer las suscripciones de modulos. Preferencias de interfaz futuras en `localStorage`; preferencias de notificaciones en servidor por usuario (se decide con el modulo push) |
+| S10 | Ver S7 (misma decision: bandera `is_managed`, gestionada y autonoma) |
+
+### Decisiones T
+
+El texto de la issue #114 identifica T1, T2, T3 y T5; T4 se anade en #66 con la
+decision de la matriz de permisos.
+
+| ID | Decision |
+|---|---|
+| T1 | Ver S7 |
+| T2 | Ver S6 |
+| T4 | En gestionada el worker es espectador en todo, impuestos incluidos; en autonoma edita su tarifa, su bruto/neto y sus impuestos propios (R-ACC-70 y R-ACC-71) |
+| T3 | Al cambiar de tipo o recalcular, aviso antes de guardar con importe actual frente a nuevo y confirmacion; "recalcular" como accion explicita propia (hoy solo existe dentro del dialogo de importe manual). Editar un turno del mismo tipo sigue usando la instantanea (`calculation_snapshot`) |
+| T5 | Ver S3 |
+
+### Otras decisiones del mismo bloque
+
+- **Tipos de turno.** El editor deja de ser JSON crudo. La clave es inmutable y
+  solo `label` es editable. El backend rechaza quitar claves con tarifas salvo
+  accion explicita. Un script lista las tarifas huerfanas.
+- **Seed.** Se quita `tax_config` (`social_security` 6,48 %) de
+  `backend/seed.py` y `backend/dev_seed.py`. Las pantallas que leen el nombre
+  fijo `social_security` (`CompaniesPageClient.tsx`, `CompanyPDFReport.tsx`)
+  recorren los impuestos que existan.
+- **Turnos por dias.** Se exigen fechas de inicio y fin (hoy, si faltan, el
+  importe sale 0 en silencio). La rama `duration_hours` de
+  `calculate_dynamic_work_log` es codigo muerto: la API no la acepta.
+- **Autonomia frente a plan.** No se crean mas banderas sueltas. Cuando llegue
+  la facturacion, cada permiso opcional del worker cuelga del plan.

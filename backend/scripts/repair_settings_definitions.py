@@ -5,7 +5,7 @@ retiradas (allow_tutorial, allow_coordination, is_managed, business_logic.cost_m
 billing.cost_markup_percent), validas (modelo CompanySettings) y desconocidas. Clasifica los tipos de
 `companies.worklog_definitions` por su `unit` e `is_range`.
 
-Reglas (docs/empresa/plan-implementacion-empresa.md, seccion 9):
+Reglas (plan-implementacion-empresa.md, seccion 9; eliminado, ver historial de git):
 - Claves desconocidas de primer nivel -> MANUAL (bloquean la migracion). Solo se eliminan con
   --apply --drop-unknown CLAVE[,CLAVE]. Nunca se eliminan mapeadas, retiradas ni validas.
 - billing con claves distintas de price_type y cost_markup_percent -> MANUAL (billing desaparece).
@@ -40,7 +40,6 @@ from typing import NoReturn
 
 import database
 import models
-from contracts import CompanySettings
 from sqlalchemy.orm import Session
 
 from scripts.repair_common import (
@@ -61,7 +60,7 @@ INPUT_MODES = ("manual_single", "timer", "bulk")
 MAPPED_TOP = {"features": "modules", "input_mode": "worker_experience.input_mode", "billing": "business_logic"}
 RETIRED_TOP = ("allow_tutorial", "allow_coordination", "is_managed")
 BILLING_KNOWN = frozenset({"price_type", "cost_markup_percent"})
-VALID_TOP = frozenset(CompanySettings.model_fields)
+VALID_TOP = frozenset({"business_logic", "worker_experience", "ui_customization", "modules", "allowed_rates"})
 KNOWN_TOP = VALID_TOP | frozenset(MAPPED_TOP) | frozenset(RETIRED_TOP)
 # Bloques que deben ser objetos (o null) para poder mapear o validar sin fallo.
 OBJECT_BLOCKS = ("features", "billing", "business_logic", "worker_experience", "ui_customization", "modules")

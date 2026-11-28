@@ -25,23 +25,24 @@ Los planes llevan el nombre del color de las pistas de esqui, de menor a mayor t
 
 - La escuela elige que meses activa. No hay temporada fija: puede activar de diciembre a marzo, de febrero a mayo o cualquier otro periodo.
 - Se factura por mes natural completo. Activar a mitad de mes cuenta como mes entero.
-- No hay minimo de meses: la puesta en marcha ya cubre el coste de arranque.
-- Sin permanencia.
+- No hay minimo de meses ni permanencia.
+- El responsable puede activar o desactivar el mes siguiente desde el portal hasta el dia 25 del mes anterior; a partir del dia 26 se aplica la configuracion que estuviera guardada.
 
 ## Puesta en marcha
 
-- Pago unico de 150 €, igual en todos los planes, al activar la escuela por primera vez.
-- Se mantiene igual en todos los planes para no subir la barrera de entrada a los planes mas caros.
-- Incluye la reunion inicial, el alta de la escuela, del responsable y de los monitores, la configuracion de tipos de clase, tarifas, suplementos y retenciones, y una formacion breve al responsable.
+- Servicio opcional de pago unico (150 €), igual en todos los planes: no es obligatoria y solo se cobra si la escuela la pide.
+- Consiste en una jornada de formacion en la que tambien se ensena al responsable a configurar la escuela (alta de monitores, tipos de clase, tarifas, suplementos y retenciones).
+- No incluye importacion de datos ni migracion de historico.
+- Cuando exista el alta autonoma con pago automatico, se ofrecera como servicio opcional al darse de alta.
 
 ## Meses inactivos y mantenimiento
 
 En cada mes no activo la escuela elige:
 
-- **Con mantenimiento** (15, 20 o 30 € al mes segun el plan): no hay acceso a la aplicacion, pero se conservan la escuela, usuarios, tarifas e historico. Al reactivar no se paga nueva puesta en marcha.
-- **Sin mantenimiento**: no tiene coste. Los datos se eliminan y al volver se aplica una nueva puesta en marcha, sin los datos anteriores.
+- **Con mantenimiento** (15, 20 o 30 € al mes segun el plan): no hay acceso a la aplicacion, pero se conservan la escuela, usuarios, tarifas e historico.
+- **Sin mantenimiento**: no tiene coste. Los datos se eliminan y, si la escuela vuelve mas adelante, parte de cero sin los datos ni la configuracion de la temporada anterior (y puede contratar de nuevo la puesta en marcha opcional si quiere formacion).
 
-El mantenimiento crece con el plan porque una escuela mas grande tiene mas usuarios, clases e historico que conservar. Aunque en algun caso el mantenimiento de todos los meses inactivos supere los 150 € de una nueva puesta en marcha (por ejemplo, Pista Roja con 8 meses inactivos: 240 €), no compensa dejar de mantener: la nueva puesta en marcha parte de cero, sin el historico de la temporada anterior y volviendo a configurar usuarios y tarifas. Solo interesa a una escuela que no quiera conservar sus datos.
+El mantenimiento crece con el plan porque una escuela mas grande tiene mas usuarios, clases e historico que conservar. Conservar el mantenimiento en todos los meses inactivos evita reconfigurar usuarios y tarifas al volver, preserva el historico de la temporada anterior y mantiene el precio garantizado la temporada siguiente. Solo interesa dejar de mantener a una escuela que no quiera conservar sus datos.
 
 ## Precio garantizado tras el mantenimiento
 
@@ -56,9 +57,24 @@ Si la escuela paga el mantenimiento en todos los meses inactivos entre dos tempo
 
 - **Subir de plan**: efecto inmediato. El precio nuevo se factura desde el mes siguiente; el mes en curso no se prorratea.
 - **Bajar de plan**: efecto desde el mes siguiente. Lo que exceda los limites del plan nuevo se cobra aparte: monitores adicionales, responsables adicionales (50 €) y los modulos Cuadrante compartido e Informes. Si la escuela no quiere pagarlos, esos modulos se desactivan y los responsables sobrantes pierden el acceso. Los datos nunca se borran.
-- **Puesta en marcha**: no se vuelve a cobrar al cambiar de plan, ni se cobra diferencia alguna.
+- **Puesta en marcha**: cambiar de plan no implica contratar ni pagar puesta en marcha.
 - **Durante el mantenimiento** no hay plan activo: la escuela elige el plan al reactivarse.
 
-## Recuento de monitores
+## Recuento de monitores y limites del plan
 
-Los monitores facturables de un mes son el maximo de monitores activos en ese mes. Esta definicion es la que determina los monitores adicionales sobre los incluidos en el plan.
+- **Pico simultaneo**: se cobra por el maximo de monitores (y responsables) activos simultaneamente en el mes natural. Desactivar a un miembro y activar a otro despues no cuesta nada; activar primero y desactivar despues si suma ese mes.
+- **Cuando cuenta un miembro**: un monitor cuenta desde que acepta la invitacion (membresia activa), no desde que se envia la invitacion.
+- **Superar lo incluido con aviso**: en Pista Verde y Pista Azul, el responsable puede superar los monitores incluidos tras confirmar un aviso con el coste ("Superas los N monitores de tu plan. Este mes se cobrara X EUR por cada monitor adicional"); la confirmacion queda auditada. Si los adicionales cuestan mas que subir de plan, el aviso lo indica y ofrece subir. Con los responsables adicionales (50 €/mes) se aplica la misma dinamica.
+- **Tope duro**: solo existe en Pista Roja (50 monitores activos simultaneos); por encima corresponde Pista Negra, a consultar.
+- **Panel de consumo**: el responsable ve en el portal el consumo del mes en curso (plan, adicionales, pico alcanzado e importe previsto).
+
+## Alta y prueba gratuita
+
+- **Prueba gratuita de 14 dias**: una escuela nueva empieza con 14 dias gratis y un responsable, sin pedir datos de pago.
+- **Empresa real y empresa de ejemplo**: la escuela crea su empresa real e invita a su gente (todo lo que configure se conserva). Opcionalmente se le crea aparte una "Empresa de ejemplo" con monitores y turnos ficticios (seed) para practicar, que se elimina al acabar la prueba.
+- **Paso a pago**: para continuar tras la prueba, la escuela paga el primer mes con tarjeta o Bizum y firma la domiciliacion SEPA en el mismo paso.
+
+## Cobro mensual e impagos
+
+- **Cobro mensual**: el dia 1 de cada mes se cobra en una sola remesa la cuota del mes que empieza por adelantado (o la cuota de mantenimiento si es mes inactivo) y los adicionales del mes anterior a mes vencido, segun el pico real alcanzado. El primer mes se cobra el dia del alta y cubre ese mes natural entero.
+- **Impagos y devoluciones**: ante un impago o devolucion bancaria se avisa al responsable al momento. A los 5 dias sin regularizar, la escuela pasa a solo lectura; a los 15 dias queda suspendida conservando todos sus datos. El administrador de plataforma puede reactivarla a mano en cualquier momento (por ejemplo, con justificante de pago).

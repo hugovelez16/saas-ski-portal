@@ -50,7 +50,7 @@ services:
       retries: 5
 
   migrate:
-    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/backend:${IMAGE_TAG:?Define IMAGE_TAG con la version a desplegar, p. ej. v0.28.0}
     container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-migrate
     restart: "no"
     logging: *default-logging
@@ -70,7 +70,7 @@ services:
       - prod_db
 
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/backend:${IMAGE_TAG:?Define IMAGE_TAG con la version a desplegar, p. ej. v0.28.0}
     container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-backend
     restart: unless-stopped
     logging: *default-logging
@@ -107,7 +107,7 @@ services:
       start_period: 15s
 
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/frontend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/frontend:${IMAGE_TAG:?Define IMAGE_TAG con la version a desplegar, p. ej. v0.28.0}
     container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-frontend
     restart: unless-stopped
     logging: *default-logging
@@ -135,7 +135,7 @@ services:
       start_period: 15s
 
   gateway:
-    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/gateway:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-hugovelez16/saas-ski-portal}/gateway:${IMAGE_TAG:?Define IMAGE_TAG con la version a desplegar, p. ej. v0.28.0}
     container_name: ${COMPOSE_PROJECT_NAME:-ski_prod}-gateway
     restart: unless-stopped
     logging: *default-logging

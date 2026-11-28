@@ -1,9 +1,15 @@
 import api from "@/lib/api";
-import { CompanyFull, CompanyResponse, CompanyUpdatePayload, CompanyWithMembers, CompanyMemberResponse, DailyReportResponse, DashboardSummaryResponse } from "@/lib/types";
+import { CompanyFull, CompanyResponse, CompanyUpdatePayload, CompanyWithMembers, CompanyMemberResponse, DailyReportResponse, DashboardSummaryResponse, MyCompany } from "@/lib/types";
 import { fromV2Company, fromV2CompanyWithMembers, fromV2Member, toV2CompanyBody } from "@/lib/api/v2/adapters";
 import * as v2Companies from "@/lib/api/v2/companies";
 import * as v2Members from "@/lib/api/v2/members";
-import type { CompanyCreateV2, CompanyUpdateV2, CompanyFull as CompanyFullV2, CompanyReduced } from "@/lib/api/v2/types";
+import type {
+    CompanyCreateV2,
+    CompanyManagerSettings,
+    CompanyManagerSettingsUpdate,
+    CompanyUpdateV2,
+    WorklogDefinitionUsage,
+} from "@/lib/api/v2/types";
 
 // Las funciones de empresa y miembros consumen la API v2 (`/api/v2/`) y devuelven los tipos
 // camelCase actuales mediante `lib/api/v2/adapters.ts` (temporal, hasta migrar a snake_case).
@@ -17,6 +23,8 @@ export const createCompany = async (data: {
     worklogDefinitions?: Record<string, any>;
     isManaged?: boolean;
     isActive?: boolean;
+    settings?: Record<string, any>;
+    platformSettings?: Record<string, any>;
 }) => {
     const created = await v2Companies.createCompany(toV2CompanyBody<CompanyCreateV2>(data));
     return fromV2Company(created);
@@ -30,6 +38,27 @@ export const updateCompany = async (companyId: string, data: CompanyUpdatePayloa
     return fromV2Company(updated) as CompanyFull;
 };
 
+/** Ajustes editables por manager (`GET /v2/companies/:id/settings`). */
+export const getCompanyManagerSettings = async (companyId: string): Promise<CompanyManagerSettings> => {
+    return v2Companies.getCompanyManagerSettings(companyId);
+};
+
+/** Edicion de ajustes por manager (`PUT /v2/companies/:id/settings`). */
+export const updateCompanyManagerSettings = async (
+    companyId: string,
+    data: CompanyManagerSettingsUpdate,
+): Promise<CompanyManagerSettings> => {
+    return v2Companies.updateCompanyManagerSettings(companyId, data);
+};
+
+/** Uso de tipos de turno en BD para borrado seguro o desactivacion. */
+export const getWorklogDefinitionsUsage = async (
+    companyId: string,
+    options?: { asAdmin?: boolean },
+): Promise<Record<string, WorklogDefinitionUsage>> => {
+    return v2Companies.getWorklogDefinitionsUsage(companyId, options);
+};
+
 // Solo platform admin. Los demas roles deben usar getMyCompanies.
 export const getCompanies = async (): Promise<CompanyFull[]> => {
     const page = await v2Companies.listCompanies({ limit: LIST_ALL_LIMIT });
@@ -40,31 +69,43 @@ export const getCompany = async (companyId: string): Promise<CompanyResponse> =>
     return fromV2Company(await v2Companies.getCompany(companyId));
 };
 
-// Empresas con sus miembros. v2 separa los dos casos que v1 servia en /companies/detailed:
-// PA actuando (vista completa) -> GET /v2/companies?include=members; resto -> sus empresas
-// (/v2/me/companies, vista reducida) y los miembros de aquellas donde es manager.
-export const getCompaniesDetailed = async (): Promise<CompanyWithMembers[]> => {
-    const mine = await v2Companies.listMyCompanies();
-    if (mine.length === 0) return [];
-
-    if (mine.every((company) => "is_active" in company)) {
+// Empresas con sus miembros. PA usa GET /v2/companies?include=members; resto consulta
+// /v2/me/companies y, para las empresas donde es manager, el detalle y los miembros.
+export const getCompaniesDetailed = async (options?: { asAdmin?: boolean } | object): Promise<CompanyWithMembers[]> => {
+    if (options && "asAdmin" in options && options.asAdmin) {
         const page = await v2Companies.listCompanies({ include: "members", limit: LIST_ALL_LIMIT });
         return page.items.map(fromV2CompanyWithMembers);
     }
 
+    const mine = await v2Companies.listMyCompanies();
+    if (mine.length === 0) return [];
+
     return Promise.all(
         mine.map(async (company): Promise<CompanyWithMembers> => {
-            const canListMembers = "role" in company && (company.role === "manager" || company.role === "admin");
+            const canListMembers = company.role === "manager" || company.role === "admin";
+            let detail: CompanyResponse | null = null;
             let members: Awaited<ReturnType<typeof v2Members.listMembers>> = [];
             if (canListMembers) {
                 try {
-                    members = await v2Members.listMembers(company.id, undefined, { meta: { silent: true } });
+                    const [rawDetail, rawMembers] = await Promise.all([
+                        v2Companies.getCompany(company.id, { meta: { silent: true } }),
+                        v2Members.listMembers(company.id, undefined, { meta: { silent: true } }),
+                    ]);
+                    detail = fromV2Company(rawDetail);
+                    members = rawMembers;
                 } catch (error) {
-                    // 403 en empresas que no son la del token (v1 solo devolvia la activa): sin miembros.
+                    // 403 en empresas que no son la del token: sin detalle ni miembros.
                     if ((error as { response?: { status?: number } })?.response?.status !== 403) throw error;
                 }
             }
-            return { ...fromV2Company(company), members: members.map(fromV2Member) } as CompanyWithMembers;
+            return {
+                id: company.id,
+                name: company.name,
+                role: company.role,
+                taxConfig: {},
+                ...(detail ?? {}),
+                members: members.map(fromV2Member),
+            } as CompanyWithMembers;
         })
     );
 };
@@ -79,12 +120,8 @@ export const getDailyReport = async (companyId: string, date: string): Promise<D
 
 
 
-export const getMyCompanies = async (): Promise<CompanyResponse[]> => {
-    const companies: (CompanyFullV2 | CompanyReduced)[] = await v2Companies.listMyCompanies();
-    // v1 marcaba al PA actuando con role "admin" e isActiveMember; la vista completa de v2 no lo trae.
-    return companies.map((company) =>
-        "is_active" in company ? { ...fromV2Company(company), role: "admin", isActiveMember: true } : fromV2Company(company)
-    );
+export const getMyCompanies = async (): Promise<MyCompany[]> => {
+    return v2Companies.listMyCompanies();
 };
 
 // Admin & Manager actions

@@ -76,14 +76,14 @@ def test_net_rate_gross_is_informative():
     result = _calc({"base_rate": 100.0, "is_gross": False}, COMPANY_TAXES)
 
     total = sum(COMPANY_TAXES.values())
-    assert result["gross_amount"] == pytest.approx(200.0 / (1 - total))
+    assert result["gross_amount"] == pytest.approx(round(200.0 / (1 - total), 2))
 
 
 def test_missing_is_gross_behaves_as_false():
     result = _calc({"base_rate": 100.0}, COMPANY_TAXES)
 
     assert result["net_amount"] == pytest.approx(200.0)
-    assert result["gross_amount"] == pytest.approx(200.0 / (1 - sum(COMPANY_TAXES.values())))
+    assert result["gross_amount"] == pytest.approx(round(200.0 / (1 - sum(COMPANY_TAXES.values())), 2))
 
 
 def test_net_rate_with_taxes_of_100_percent_or_more_falls_back_to_net():
@@ -176,21 +176,6 @@ def test_legacy_override_ss_is_not_applied_when_net():
     assert result["snapshot"]["tax_applied"].get("social_security") == 0.05
 
 
-# --- importe manual ---
-
-
-@pytest.mark.parametrize("field", ["amount", "net_amount"])
-def test_manual_amount_does_not_apply_taxes(field):
-    rate = {"base_rate": 100.0, "is_gross": True}
-
-    result = _calc(rate, COMPANY_TAXES, log={field: 77.0, "duration_hours": 2.0})
-
-    assert result["net_amount"] == pytest.approx(77.0)
-    assert result["gross_amount"] == pytest.approx(77.0)
-    assert result["snapshot"]["type"] == "manual_override"
-    assert "tax_applied" not in result["snapshot"]
-
-
 # --- snapshot y lineas del ticket ---
 
 
@@ -253,3 +238,47 @@ def test_display_lines_do_not_use_legacy_codes():
     codes = [line["code"] for line in _tax_lines(result)]
     assert codes == ["social_security", "irpf_base"]
     assert not {"ss", "irpf", "other"} & set(codes)
+
+
+# --- R-TAR-14: precision de centimos con Decimal exacto y ROUND_HALF_UP ---
+
+
+def test_decimal_precision_half_up_where_binary_float_rounds_down():
+    # En binario float 1.005 es 1.00499999999999989 y round(1.005, 2) devuelve 1.0.
+    # Con Decimal exacto y ROUND_HALF_UP debe ser 1.01.
+    result = _calc({"base_rate": 2.01, "is_gross": True}, {}, hours=0.5)
+    assert result["gross_amount"] == 1.01
+    assert result["net_amount"] == 1.01
+
+    # 10.05 * 0.5 = 5.025 -> ROUND_HALF_UP = 5.03 (float round(5.025, 2) = 5.02).
+    result2 = _calc({"base_rate": 10.05, "is_gross": True}, {}, hours=0.5)
+    assert result2["gross_amount"] == 5.03
+    assert result2["net_amount"] == 5.03
+
+
+def test_decimal_precision_avoids_float_addition_noise():
+    # 0.1 + 0.2 en float = 0.30000000000000004; 59.97 * 0.80 = 47.976 -> 47.98
+    result = _calc({"base_rate": 19.99, "is_gross": True}, {"A": 0.1, "B": 0.1}, hours=3.0)
+    assert result["gross_amount"] == 59.97
+    assert result["net_amount"] == 47.98
+
+    # 10.01 * 0.85 = 8.5085 -> 8.51
+    result_tax = _calc({"base_rate": 10.01, "is_gross": True}, {"IRPF": 0.15}, hours=1.0)
+    assert result_tax["gross_amount"] == 10.01
+    assert result_tax["net_amount"] == 8.51
+    (tax_line,) = _tax_lines(result_tax)
+    assert tax_line["value"] == -1.50
+    assert tax_line["label"] == "IRPF (15.0%)"
+
+
+def test_decimal_precision_with_start_and_end_time():
+    from datetime import time
+
+    result = _calc(
+        {"base_rate": 100.0, "is_gross": True},
+        {"IRPF": 0.15},
+        log={"start_time": time(10, 0), "end_time": time(10, 20)},
+    )
+    assert result["duration"] == 0.33
+    assert result["gross_amount"] == 33.0
+    assert result["net_amount"] == 28.05

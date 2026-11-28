@@ -39,6 +39,8 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL or "sqlite://"
 # Clave efimera generada en cada ejecucion: no se versiona ningun valor con forma de clave.
 os.environ.setdefault("ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ["ENVIRONMENT"] = "test"
+# Los tests no tienen claves JWT fijas: permiten el par efimero en memoria.
+os.environ.setdefault("ALLOW_EPHEMERAL_JWT_KEYS", "true")
 os.environ.pop("DEV_LOGIN_BYPASS", None)
 os.environ.pop("NODE_ENV", None)
 
@@ -105,6 +107,27 @@ class _SqliteUUID(sqltypes.Uuid):
 
 # Se aplica solo al dialecto SQLite del proceso de tests (no afecta a PostgreSQL ni a produccion).
 SQLiteDialect_pysqlite.colspecs[sqltypes.Uuid] = _SqliteUUID
+
+
+class _SqliteTZDateTime(SQLiteDialect_pysqlite.colspecs[sqltypes.DateTime]):
+    """En SQLite devuelve datetime con tzinfo=UTC cuando timezone=True, igualando PostgreSQL timestamptz."""
+
+    cache_ok = True
+
+    def result_processor(self, dialect, coltype):
+        base = super().result_processor(dialect, coltype)
+        from datetime import UTC
+
+        def process(value):
+            val = base(value) if base else value
+            if val is not None and self.timezone and val.tzinfo is None:
+                return val.replace(tzinfo=UTC)
+            return val
+
+        return process
+
+
+SQLiteDialect_pysqlite.colspecs[sqltypes.DateTime] = _SqliteTZDateTime
 
 
 def pytest_collection_modifyitems(config, items):

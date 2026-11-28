@@ -47,7 +47,7 @@ def make_company(
         worklog_definitions=(
             worklog_definitions
             if worklog_definitions is not None
-            else {"particular": {"unit": "hours", "label": "Particular", "fields": []}}
+            else {"particular": {"unit": "hours", "label": "Particular", "options": [], "is_active": True}}
         ),
         settings=settings if settings is not None else {},
     )

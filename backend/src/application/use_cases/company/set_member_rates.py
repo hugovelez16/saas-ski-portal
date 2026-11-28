@@ -9,6 +9,7 @@ from application.use_cases.company.common import (
     MemberDetail,
 )
 from audit import AuditAction
+from contracts import validate_tax_overrides
 from domain.exceptions.domain_exceptions import EntityNotFoundException, ValidationDomainException
 from domain.ports.audit_port import AuditLogPort
 from domain.ports.repositories.company_repository_port import CompanyMemberRepositoryPort, CompanyRepositoryPort
@@ -45,6 +46,21 @@ class SetMemberRatesUseCase:
             raise ValidationDomainException(MSG_UNKNOWN_SHIFT_TYPE)
         if member is None:
             raise EntityNotFoundException(MSG_MEMBER_NOT_FOUND)
+
+        existing_rates = member.rates_config or {}
+        for shift_type, entry in rates_config.items():
+            if not isinstance(entry, dict):
+                continue
+            existing_entry = existing_rates.get(shift_type) if isinstance(existing_rates.get(shift_type), dict) else {}
+            try:
+                validate_tax_overrides(
+                    entry.get("tax_overrides"),
+                    company_tax_config=company.tax_config,
+                    is_managed=bool(company.is_managed),
+                    existing_overrides=existing_entry.get("tax_overrides"),
+                )
+            except ValueError as exc:
+                raise ValidationDomainException(str(exc)) from exc
 
         user = await self.user_repo.get_by_id(user_id)
         old_rates = member.rates_config

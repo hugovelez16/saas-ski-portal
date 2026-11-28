@@ -1,16 +1,14 @@
 """
-Recalculo de turnos al editar (T5): PUT /work-logs/{id} con y sin `recalculate_with_current_rates`.
+Recalculo de turnos al editar (R-TUR-19, R-TUR-20, R-TUR-21): PUT /work-logs/{id} y
+POST /work-logs/{id}/recalculate-preview.
 
-Contrato nuevo:
+Contrato vigente:
 - Por defecto, una edicion usa el snapshot del turno (rate_applied, definition, tax_applied). Cambiar
   la tarifa o la definicion del miembro/empresa despues de crear el turno no altera sus importes.
-- Un cambio de `type` recalcula con la tarifa vigente del miembro. Si la membresia esta inactiva -> 422.
-  Si no hay tarifa ni importe manual -> 400.
-- Un importe manual (`netAmount` o `amount`) en el PUT manda siempre.
+- Un cambio de `type` recalcula con la tarifa vigente del miembro. Si la membresia esta inactiva -> 403.
+  Si no hay tarifa -> 400. Si el tipo no existe en worklog_definitions -> 400.
 - `?recalculate_with_current_rates=true` (solo manager/PA) recalcula con tarifa y definicion vigentes.
-
-Los turnos se crean por POST sin importe manual para que tengan snapshot real.
-Tests escritos antes de la implementacion: los casos que fallan describen el contrato nuevo.
+- `POST /work-logs/{id}/recalculate-preview` calcula el importe actual frente al nuevo sin guardar cambios.
 """
 
 import copy
@@ -140,20 +138,22 @@ def test_description_only_keeps_amounts_and_snapshot_after_rate_change(client, d
     assert _stored(db, log_id).calculation_snapshot == before_snapshot
 
 
-def test_resending_stored_net_amount_does_not_turn_log_into_manual(client, db):
-    """Importe no representable en binario (33.3): reenviar el netAmount guardado no es un importe manual."""
+def test_resending_stored_net_amount_is_ignored_and_keeps_snapshot(client, db):
+    """Importe no representable en binario (33.3): reenviar netAmount se ignora y conserva el snapshot."""
     company = make_company(db, worklog_definitions=_definitions())
     manager = _member(db, company, role="manager")
     worker = _member(db, company, rates={"particular": {"base_rate": 16.65, "is_gross": False, "tax_overrides": {}}})
     log_id = _create(client, db, manager, company, worker)
+    before_snapshot = _snapshot(db, log_id)
     stored_net = _stored(db, log_id).net_amount
     assert round(float(stored_net), 2) == 33.3
     as_user(client, manager, company, claims=MANAGER_CLAIMS)
 
-    resp = client.put(f"/work-logs/{log_id}", json={"netAmount": float(stored_net), "description": "x"})
+    resp = client.put(f"/work-logs/{log_id}", json={"netAmount": 999.0, "description": "x"})
 
     assert resp.status_code == 200, resp.text
-    assert _snapshot(db, log_id).get("type") != "manual_override"
+    assert round(float(_stored(db, log_id).net_amount), 2) == 33.3
+    assert _snapshot(db, log_id) == before_snapshot
 
 
 # --- Cambio de endTime: snapshot del turno ---
@@ -239,7 +239,7 @@ def test_type_change_uses_current_member_rate(client, db):
     assert stored.calculation_snapshot["definition"]["unit"] == "days"
 
 
-def test_type_change_with_inactive_membership_returns_422(client, db):
+def test_type_change_with_inactive_membership_returns_403(client, db):
     company = make_company(db, worklog_definitions=_definitions())
     manager = _member(db, company, role="manager")
     worker = _member(db, company)
@@ -249,7 +249,7 @@ def test_type_change_with_inactive_membership_returns_422(client, db):
 
     resp = client.put(f"/work-logs/{log_id}", json={"type": "tutorial"})
 
-    assert resp.status_code == 422, resp.text
+    assert resp.status_code == 403, resp.text
     assert _stored(db, log_id).type == "particular"
 
 
@@ -267,38 +267,6 @@ def test_type_change_without_rate_returns_400(client, db):
     assert MSG_NO_RATE in str(resp.json()["detail"])
     assert _stored(db, log_id).type == "particular"
     assert _amounts(db, log_id) == pytest.approx(before, abs=0.01)
-
-
-def test_type_change_without_rate_but_with_manual_amount_is_accepted(client, db):
-    company = make_company(db, worklog_definitions=_definitions())
-    manager = _member(db, company, role="manager")
-    worker = _member(db, company, rates=_rates())  # sin tarifa para "tutorial"
-    log_id = _create(client, db, manager, company, worker)
-    as_user(client, manager, company, claims=MANAGER_CLAIMS)
-
-    resp = client.put(f"/work-logs/{log_id}", json={"type": "tutorial", "netAmount": 99.0})
-
-    assert resp.status_code == 200, resp.text
-    stored = _stored(db, log_id)
-    assert stored.type == "tutorial"
-    assert float(stored.net_amount) == pytest.approx(99.0, abs=0.01)
-
-
-# --- Importe manual explicito ---
-
-
-@pytest.mark.parametrize("amount_key", ["netAmount", "amount"])
-def test_explicit_manual_amount_always_wins_over_recalculation(client, db, amount_key):
-    company = make_company(db, worklog_definitions=_definitions())
-    manager = _member(db, company, role="manager")
-    worker = _member(db, company)
-    log_id = _create(client, db, manager, company, worker)
-    as_user(client, manager, company, claims=MANAGER_CLAIMS)
-
-    resp = client.put(f"/work-logs/{log_id}", json={amount_key: 77.0, "endTime": "12:00:00"})
-
-    assert resp.status_code == 200, resp.text
-    assert float(_stored(db, log_id).net_amount) == pytest.approx(77.0, abs=0.01)
 
 
 # --- ?recalculate_with_current_rates ---
@@ -349,92 +317,139 @@ def test_recalculate_flag_is_forbidden_for_worker(client, db):
     assert _amounts(db, log_id) == pytest.approx(before_amounts, abs=0.01)
 
 
-# --- Turno manual: el cliente elige conservar el importe o calcular por tarifa (409) ---
+# --- Previsualizacion de recalculo (POST /work-logs/{id}/recalculate-preview) ---
 
 
-def _create_manual(client, db, manager, company, worker, amount=50.0):
-    as_user(client, manager, company, claims=MANAGER_CLAIMS)
-    resp = client.post("/work-logs", json={**_calc_body(worker, company), "netAmount": amount})
-    assert resp.status_code == 200, resp.text
-    return uuid.UUID(resp.json()["id"])
-
-
-def test_manual_log_time_change_without_choice_returns_409_and_changes_nothing(client, db):
-    company = make_company(db, worklog_definitions=_definitions())
+@pytest.mark.parametrize("role", ["manager", "pa"])
+def test_preview_recalculate_with_current_rates_compares_without_saving(client, db, role):
+    company = make_company(db, worklog_definitions=_definitions(particular_unit="hours"))
     manager = _member(db, company, role="manager")
     worker = _member(db, company)
-    log_id = _create_manual(client, db, manager, company, worker)
-    before = _amounts(db, log_id)
+    log_id = _create(client, db, manager, company, worker)
+    before_amounts = _amounts(db, log_id)
     before_snapshot = _snapshot(db, log_id)
 
-    resp = client.put(f"/work-logs/{log_id}", json={"endTime": "13:00:00"})
+    _set_member_rates(db, worker, company, _rates(particular_base=50.0, tutorial_base=100.0))
+    _set_company(db, company, worklog_definitions=_definitions(particular_unit="fixed"))
+    editor = manager if role == "manager" else make_user(db, role="admin")
+    claims = MANAGER_CLAIMS if role == "manager" else PA_CLAIMS
+    as_user(client, editor, company, claims=claims)
 
-    assert resp.status_code == 409, resp.text
-    assert resp.json()["detail"]["code"] == "manual_amount_choice"
-    assert str(_stored(db, log_id).end_time) == "11:00:00"
-    assert _amounts(db, log_id) == pytest.approx(before, abs=0.01)
+    resp = client.post(
+        f"/work-logs/{log_id}/recalculate-preview",
+        params={"recalculate_with_current_rates": "true"},
+        json={},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["workLogId"] == str(log_id)
+    assert body["currentNetAmount"] == pytest.approx(before_amounts["net"], abs=0.01)
+    assert body["currentGrossAmount"] == pytest.approx(before_amounts["gross"], abs=0.01)
+    assert body["newGrossAmount"] == pytest.approx(50.0, abs=0.01)
+    assert body["newNetAmount"] == pytest.approx(46.76, abs=0.01)
+    assert body["newDuration"] == pytest.approx(1.0)
+    # No persiste cambios en BD
+    assert _amounts(db, log_id) == pytest.approx(before_amounts, abs=0.01)
     assert _snapshot(db, log_id) == before_snapshot
 
 
-def test_manual_log_description_only_does_not_ask(client, db):
-    company = make_company(db, worklog_definitions=_definitions())
+def test_preview_type_change_is_allowed_for_autonomous_worker(client, db):
+    company = make_company(db, is_managed=False, worklog_definitions=_definitions())
     manager = _member(db, company, role="manager")
-    worker = _member(db, company)
-    log_id = _create_manual(client, db, manager, company, worker)
-
-    resp = client.put(f"/work-logs/{log_id}", json={"description": "Nota"})
-
-    assert resp.status_code == 200, resp.text
-    assert _amounts(db, log_id)["net"] == pytest.approx(50.0, abs=0.01)
-
-
-def test_manual_log_time_change_keeping_amount_stays_manual(client, db):
-    company = make_company(db, worklog_definitions=_definitions())
-    manager = _member(db, company, role="manager")
-    worker = _member(db, company)
-    log_id = _create_manual(client, db, manager, company, worker)
-
-    resp = client.put(f"/work-logs/{log_id}", json={"endTime": "13:00:00", "netAmount": 50.0})
-
-    assert resp.status_code == 200, resp.text
-    assert str(_stored(db, log_id).end_time) == "13:00:00"
-    assert _amounts(db, log_id)["net"] == pytest.approx(50.0, abs=0.01)
-    assert _snapshot(db, log_id).get("type") == "manual_override"
-
-
-def test_manual_log_time_change_with_recalculate_flag_uses_rate(client, db):
-    company = make_company(db, worklog_definitions=_definitions())
-    manager = _member(db, company, role="manager")
-    worker = _member(db, company)
-    log_id = _create_manual(client, db, manager, company, worker)
-
-    resp = client.put(
-        f"/work-logs/{log_id}", params={"recalculate_with_current_rates": "true"}, json={"endTime": "13:00:00"}
-    )
-
-    assert resp.status_code == 200, resp.text
-    assert _snapshot(db, log_id).get("type") != "manual_override"
-    # 4 h x 20 EUR bruto con 6,48 % de impuestos
-    assert _amounts(db, log_id)["net"] == pytest.approx(80 * (1 - 0.0648), abs=0.01)
-
-
-def test_worker_cannot_recalculate_manual_log_only_keep_amount(client, db):
-    company = make_company(db, worklog_definitions=_definitions())
-    manager = _member(db, company, role="manager")
-    worker = _member(db, company)
-    log_id = _create_manual(client, db, manager, company, worker)
+    worker = _member(db, company, rates=_rates(particular_base=20.0, tutorial_base=120.0))
+    log_id = _create(client, db, manager, company, worker)
+    before_amounts = _amounts(db, log_id)
     as_user(client, worker, company, claims=WORKER_CLAIMS)
 
-    asks = client.put(f"/work-logs/{log_id}", json={"endTime": "13:00:00"})
-    forced = client.put(
-        f"/work-logs/{log_id}", params={"recalculate_with_current_rates": "true"}, json={"endTime": "13:00:00"}
+    resp = client.post(
+        f"/work-logs/{log_id}/recalculate-preview",
+        params={"recalculate_with_current_rates": "false"},
+        json={"type": "tutorial"},
     )
-    keeps = client.put(f"/work-logs/{log_id}", json={"endTime": "13:00:00", "netAmount": 50.0})
 
-    assert asks.status_code == 409, asks.text
-    assert forced.status_code == 403, forced.text
-    assert keeps.status_code == 200, keeps.text
-    assert _snapshot(db, log_id).get("type") == "manual_override"
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["currentNetAmount"] == pytest.approx(before_amounts["net"], abs=0.01)
+    assert body["newNetAmount"] == pytest.approx(120.0, abs=0.01)
+    assert _stored(db, log_id).type == "particular"
+
+
+def test_preview_recalculate_with_current_rates_is_forbidden_for_worker(client, db):
+    company = make_company(db, is_managed=False, worklog_definitions=_definitions())
+    manager = _member(db, company, role="manager")
+    worker = _member(db, company)
+    log_id = _create(client, db, manager, company, worker)
+    as_user(client, worker, company, claims=WORKER_CLAIMS)
+
+    resp = client.post(
+        f"/work-logs/{log_id}/recalculate-preview",
+        params={"recalculate_with_current_rates": "true"},
+        json={},
+    )
+
+    assert resp.status_code == 403, resp.text
+
+
+def test_preview_with_inactive_membership_returns_403(client, db):
+    company = make_company(db, worklog_definitions=_definitions())
+    manager = _member(db, company, role="manager")
+    worker = _member(db, company)
+    log_id = _create(client, db, manager, company, worker)
+    _set_member_active(db, worker, company, False)
+    as_user(client, manager, company, claims=MANAGER_CLAIMS)
+
+    resp = client.post(
+        f"/work-logs/{log_id}/recalculate-preview",
+        params={"recalculate_with_current_rates": "true"},
+        json={},
+    )
+
+    assert resp.status_code == 403, resp.text
+
+
+def test_preview_with_unknown_type_or_missing_rate_returns_400(client, db):
+    company = make_company(db, worklog_definitions=_definitions())
+    manager = _member(db, company, role="manager")
+    worker = _member(db, company, rates=_rates())  # sin tarifa de tutorial
+    log_id = _create(client, db, manager, company, worker)
+    as_user(client, manager, company, claims=MANAGER_CLAIMS)
+
+    unknown = client.post(
+        f"/work-logs/{log_id}/recalculate-preview",
+        params={"recalculate_with_current_rates": "false"},
+        json={"type": "inexistente"},
+    )
+    missing_rate = client.post(
+        f"/work-logs/{log_id}/recalculate-preview",
+        params={"recalculate_with_current_rates": "false"},
+        json={"type": "tutorial"},
+    )
+
+    assert unknown.status_code == 400, unknown.text
+    assert missing_rate.status_code == 400, missing_rate.text
+
+
+def test_preview_group_recalculate_returns_group_totals(client, db):
+    company = make_company(db, worklog_definitions=_definitions())
+    manager = _member(db, company, role="manager")
+    workers = [_member(db, company), _member(db, company)]
+    log_ids = _create_group(client, db, manager, company, workers)
+    _set_member_rates(db, workers[0], company, _rates(particular_base=30.0, tutorial_base=100.0))
+    _set_member_rates(db, workers[1], company, _rates(particular_base=40.0, tutorial_base=100.0))
+    as_user(client, manager, company, claims=MANAGER_CLAIMS)
+
+    resp = client.post(
+        f"/work-logs/{log_ids[0]}/recalculate-preview",
+        params={"apply_to_group": "true", "recalculate_with_current_rates": "true"},
+        json={},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["applyToGroup"] is True
+    assert body["groupCount"] == 2
+    assert body["newGroupGrossAmount"] == pytest.approx(140.0, abs=0.01)
 
 
 # --- Edicion de grupo: todo o nada ---
@@ -464,57 +479,11 @@ def test_group_edit_failure_rolls_back_whole_group_and_names_the_worker(client, 
 
     resp = client.put(f"/work-logs/{log_ids[0]}", params={"apply_to_group": "true"}, json={"type": "tutorial"})
 
-    assert resp.status_code == 422, resp.text
+    assert resp.status_code == 403, resp.text
     assert "Test User" in resp.json()["detail"]
     for log_id in log_ids:
         assert _stored(db, log_id).type == "particular"
         assert _amounts(db, log_id) == pytest.approx(before[log_id], abs=0.01)
-
-
-def test_worker_keep_manual_amount_flag_resolves_409(client, db):
-    company = make_company(db, worklog_definitions=_definitions())
-    manager = _member(db, company, role="manager")
-    worker = _member(db, company)
-    log_id = _create_manual(client, db, manager, company, worker)
-    as_user(client, worker, company, claims=WORKER_CLAIMS)
-
-    resp = client.put(
-        f"/work-logs/{log_id}", params={"keep_manual_amount": "true"}, json={"endTime": "13:00:00"}
-    )
-
-    assert resp.status_code == 200, resp.text
-    assert str(_stored(db, log_id).end_time) == "13:00:00"
-    assert _amounts(db, log_id)["net"] == pytest.approx(50.0, abs=0.01)
-    assert _snapshot(db, log_id).get("type") == "manual_override"
-
-
-def test_group_edit_keep_amount_does_not_overwrite_other_manual_amounts(client, db):
-    company = make_company(db, worklog_definitions=_definitions())
-    manager = _member(db, company, role="manager")
-    workers = [_member(db, company), _member(db, company)]
-    as_user(client, manager, company, claims=MANAGER_CLAIMS)
-    body = {k: v for k, v in _calc_body(workers[0], company).items() if k != "userId"}
-    body.update({"userIds": [str(w.id) for w in workers], "netAmount": 50.0})
-    resp = client.post("/work-logs/bulk", json=body)
-    assert resp.status_code == 200, resp.text
-    logs = db.query(models.WorkLog).filter(models.WorkLog.company_id == company.id).all()
-    primary = next(log for log in logs if log.user_id == workers[0].id)
-    other = next(log for log in logs if log.user_id == workers[1].id)
-    other.net_amount = 70.0
-    db.commit()
-
-    asks = client.put(f"/work-logs/{primary.id}", params={"apply_to_group": "true"}, json={"endTime": "13:00:00"})
-    keeps = client.put(
-        f"/work-logs/{primary.id}",
-        params={"apply_to_group": "true", "keep_manual_amount": "true"},
-        json={"endTime": "13:00:00"},
-    )
-
-    assert asks.status_code == 409, asks.text
-    assert keeps.status_code == 200, keeps.text
-    assert _amounts(db, primary.id)["net"] == pytest.approx(50.0, abs=0.01)
-    assert _amounts(db, other.id)["net"] == pytest.approx(70.0, abs=0.01)
-    assert str(_stored(db, other.id).end_time) == "13:00:00"
 
 
 def test_group_edit_success_updates_every_log(client, db):

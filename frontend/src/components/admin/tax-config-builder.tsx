@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Trash2, Save } from "lucide-react";
+import { parsePercentNumber } from "@/components/admin/tax-overrides-fields";
 
 export const TAX_NAME_MAX = 50;
 export const TAX_MAX_ENTRIES = 20;
+const PERCENT_SCALE = 10000;
 
 export interface TaxRow {
     key: string;
@@ -26,6 +28,20 @@ export function taxConfigToRows(config: Record<string, number> | null | undefine
         key,
         value: typeof val === "number" && Number.isFinite(val) ? String(parseFloat((val * 100).toFixed(4))) : "",
     }));
+}
+
+/** Suma los porcentajes validos (0..100) aceptando punto o coma decimal. */
+export function calculateTaxRowsSumPercent(rows: TaxRow[]): number {
+    let scaledTotal = 0;
+    rows.forEach((row) => {
+        const raw = row.value.trim();
+        if (raw === "") return;
+        const n = parsePercentNumber(raw);
+        if (Number.isFinite(n) && n >= 0) {
+            scaledTotal += Math.round(n * PERCENT_SCALE);
+        }
+    });
+    return scaledTotal / PERCENT_SCALE;
 }
 
 /** Valida las filas. Devuelve errores por indice (vacio si todo es valido) y un error global opcional. */
@@ -46,7 +62,7 @@ export function validateTaxRows(rows: TaxRow[]): { errors: Record<number, TaxRow
         }
 
         const raw = row.value.trim();
-        const n = raw === "" ? NaN : Number(raw);
+        const n = parsePercentNumber(raw);
         if (raw === "" || !Number.isFinite(n)) {
             rowErrors.value = "Introduce un numero.";
         } else if (n < 0 || n > 100) {
@@ -54,7 +70,13 @@ export function validateTaxRows(rows: TaxRow[]): { errors: Record<number, TaxRow
         }
         if (rowErrors.key || rowErrors.value) errors[i] = rowErrors;
     });
-    const global = rows.length > TAX_MAX_ENTRIES ? `Maximo ${TAX_MAX_ENTRIES} impuestos.` : undefined;
+    const totalPercent = calculateTaxRowsSumPercent(rows);
+    let global: string | undefined;
+    if (rows.length > TAX_MAX_ENTRIES) {
+        global = `Maximo ${TAX_MAX_ENTRIES} impuestos.`;
+    } else if (totalPercent > 100) {
+        global = "La suma de los impuestos no puede superar el 100%.";
+    }
     return { errors, global };
 }
 
@@ -62,7 +84,8 @@ export function validateTaxRows(rows: TaxRow[]): { errors: Record<number, TaxRow
 export function taxRowsToConfig(rows: TaxRow[]): Record<string, number> {
     const out: Record<string, number> = {};
     rows.forEach((r) => {
-        out[r.key.trim()] = Math.round((Number(r.value) / 100) * 1000000) / 1000000;
+        const n = parsePercentNumber(r.value);
+        out[r.key.trim()] = Math.round((n / 100) * 1000000) / 1000000;
     });
     return out;
 }
@@ -131,10 +154,8 @@ export function TaxConfigBuilder({ initialValue, onSave }: TaxConfigBuilderProps
                             <div className="relative">
                                 <Input
                                     id={`tax-value-${index}`}
-                                    type="number"
-                                    step="0.01"
-                                    min={0}
-                                    max={100}
+                                    type="text"
+                                    inputMode="decimal"
                                     value={row.value}
                                     onChange={(e) => updateRow(index, "value", e.target.value)}
                                     className="h-9 pr-7"
@@ -163,6 +184,26 @@ export function TaxConfigBuilder({ initialValue, onSave }: TaxConfigBuilderProps
                     </div>
                 )}
             </div>
+
+            {(() => {
+                const totalPercent = calculateTaxRowsSumPercent(rows);
+                const exceedsLimit = totalPercent > 100;
+                return (
+                    <div className="space-y-1">
+                        <div className="flex items-center justify-between text-sm px-1">
+                            <span className="text-muted-foreground">Suma total de impuestos</span>
+                            <span className={exceedsLimit ? "font-semibold text-destructive" : "font-medium"}>
+                                {totalPercent}%
+                            </span>
+                        </div>
+                        {exceedsLimit && (
+                            <p className="text-sm text-destructive px-1" role="alert">
+                                La suma de los impuestos supera el 100% (maximo 100%).
+                            </p>
+                        )}
+                    </div>
+                );
+            })()}
 
             {globalError && <p className="text-sm text-destructive">{globalError}</p>}
 

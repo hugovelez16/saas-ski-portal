@@ -12,18 +12,16 @@ import {
     DialogTrigger,
     DialogClose
 } from "@/components/ui/dialog";
-import { PlusCircle, Loader2 } from "lucide-react";
+import { PlusCircle, Loader2, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
-import { getMyCompanies } from "@/lib/api/companies";
-import type { WorkLog, WorkLogCreate } from "@/lib/types";
+import { getCompany, getMyCompanies } from "@/lib/api/companies";
+import type { WorkLog, WorkLogCreate, WorkLogRecalculatePreview } from "@/lib/types";
 import { WorkLogForm } from "./work-log-form";
-import { createWorkLog, updateWorkLog } from "@/lib/api/work-logs";
+import { createWorkLog, previewWorkLogRecalculation, updateWorkLog } from "@/lib/api/work-logs";
 import { notifyWorkLogWarnings } from "@/lib/work-log-warnings";
-import { getManualAmountChoice } from "@/lib/manual-amount-choice";
-import { ManualAmountChoiceDialog } from "./manual-amount-choice-dialog";
+import { RecalculateConfirmDialog } from "./recalculate-confirm-dialog";
 import { useAuth } from "@/context/AuthContext";
-import api from "@/lib/api";
 
 /**
  * Convierte `detail` de una respuesta de error de FastAPI (string, lista de `{ msg }` o objeto)
@@ -83,30 +81,37 @@ export function UserCreateWorkLogDialog({
     const { toast } = useToast();
     const { user: authUser } = useAuth();
 
-    // Fetch companies
-    // Fetch companies if not provided
-    const { data: fetchedCompanies = [] } = useQuery({
-        queryFn: getMyCompanies,
-        queryKey: ["myCompanies"],
-        enabled: !providedCompanies,
+    // Fetch active company details if not provided (R-ACC-81: /v2/me/companies no incluye definiciones)
+    const activeCompanyId = user?.activeCompanyId || authUser?.activeCompanyId;
+    const { data: activeCompany } = useQuery({
+        queryFn: () => getCompany(activeCompanyId as string),
+        queryKey: ["company", activeCompanyId],
+        enabled: !providedCompanies && Boolean(activeCompanyId),
     });
 
-    const companies = providedCompanies || fetchedCompanies;
-
-    // Rol del usuario que opera en la empresa del turno. No se usa `companies` (en la ficha de
-    // usuario contiene los roles del titular). Sin dato, no se ofrece recalcular.
     const { data: myCompanies = [] } = useQuery({
         queryFn: getMyCompanies,
         queryKey: ["myCompanies"],
-        enabled: Boolean(logToEdit),
+        enabled: Boolean(logToEdit) || (!providedCompanies && !activeCompanyId),
     });
+
+    const companies = providedCompanies || (activeCompany ? [activeCompany] : myCompanies);
+
+    // Rol del usuario que opera en la empresa del turno. No se usa `companies` (en la ficha de
+    // usuario contiene los roles del titular). Sin dato, no se ofrece recalcular.
     const turnCompanyRole = myCompanies.find((c) => c.id === logToEdit?.companyId)?.role;
     const canRecalculate = Boolean(
         authUser?.isPlatformAdmin || authUser?.role === 'admin' || turnCompanyRole === 'manager'
     );
 
-    // Edicion con importe manual pendiente de decision (409 manual_amount_choice)
-    const [manualChoice, setManualChoice] = useState<{ message: string; body: any } | null>(null);
+    // Confirmacion previa con comparativa de importes al cambiar de tipo o recalcular (R-TUR-20, R-TUR-21)
+    const [pendingConfirm, setPendingConfirm] = useState<{
+        mode: 'recalculate' | 'type_change';
+        preview: WorkLogRecalculatePreview;
+        body: any;
+        recalculateWithCurrentRates: boolean;
+    } | null>(null);
+    const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
     // Reset form
     const resetForm = () => {
@@ -119,12 +124,11 @@ export function UserCreateWorkLogDialog({
     // Set default company
     useEffect(() => {
         if (open && companies.length > 0 && !formData.companyId && !logToEdit) {
-            // Priority: Active Context > Last Selected > User Default > Personal > First Available
+            // Priority: Active Context > Last Selected > First Available
             let targetId = user?.activeCompanyId || lastSelectedCompanyId;
 
             if (!targetId) {
-                const personal = companies.find((c: any) => c.name === "Personal");
-                targetId = personal ? personal.id : companies[0].id;
+                targetId = companies[0].id;
             }
 
             setFormData(prev => ({ ...prev, companyId: targetId || undefined }));
@@ -182,20 +186,71 @@ export function UserCreateWorkLogDialog({
         toast({ title: "Error", description: String(msg), variant: "destructive" });
     };
 
-    // Reenvia el mismo PUT resolviendo el importe manual: conservar (keep_manual_amount) o recalcular por tarifa
-    const resolveManualChoice = async (mode: 'keep' | 'recalculate') => {
-        const pending = manualChoice;
-        if (!pending || !logToEdit) return;
+    const buildValidatedPayload = (): any | null => {
+        if (!formData.companyId) {
+            toast({ title: "Error", description: "Selecciona una empresa.", variant: "destructive" });
+            return null;
+        }
 
-        setManualChoice(null);
+        const selectedCompany = companies.find((c: any) => c.id === formData.companyId);
+        const currentDef = selectedCompany?.worklogDefinitions?.[logType] || null;
+        const isRange = currentDef ? currentDef.unit === 'days' : logType === 'tutorial';
+        const isFixed = currentDef?.unit === 'fixed';
+
+        if (isRange) {
+            if (!formData.startDate || !formData.endDate) {
+                toast({ title: "Error", description: "Fecha de inicio y fin son obligatorias.", variant: "destructive" });
+                return null;
+            }
+        } else {
+            if (!formData.date) {
+                toast({ title: "Error", description: "La fecha es obligatoria.", variant: "destructive" });
+                return null;
+            }
+            if (!isFixed && (!formData.startTime || !formData.endTime)) {
+                toast({ title: "Error", description: "Fecha, hora de inicio y fin son obligatorias.", variant: "destructive" });
+                return null;
+            }
+        }
+
+        // En edicion el titular del turno es el dueno original: el backend rechaza cambiarlo (422)
+        const logData: any = {
+            ...formData,
+            userId: logToEdit ? logToEdit.userId : user.id,
+            type: logType,
+        };
+
+        if (!isRange) {
+            logData.startDate = logData.date;
+            logData.endDate = logData.date;
+        }
+
+        if (logData.startTime === "") logData.startTime = null;
+        if (logData.endTime === "") logData.endTime = null;
+
+        delete logData.date;
+
+        if (logToEdit) {
+            delete logData.amount;
+            delete logData.rateApplied;
+            delete logData.grossAmount;
+            delete logData.netAmount;
+            delete logData.isGrossCalculation;
+        }
+
+        return logData;
+    };
+
+    const persistUpdate = async (body: any, recalculateWithCurrentRates: boolean) => {
+        if (!logToEdit) return;
         setIsLoading(true);
         try {
-            const savedLog = await updateWorkLog(logToEdit.id, pending.body, initialApplyToGroup, {
-                keepManualAmount: mode === 'keep',
-                recalculateWithCurrentRates: mode === 'recalculate',
+            const savedLog = await updateWorkLog(logToEdit.id, body, initialApplyToGroup, {
+                recalculateWithCurrentRates,
             });
-            toast({ title: "Success", description: "Work log updated successfully." });
+            toast({ title: "Éxito", description: "Turno actualizado correctamente." });
             notifyWorkLogWarnings(toast, savedLog);
+            setPendingConfirm(null);
             setOpen(false);
             onLogUpdate?.();
         } catch (error: any) {
@@ -205,88 +260,72 @@ export function UserCreateWorkLogDialog({
         }
     };
 
-    const handleSubmit = async () => {
-        setIsLoading(true);
+    const handleRequestRecalculate = async () => {
+        if (!logToEdit) return;
+        const logData = buildValidatedPayload();
+        if (!logData) return;
 
-        if (!formData.companyId) {
-            toast({ title: "Error", description: "Selecciona una empresa.", variant: "destructive" });
-            setIsLoading(false);
-            return;
-        }
-
-        // Removed hardcoded client validation to support dynamic worklog definitions
-
-        if (logType === 'particular' && (!formData.date || !formData.startTime || !formData.endTime)) {
-            toast({ title: "Error", description: "Fecha, hora de inicio y fin son obligatorias para el tipo 'Particular'.", variant: "destructive" });
-            setIsLoading(false);
-            return;
-        }
-        if (logType === 'tutorial' && (!formData.startDate || !formData.endDate)) {
-            toast({ title: "Error", description: "Fecha de inicio y fin son obligatorias para el tipo 'Tutorial'.", variant: "destructive" });
-            setIsLoading(false);
-            return;
-        }
-
-        // En edicion el titular del turno es el dueno original: el backend rechaza cambiarlo (422)
-        let logData: any = {
-            ...formData,
-            userId: logToEdit ? logToEdit.userId : user.id,
-            type: logType,
-        };
-
-        // SaaS Logic: Ensure startDate/endDate are present for all types
-        // In 'particular' (single day) mode, they should match 'date'
-        if (logType === 'particular' || !logData.startDate) {
-            logData.startDate = logData.date;
-            logData.endDate = logData.date;
-        }
-
-        // Remove redundant frontend-only fields
-        delete logData.date;
-
-        // If editing, we remove calculated fields to force backend recalculation
-        // EXCEPT if the company is in manual input mode (but UserCreateWorkLogDialog doesn't easily know this, 
-        // we can check if formData.amount was explicitly changed or just inherited).
-        // To be safe and fix the user's issue: during EDIT, we want the backend to RECALCULATE 
-        // unless the user is specifically using a manual override flow.
-        if (logToEdit) {
-            delete logData.amount;
-            delete logData.rateApplied;
-            delete logData.grossAmount;
-            delete logData.isGrossCalculation; // Let backend use current user settings
-        }
-
+        setIsPreviewLoading(true);
         try {
-            if (logToEdit) {
-                const savedLog = await updateWorkLog(logToEdit.id, logData, initialApplyToGroup);
-                toast({ title: "Success", description: "Work log updated successfully." });
-                notifyWorkLogWarnings(toast, savedLog);
-            } else {
-                const savedLog = await createWorkLog(logData);
-                toast({ title: "Success", description: "Work log created successfully." });
-                notifyWorkLogWarnings(toast, savedLog);
-            }
-
-            setOpen(false);
-            if (!logToEdit) {
-                // Save the company ID for next time
-                if (logData.companyId) setLastSelectedCompanyId(logData.companyId);
-                resetForm();
-            }
-            onLogUpdate?.();
-
+            const preview = await previewWorkLogRecalculation(logToEdit.id, logData, initialApplyToGroup, {
+                recalculateWithCurrentRates: true,
+            });
+            setPendingConfirm({
+                mode: 'recalculate',
+                preview,
+                body: logData,
+                recalculateWithCurrentRates: true,
+            });
         } catch (error: any) {
-            const manualChoiceError = logToEdit ? getManualAmountChoice(error) : null;
-            if (manualChoiceError) {
-                // Sin toast: el usuario decide como resolver el importe manual
-                setManualChoice({ message: manualChoiceError.message, body: logData });
+            showSaveError(error);
+        } finally {
+            setIsPreviewLoading(false);
+        }
+    };
+
+    const handleSubmit = async () => {
+        const logData = buildValidatedPayload();
+        if (!logData) return;
+
+        if (logToEdit) {
+            if (logType !== logToEdit.type) {
+                setIsPreviewLoading(true);
+                try {
+                    const preview = await previewWorkLogRecalculation(logToEdit.id, logData, initialApplyToGroup, {
+                        recalculateWithCurrentRates: false,
+                    });
+                    setPendingConfirm({
+                        mode: 'type_change',
+                        preview,
+                        body: logData,
+                        recalculateWithCurrentRates: false,
+                    });
+                } catch (error: any) {
+                    showSaveError(error);
+                } finally {
+                    setIsPreviewLoading(false);
+                }
                 return;
             }
+            await persistUpdate(logData, false);
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const savedLog = await createWorkLog(logData);
+            toast({ title: "Éxito", description: "Turno creado correctamente." });
+            notifyWorkLogWarnings(toast, savedLog);
+            setOpen(false);
+            if (logData.companyId) setLastSelectedCompanyId(logData.companyId);
+            resetForm();
+            onLogUpdate?.();
+        } catch (error: any) {
             showSaveError(error);
         } finally {
             setIsLoading(false);
         }
-    }
+    };
 
     return (
         <>
@@ -319,27 +358,46 @@ export function UserCreateWorkLogDialog({
                         logType={logType}
                         setLogType={setLogType}
                         companies={companies || []}
+                        editingType={logToEdit?.type}
                     />
                 </DialogHeader>
 
-                <DialogFooter>
+                <DialogFooter className="gap-2 sm:gap-2">
+                    {logToEdit && canRecalculate && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="sm:mr-auto"
+                            disabled={isLoading || isPreviewLoading}
+                            onClick={handleRequestRecalculate}
+                        >
+                            {isPreviewLoading ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            Recalcular con tarifa vigente
+                        </Button>
+                    )}
                     <DialogClose asChild>
-                        <Button variant="ghost">Cancel</Button>
+                        <Button variant="ghost">Cancelar</Button>
                     </DialogClose>
-                    <Button type="submit" disabled={isLoading} onClick={handleSubmit}>
-                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {logToEdit ? "Update" : "Create"}
+                    <Button type="submit" disabled={isLoading || isPreviewLoading} onClick={handleSubmit}>
+                        {(isLoading || isPreviewLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {logToEdit ? "Actualizar" : "Crear"}
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-        <ManualAmountChoiceDialog
-            open={manualChoice !== null}
-            message={manualChoice?.message ?? ""}
-            canRecalculate={canRecalculate}
-            onKeep={() => resolveManualChoice('keep')}
-            onRecalculate={() => resolveManualChoice('recalculate')}
-            onCancel={() => setManualChoice(null)}
+        <RecalculateConfirmDialog
+            open={pendingConfirm !== null}
+            preview={pendingConfirm?.preview ?? null}
+            mode={pendingConfirm?.mode ?? 'recalculate'}
+            isSubmitting={isLoading}
+            onConfirm={() =>
+                pendingConfirm && persistUpdate(pendingConfirm.body, pendingConfirm.recalculateWithCurrentRates)
+            }
+            onCancel={() => setPendingConfirm(null)}
         />
         </>
     )

@@ -7,9 +7,9 @@ import crud
 import models
 import schemas
 from access_policy import PolicyError
-from contracts import MissingWorklogUnitError
+from contracts import MissingWorklogDatesError, MissingWorklogUnitError
 from database import get_db
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from routers import deps
@@ -24,19 +24,8 @@ _SUMMARY_MAX_AHEAD_DAYS = 730
 
 
 def record_impersonation_audit(db: Session, current_user: models.User, action: str, extra_data: dict = None):
-    if getattr(current_user, "token_scope", None) == "impersonated":
-        admin_user_id = getattr(current_user, "admin_user_id", None)
-        if admin_user_id:
-            admin_uuid = UUID(admin_user_id) if isinstance(admin_user_id, str) else admin_user_id
-            audit_entry = models.AuditLog(
-                action=action,
-                impersonated_user_id=current_user.id,
-                admin_user_id=admin_uuid,
-                actor_user_id=admin_uuid,
-                extra_data=extra_data or {},
-            )
-            db.add(audit_entry)
-            db.commit()
+    """Retirada (R-AUD-26): las escrituras de turnos durante suplantacion ya no se registran."""
+    return None
 
 
 @router.post("", response_model=schemas.WorkLogResponse)
@@ -59,15 +48,11 @@ def create_work_log(
 
     try:
         new_log = crud.create_work_log(db=db, work_log=work_log)
-        record_impersonation_audit(
-            db,
-            current_user,
-            action="create_work_log",
-            extra_data={"work_log_id": str(new_log.id), "user_id": str(work_log.user_id)},
-        )
         return new_log
-    except MissingWorklogUnitError:
+    except (MissingWorklogUnitError, MissingWorklogDatesError):
         raise
+    except (crud.MissingRateError, crud.UnknownWorkLogTypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -89,20 +74,11 @@ def create_work_log_bulk(
 
     try:
         logs = crud.create_work_log_bulk(db=db, work_log_bulk=work_log_bulk)
-        if logs:
-            record_impersonation_audit(
-                db,
-                current_user,
-                action="create_work_log_bulk",
-                extra_data={
-                    "company_id": str(work_log_bulk.company_id),
-                    "user_ids": [str(uid) for uid in work_log_bulk.user_ids],
-                    "group_id": logs.extra_data.get("group_id") if logs.extra_data else None,
-                },
-            )
         return logs  # Returns the first one created as a representative
-    except MissingWorklogUnitError:
+    except (MissingWorklogUnitError, MissingWorklogDatesError):
         raise
+    except (crud.MissingRateError, crud.UnknownWorkLogTypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -186,6 +162,20 @@ def read_work_logs(
     return work_logs
 
 
+def _validate_summary_date_range(start_date: date, end_date: date) -> None:
+    """Valida coherencia y limites del rango de fechas para resumenes e informes."""
+    if start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date no puede ser posterior a end_date")
+    max_end_date = date.today() + timedelta(days=_SUMMARY_MAX_AHEAD_DAYS)
+    if not (
+        _SUMMARY_MIN_DATE <= start_date <= max_end_date and _SUMMARY_MIN_DATE <= end_date <= max_end_date
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Las fechas deben estar entre {_SUMMARY_MIN_DATE.isoformat()} y {max_end_date.isoformat()}",
+        )
+
+
 @router.get("/summary", response_model=schemas.WorkLogSummaryResponse)
 def get_work_logs_summary(
     start_date: date,
@@ -199,16 +189,7 @@ def get_work_logs_summary(
     Agregados de turnos en un rango de fechas: totales, por tipo, por dia y por usuario.
     Misma visibilidad que GET /work-logs: los workers solo obtienen sus propios datos.
     """
-    if start_date > end_date:
-        raise HTTPException(status_code=422, detail="start_date no puede ser posterior a end_date")
-    max_end_date = date.today() + timedelta(days=_SUMMARY_MAX_AHEAD_DAYS)
-    if not (
-        _SUMMARY_MIN_DATE <= start_date <= max_end_date and _SUMMARY_MIN_DATE <= end_date <= max_end_date
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Las fechas deben estar entre {_SUMMARY_MIN_DATE.isoformat()} y {max_end_date.isoformat()}",
-        )
+    _validate_summary_date_range(start_date, end_date)
 
     target_company_id, final_user_id, only_active_companies = _resolve_work_log_scope(
         db, current_user, company_id, user_id, start_date, end_date
@@ -226,6 +207,75 @@ def get_work_logs_summary(
         only_active_companies=only_active_companies,
     )
     return schemas.WorkLogSummaryResponse(**summary)
+
+
+@router.get("/reports", response_model=schemas.WorkLogReportResponse)
+def get_work_logs_report(
+    start_date: date,
+    end_date: date,
+    company_id: UUID | None = None,
+    user_id: UUID | None = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=2000),
+    include_logs: bool = True,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
+    """
+    Datos del modulo de pago Informes (R-MOD-15, R-ACC-24): devuelve el resumen y las filas
+    paginadas exigiendo suscripcion vigente al modulo 'reports' en la empresa (salvo PA actuando).
+    """
+    _validate_summary_date_range(start_date, end_date)
+
+    effective_company_id = company_id or getattr(current_user, "active_company_id", None)
+    if effective_company_id is None:
+        if deps.acting_platform_admin(current_user):
+            raise HTTPException(status_code=422, detail="company_id es obligatorio para el administrador de plataforma")
+        raise PolicyError(403, access_policy.MSG_NO_ACCESS)
+
+    ctx = deps.authorize(
+        db,
+        current_user,
+        effective_company_id,
+        min_role=access_policy.ROLE_WORKER,
+        module="reports",
+    )
+
+    if ctx.role in _COMPANY_VIEW_ROLES:
+        final_user_id = user_id
+    elif user_id and str(user_id) != str(current_user.id):
+        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+    else:
+        final_user_id = current_user.id
+
+    summary = crud.get_work_log_summary(
+        db,
+        company_id=str(ctx.company_id),
+        user_id=str(final_user_id) if final_user_id else None,
+        start_date=start_date,
+        end_date=end_date,
+        only_active_companies=False,
+    )
+
+    if include_logs:
+        filters = {
+            "user_id": str(final_user_id) if final_user_id else None,
+            "company_id": str(ctx.company_id),
+            "start_date": start_date,
+            "end_date": end_date,
+            "only_active_companies": False,
+        }
+        items = crud.get_work_logs(db, skip=skip, limit=limit, **filters)
+        total = crud.count_work_logs(db, **filters)
+    else:
+        items = []
+        total = int(summary["totals"]["logs_count"])
+
+    return schemas.WorkLogReportResponse(
+        items=items,
+        total=total,
+        summary=schemas.WorkLogSummaryResponse(**summary),
+    )
 
 
 @router.get("/billing-summary", response_model=list[schemas.BillingSummaryItemResponse])
@@ -246,7 +296,8 @@ def get_billing_summary(
 
     query = text("""
         SELECT user_id, first_name, last_name, email, type,
-               total_hours, total_net, total_gross, unique_days, logs_count
+               total_hours, total_net, total_gross, unique_days, logs_count,
+               is_active, user_total_net
         FROM get_billing_summary(:company_id, :start_date, :end_date)
     """)
     result = db.execute(
@@ -267,6 +318,8 @@ def get_billing_summary(
                 total_gross=float(row.total_gross or 0.0),
                 unique_days=int(row.unique_days or 0),
                 logs_count=int(row.logs_count or 0),
+                is_active=bool(row.is_active),
+                user_total_net=float(row.user_total_net or 0.0),
             )
         )
     return summary
@@ -305,17 +358,64 @@ def delete_work_log(
 
     _authorize_work_log_write(db, current_user, log)
 
-    record_impersonation_audit(
-        db,
-        current_user,
-        action="delete_work_log",
-        extra_data={"work_log_id": str(work_log_id), "user_id": str(log.user_id)},
-    )
     company_id = log.company_id
     crud.delete_work_log(db, str(work_log_id), company_id=company_id)
     if company_id:
         crud.invalidate_dashboard_summary(company_id)
     return {"ok": True}
+
+
+@router.post("/{work_log_id}/recalculate-preview", response_model=schemas.WorkLogRecalculatePreviewResponse)
+def preview_work_log_recalculation(
+    work_log_id: UUID,
+    work_log: schemas.WorkLogUpdate | None = Body(default=None),
+    apply_to_group: bool = False,
+    recalculate_with_current_rates: bool = True,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
+    """
+    Previsualiza el importe actual frente al nuevo antes de confirmar un recalculo con tarifa vigente
+    o un cambio de tipo de turno (R-TUR-20, R-TUR-21), sin persistir cambios.
+    """
+    log = db.query(models.WorkLog).filter(models.WorkLog.id == work_log_id).first()
+    if not log:
+        raise _work_log_not_found(current_user)
+
+    role = _authorize_work_log_write(db, current_user, log)
+
+    if apply_to_group and role not in _COMPANY_VIEW_ROLES:
+        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+
+    if recalculate_with_current_rates and role not in _COMPANY_VIEW_ROLES:
+        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+
+    payload = work_log or schemas.WorkLogUpdate()
+    if (payload.user_id is not None and str(payload.user_id) != str(log.user_id)) or (
+        payload.company_id is not None and str(payload.company_id) != str(log.company_id)
+    ):
+        raise PolicyError(422, "No se puede cambiar la empresa ni el usuario de un turno")
+
+    try:
+        preview = crud.preview_work_log_recalculation(
+            db,
+            str(work_log_id),
+            payload,
+            company_id=log.company_id,
+            apply_to_group=apply_to_group,
+            recalculate_with_current_rates=recalculate_with_current_rates,
+        )
+    except (MissingWorklogUnitError, MissingWorklogDatesError):
+        raise
+    except (crud.MissingRateError, crud.UnknownWorkLogTypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    if preview is None:
+        raise _work_log_not_found(current_user)
+
+    return schemas.WorkLogRecalculatePreviewResponse(**preview)
 
 
 @router.put("/{work_log_id}", response_model=schemas.WorkLogResponse)
@@ -324,7 +424,6 @@ def update_work_log(
     work_log: schemas.WorkLogUpdate,
     apply_to_group: bool = False,
     recalculate_with_current_rates: bool = False,
-    keep_manual_amount: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user),
 ):
@@ -338,11 +437,11 @@ def update_work_log(
     if apply_to_group and role not in _COMPANY_VIEW_ROLES:
         raise PolicyError(403, access_policy.MSG_FORBIDDEN)
 
-    # T5: recalcular con la tarifa vigente solo lo piden manager y PA
+    # R-TUR-20: recalcular con la tarifa vigente solo lo piden manager y PA
     if recalculate_with_current_rates and role not in _COMPANY_VIEW_ROLES:
         raise PolicyError(403, access_policy.MSG_FORBIDDEN)
 
-    # T3: empresa y usuario de un turno no cambian; se aceptan solo si coinciden con los actuales
+    # R-TUR-02: empresa y usuario de un turno no cambian; se aceptan solo si coinciden con los actuales
     if (work_log.user_id is not None and str(work_log.user_id) != str(log.user_id)) or (
         work_log.company_id is not None and str(work_log.company_id) != str(log.company_id)
     ):
@@ -356,28 +455,14 @@ def update_work_log(
             company_id=log.company_id,
             apply_to_group=apply_to_group,
             recalculate_with_current_rates=recalculate_with_current_rates,
-            keep_manual_amount=keep_manual_amount,
         )
-    except MissingWorklogUnitError:
+    except (MissingWorklogUnitError, MissingWorklogDatesError):
         raise
-    except crud.ManualAmountChoiceError as e:
-        raise HTTPException(status_code=409, detail={"code": "manual_amount_choice", "message": str(e)})
-    except crud.MissingRateError as e:
+    except (crud.MissingRateError, crud.UnknownWorkLogTypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     if updated_log is None:
         raise _work_log_not_found(current_user)
-
-    record_impersonation_audit(
-        db,
-        current_user,
-        action="update_work_log",
-        extra_data={
-            "work_log_id": str(work_log_id),
-            "user_id": str(updated_log.user_id),
-            "apply_to_group": apply_to_group,
-        },
-    )
 
     return updated_log

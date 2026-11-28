@@ -1,4 +1,4 @@
-"""Utilidades comunes a los scripts de reparacion de datos (docs/empresa, seccion 9).
+"""Utilidades comunes a los scripts de reparacion de datos (docs/operaciones/despliegue.md y ADR-0010).
 
 Los scripts se ejecutan con `python3 -m scripts.<nombre>` desde backend/ (en el contenedor, /app).
 """

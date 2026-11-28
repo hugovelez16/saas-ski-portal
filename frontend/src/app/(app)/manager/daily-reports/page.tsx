@@ -8,6 +8,7 @@ import { format, addDays, subDays, isSameDay, parseISO, startOfDay } from "date-
 import { getUsers, getUserCompanies } from "@/lib/api/users";
 import { deleteWorkLog } from "@/lib/api/work-logs";
 import { getDailyReport, getMyCompanies } from "@/lib/api/companies";
+import { useModules } from "@/hooks/useModules";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -78,6 +79,8 @@ function ManagerDailyReportInner() {
         }
     }, [activeCompanyId]);
 
+    const { hasModule } = useModules(activeCompanyId || undefined);
+
     // 1. Fetch My Managed Companies
     const { data: myCompanies = [], isLoading: loadingCompanies } = useQuery({
         queryFn: getMyCompanies,
@@ -85,13 +88,16 @@ function ManagerDailyReportInner() {
     });
 
     const managedCompanies = useMemo(() => {
-        return myCompanies.filter((c: any) => {
-            const role = (c.role || c.pivot?.role || '').toLowerCase();
+        return myCompanies.filter((c) => {
+            const role = (c.role || '').toLowerCase();
             const isManager = ['manager', 'admin', 'owner'].includes(role);
-            const isModuleActive = Boolean(c.settings?.modules?.worker_daily_report ?? false);
-            return isManager && isModuleActive;
+            if (!isManager) return false;
+            if (c.id === activeCompanyId) {
+                return hasModule("worker_daily_report");
+            }
+            return false;
         });
-    }, [myCompanies]);
+    }, [myCompanies, activeCompanyId, hasModule]);
 
     // Auto-select first company if not selected
     if (!selectedCompanyId && managedCompanies.length > 0) {

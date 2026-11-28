@@ -19,7 +19,7 @@ TAX_CONFIG = {"social_security": 0.0648}
 DEFINITIONS = {"particular": {"unit": "hours", "label": "Particular", "fields": []}}
 COMPANY_SETTINGS = {
     "business_logic": {"price_type": "gross"},
-    "worker_experience": {"input_mode": "timer", "allow_manual_amount": True},
+    "worker_experience": {"input_mode": "timer"},
     "modules": {"daily_report": True},
     "allowed_rates": ["particular"],
 }
@@ -45,14 +45,13 @@ def _assert_no_leak(text):
 
 
 def test_subscriptions_manager_gets_brief_company(client, db, world):
-    module = models.AppModule(code_name="mod_views", name="Modulo", is_active=True, target_scope="both")
+    module = models.AppModule(code_name="mod_views", name="Modulo", is_active=True)
     db.add(module)
     db.commit()
     db.add(
         models.ModuleSubscription(
             module_id=module.id,
             company_id=world.company.id,
-            scope=models.SubscriptionScope.company,
             status=models.SubscriptionStatus("active"),
         )
     )

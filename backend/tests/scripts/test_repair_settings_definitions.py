@@ -1,6 +1,6 @@
 """Tests de scripts.repair_settings_definitions (PR-11.R, SQLite, fixtures de tests/conftest.py).
 
-Describen el contrato del script (docs/empresa/plan-implementacion-empresa.md, seccion 9):
+Describen el contrato del script (plan-implementacion-empresa.md, seccion 9; eliminado, ver historial de git):
 - `run(db, *, apply, backup_dir, drop_unknown=())` -> RepairReport y `main(argv) -> int`.
 - Con `--apply` solo se escribe el backup JSON (`settings_definitions_before_<ts>.json`, 0600) con el
   valor original de `settings` y `worklog_definitions` de todas las empresas. Solo `--drop-unknown`

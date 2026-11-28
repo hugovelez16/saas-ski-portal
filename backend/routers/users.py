@@ -1,7 +1,9 @@
 import logging
+from datetime import UTC, datetime
 from uuid import UUID
 
 import access_policy
+import audit
 import auth
 import crud
 import email_utils
@@ -54,7 +56,7 @@ def read_users_me(
     user_data.active_company_id = getattr(current_user, "active_company_id", None)
     user_data.active_role = getattr(current_user, "active_role", None)
     user_data.view_as = getattr(current_user, "view_as", None)
-    user_data.is_read_only_view = bool(user_data.view_as)
+    user_data.is_read_only_view = bool(user_data.view_as) or is_impersonated
 
     return user_data
 
@@ -87,6 +89,9 @@ async def create_user_admin(
     db_user = crud.get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
+
+    if user.company_id:
+        crud.ensure_company_member_limit(db, str(user.company_id), target_role=models.CompanyRole.worker)
 
     # Option A: Random unusable Password
     import secrets
@@ -123,6 +128,17 @@ def toggle_user_status(
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     crud.ensure_platform_admin_invariants(db, current_user, target, new_role=None, new_is_active=is_active)
+
+    old_is_active = bool(target.is_active)
+    if old_is_active != is_active:
+        audit.record_audit(
+            db,
+            action=audit.AuditAction.USER_STATUS_CHANGED,
+            actor_id=current_user.id,
+            target_user_id=target.id,
+            old_value={"is_active": old_is_active},
+            new_value={"is_active": is_active},
+        )
 
     user = crud.update_user_status(db, user_id=str(user_id), is_active=is_active)
     return {"message": "Status updated", "is_active": user.is_active}
@@ -207,16 +223,14 @@ def reset_user_2fa(
 
     db.query(models.UserSession).filter(
         models.UserSession.user_id == user.id, models.UserSession.is_active.is_(True)
-    ).update({"is_active": False}, synchronize_session=False)
+    ).update({"is_active": False, "revoked_at": datetime.now(UTC)}, synchronize_session=False)
 
-    db.add(
-        models.AuditLog(
-            action="2fa_reset",
-            impersonated_user_id=user.id,
-            admin_user_id=current_user.id,
-            actor_user_id=current_user.id,
-            extra_data={"target_email": user.email},
-        )
+    audit.record_audit(
+        db,
+        action=audit.AuditAction.TWO_FA_RESET,
+        actor_id=current_user.id,
+        target_user_id=user.id,
+        extra={"target_email": user.email},
     )
     db.commit()
 
@@ -239,6 +253,17 @@ def update_user(
     crud.ensure_platform_admin_invariants(
         db, current_user, target, new_role=user.role, new_is_active=user.is_active
     )
+
+    old_is_active = bool(target.is_active)
+    if user.is_active is not None and old_is_active != user.is_active:
+        audit.record_audit(
+            db,
+            action=audit.AuditAction.USER_STATUS_CHANGED,
+            actor_id=current_user.id,
+            target_user_id=target.id,
+            old_value={"is_active": old_is_active},
+            new_value={"is_active": user.is_active},
+        )
 
     db_user = crud.update_user(db, str(user_id), user)
     if not db_user:

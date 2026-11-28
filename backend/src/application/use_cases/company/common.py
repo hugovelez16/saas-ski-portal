@@ -26,6 +26,7 @@ COMPANY_EVENT_ACTIONS = {
     "is_managed": AuditAction.COMPANY_MANAGED_CHANGED,
     "tax_config": AuditAction.COMPANY_TAX_CONFIG_CHANGED,
     "settings": AuditAction.COMPANY_SETTINGS_CHANGED,
+    "platform_settings": AuditAction.COMPANY_PLATFORM_SETTINGS_CHANGED,
     "worklog_definitions": AuditAction.COMPANY_DEFINITIONS_CHANGED,
 }
 

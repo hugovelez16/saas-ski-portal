@@ -1,13 +1,14 @@
 import { useMemo } from 'react';
-import { Company, CompanySettings } from '@/lib/types';
+import { Company, CompanyFull, CompanySettings } from '@/lib/types';
 
 /**
- * Devuelve los settings de la empresa tal y como llegan del backend.
- * El backend aplica los valores por defecto, por lo que no hay fallbacks en el cliente.
+ * Devuelve los settings de la empresa tal y como llegan del backend (vista completa o endpoint de manager).
  */
-export function useCompanySettings(company?: Company | null): CompanySettings {
+export function useCompanySettings(
+    company?: (Company & { settings?: Partial<CompanySettings> & Record<string, any> }) | CompanyFull | null
+): Partial<CompanySettings> & Record<string, any> {
     return useMemo(
-        () => (company?.settings ?? {}) as CompanySettings,
+        () => (company?.settings ?? {}) as Partial<CompanySettings> & Record<string, any>,
         [company]
     );
 }

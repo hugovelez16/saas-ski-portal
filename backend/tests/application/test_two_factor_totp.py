@@ -326,7 +326,11 @@ def _db_user_with_2fa(db, *, enabled: bool = True):
 def test_admin_reset_clears_2fa_revokes_sessions_and_audits(client, db, fake_redis):
     admin = make_db_user(db, role="admin")
     user = _db_user_with_2fa(db, enabled=True)
-    session = models.UserSession(user_id=user.id, refresh_token=uuid.uuid4().hex, is_active=True)
+    session = models.UserSession(
+        user_id=user.id,
+        refresh_token_hash=auth.hash_refresh_token(uuid.uuid4().hex),
+        is_active=True,
+    )
     db.add(session)
     db.commit()
     fake_redis.store[f"2fa_fail_{user.id}"] = 5
@@ -340,9 +344,10 @@ def test_admin_reset_clears_2fa_revokes_sessions_and_audits(client, db, fake_red
     assert user.otp_secret is None
     db.refresh(session)
     assert session.is_active is False
+    assert session.revoked_at is not None
     audit = db.query(models.AuditLog).filter(models.AuditLog.action == "2fa_reset").one()
-    assert audit.impersonated_user_id == user.id
-    assert audit.admin_user_id == admin.id
+    assert audit.actor_user_id == admin.id
+    assert audit.target_user_id == user.id
     assert audit.extra_data == {"target_email": user.email}
     assert f"2fa_fail_{user.id}" not in fake_redis.store
 
@@ -374,4 +379,4 @@ def test_reset_user_without_2fa_returns_400_and_writes_nothing(client, db, fake_
     resp = as_user(client, admin).post(f"/users/{user.id}/reset-2fa")
 
     assert resp.status_code == 400, resp.text
-    assert db.query(models.AuditLog).filter(models.AuditLog.impersonated_user_id == user.id).count() == 0
+    assert db.query(models.AuditLog).filter(models.AuditLog.target_user_id == user.id).count() == 0

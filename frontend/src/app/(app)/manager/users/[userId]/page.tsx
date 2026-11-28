@@ -40,7 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { TaxOverridesFields, compactTaxOverrides } from "@/components/admin/tax-overrides-fields";
+import { TaxOverridesFields, compactTaxOverrides, exceedsMaxTaxSum } from "@/components/admin/tax-overrides-fields";
 
 const numericSchema = z.preprocess(
     (val) => (val === "" || val === undefined || val === null ? 0 : val),
@@ -60,7 +60,8 @@ type MemberConfigValues = z.infer<typeof memberConfigSchema>;
 
 function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, company: any, onUpdate: () => void }) {
     const { toast } = useToast();
-    const { canManageMembers } = usePermissions();
+    const { canToggleMemberStatus } = usePermissions();
+    const canToggleStatus = canToggleMemberStatus(company.role);
     const worklogDefinitionsStr = JSON.stringify(company.worklogDefinitions || {});
     const ratesConfigStr = JSON.stringify(company.ratesConfig || {});
 
@@ -115,7 +116,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
 
     const mutation = useMutation({
         mutationFn: async (data: { isActive?: boolean; ratesConfig: Record<string, any> }) => {
-            if (canManageMembers && data.isActive !== undefined && data.isActive !== (company.isActiveMember ?? true)) {
+            if (canToggleStatus && data.isActive !== undefined && data.isActive !== (company.isActiveMember ?? true)) {
                 await updateMemberStatus(company.id, user.id, data.isActive ? "active" : "inactive");
             }
             return updateMemberRates(company.id, user.id, data.ratesConfig);
@@ -126,6 +127,14 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
         },    });
 
     function onSubmit(values: MemberConfigValues) {
+        if (exceedsMaxTaxSum(company.taxConfig, values.taxOverrides)) {
+            toast({
+                title: "Error de validacion",
+                description: "La suma efectiva de impuestos no puede superar el 100%.",
+                variant: "destructive"
+            });
+            return;
+        }
         const newRatesConfig: Record<string, any> = {};
         const shiftKeys = Object.keys(worklogDefinitions);
 
@@ -186,7 +195,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                         </Badge>
                                     </div>
                                 </div>
-                                {canManageMembers && (
+                                {canToggleStatus && (
                                     <FormField
                                         control={form.control}
                                         name="isActive"
@@ -272,6 +281,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                                     companyTaxConfig={company.taxConfig || {}}
                                                     value={field.value || {}}
                                                     onChange={field.onChange}
+                                                    isManaged={Boolean(company.isManaged)}
                                                 />
                                                 <FormMessage />
                                             </FormItem>

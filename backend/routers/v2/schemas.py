@@ -4,17 +4,22 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
+from application.use_cases.company.accept_invitation import AcceptInvitationResult
 from application.use_cases.company.common import CompanyView, CompanyWithMembers, MemberDetail
+from application.use_cases.company.invitation_common import InvitationView
+from application.use_cases.company.preview_invitation import PreviewInvitationResult
 from contracts import (
     MEMBER_SETTINGS_ALLOWED_KEYS,
     CompanySettings,
+    PlatformSettings,
     RatesConfig,
     TaxConfig,
     WorklogDefinitions,
+    validate_allowed_email_domain,
     validate_member_settings,
 )
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-from schemas import limit_company_json, normalize_company_name, read_company_settings
+from schemas import limit_company_json, normalize_company_name, read_company_platform_settings, read_company_settings
 
 
 class V2Model(BaseModel):
@@ -32,13 +37,14 @@ class CompanyCreateV2(V2Model):
     is_active: bool = True
     is_managed: bool = False
     settings: CompanySettings | None = None
+    platform_settings: PlatformSettings | None = None
 
     @field_validator("name")
     @classmethod
     def _validate_name(cls, v: str) -> str:
         return normalize_company_name(v)
 
-    @field_validator("settings", "worklog_definitions", mode="before")
+    @field_validator("settings", "platform_settings", "worklog_definitions", mode="before")
     @classmethod
     def _limit_json(cls, v: Any) -> Any:
         return limit_company_json(v)
@@ -51,6 +57,7 @@ class CompanyUpdateV2(V2Model):
     is_active: bool | None = None
     is_managed: bool | None = None
     settings: CompanySettings | None = None
+    platform_settings: PlatformSettings | None = None
     # Solo para auditoria (motivo de suspension, etc.). No se persiste en la empresa.
     reason: str | None = Field(None, max_length=500)
 
@@ -59,7 +66,7 @@ class CompanyUpdateV2(V2Model):
     def _validate_name(cls, v: str | None) -> str:
         return normalize_company_name(v)
 
-    @field_validator("settings", "worklog_definitions", mode="before")
+    @field_validator("settings", "platform_settings", "worklog_definitions", mode="before")
     @classmethod
     def _limit_json(cls, v: Any) -> Any:
         return limit_company_json(v)
@@ -72,10 +79,32 @@ class CompanyUpdateV2(V2Model):
             raise ValueError("Debe ser true o false")
         return v
 
-    @field_validator("tax_config", "worklog_definitions", "settings", mode="before")
+    @field_validator("tax_config", "worklog_definitions", "settings", "platform_settings", mode="before")
     @classmethod
     def _reject_null_json(cls, v: Any) -> Any:
         # Un null explicito llegaria a la persistencia como None y provocaria un 500: se omite el campo para no cambiarlo.
+        if v is None:
+            raise ValueError("No puede ser null: omite el campo para no modificarlo")
+        return v
+
+
+class CompanyManagerUpdateV2(V2Model):
+    """Edicion de ajustes de empresa por el manager (R-EMP-08, R-ACC-72, R-ACC-73)."""
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    tax_config: TaxConfig | None = None
+    worklog_definitions: WorklogDefinitions | None = None
+    settings: CompanySettings | None = None
+
+    @field_validator("settings", "worklog_definitions", mode="before")
+    @classmethod
+    def _limit_json(cls, v: Any) -> Any:
+        return limit_company_json(v)
+
+    @field_validator("tax_config", "worklog_definitions", "settings", mode="before")
+    @classmethod
+    def _reject_null_json(cls, v: Any) -> Any:
         if v is None:
             raise ValueError("No puede ser null: omite el campo para no modificarlo")
         return v
@@ -112,8 +141,24 @@ class CompanyFull(V2Model):
     tax_config: dict[str, Any]
     worklog_definitions: dict[str, Any]
     settings: dict[str, Any]
+    platform_settings: dict[str, Any]
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class CompanyManagerSettingsOut(V2Model):
+    """Ajustes de empresa visibles y editables por el manager (R-EMP-08, R-EMP-45, R-ACC-72)."""
+
+    tax_config: dict[str, float] = {}
+    worklog_definitions: dict[str, Any] = {}
+    settings: dict[str, Any]
+
+
+class WorklogDefinitionUsageOut(V2Model):
+    """Uso en BD de un tipo de turno (para permitir borrado seguro o solo desactivacion, R-EMP-41)."""
+
+    work_logs_count: int = 0
+    member_rates_count: int = 0
 
 
 class CompanyFullWithMembership(CompanyFull):
@@ -143,6 +188,11 @@ class MemberDeleteOut(V2Model):
 class MemberAddIn(V2Model):
     email: EmailStr
 
+    @field_validator("email")
+    @classmethod
+    def _validate_email_domain(cls, value: EmailStr) -> str:
+        return validate_allowed_email_domain(str(value))
+
 
 class MemberStatusIn(V2Model):
     is_active: bool
@@ -171,8 +221,47 @@ class MemberOrderIn(V2Model):
     user_ids: list[UUID] = Field(..., max_length=500)
 
 
+class InvitationCreateIn(V2Model):
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email_domain(cls, value: EmailStr) -> str:
+        return validate_allowed_email_domain(str(value))
+
+
+class InvitationAcceptIn(V2Model):
+    token: str = Field(..., min_length=1, max_length=512)
+
+
+class InvitationOut(V2Model):
+    id: UUID
+    company_id: UUID
+    email: str
+    status: Literal["pending", "accepted", "cancelled", "expired"]
+    invited_by_user_id: UUID
+    invited_by_name: str | None = None
+    expires_at: datetime
+    accepted_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class InvitationPreviewOut(V2Model):
+    company_id: UUID
+    company_name: str
+    status: Literal["pending"]
+    expires_at: datetime
+
+
+class InvitationAcceptOut(V2Model):
+    company_id: UUID
+    company_name: str
+    membership: MemberOut
+
+
 class CompanyReduced(V2Model):
-    """Vista reducida: no expone is_active, allowed_rates ni cost_markup."""
+    """Vista reducida: no expone is_active, settings ni platform_settings (R-ACC-55, R-EMP-49)."""
 
     id: UUID
     name: str
@@ -182,22 +271,22 @@ class CompanyReduced(V2Model):
     rates_config: dict[str, Any] | None = None
     worklog_definitions: dict[str, Any] = {}
     tax_config: dict[str, float] = {}
-    settings: dict[str, Any]
+
+
+class MyCompanyOut(V2Model):
+    """Selector de empresas (`GET /v2/me/companies`): solo id, name y role (R-ACC-81)."""
+
+    id: UUID
+    name: str
+    role: str
+
+
+def my_company_out(view: CompanyView) -> MyCompanyOut:
+    role = view.member.role.value if view.member is not None else view.role
+    return MyCompanyOut(id=view.company.id, name=view.company.name, role=role or "worker")
 
 
 # --- Conversion desde el dominio ---
-
-
-def _reduced_settings(company_settings: Any, member_settings: Any) -> dict[str, Any]:
-    merged_company = read_company_settings(company_settings)
-    raw_member = member_settings if isinstance(member_settings, dict) else {}
-    merged = {
-        **merged_company,
-        **{key: value for key, value in raw_member.items() if key in MEMBER_SETTINGS_ALLOWED_KEYS},
-    }
-    member_part = {key: value for key, value in merged.items() if key in MEMBER_SETTINGS_ALLOWED_KEYS}
-    company_part = {key: value for key, value in merged.items() if key not in MEMBER_SETTINGS_ALLOWED_KEYS}
-    return {**CompanySettings.from_db(company_part).ui_view(), **member_part}
 
 
 def _full_fields(company) -> dict[str, Any]:
@@ -209,9 +298,18 @@ def _full_fields(company) -> dict[str, Any]:
         "tax_config": company.tax_config or {},
         "worklog_definitions": company.worklog_definitions or {},
         "settings": read_company_settings(company.settings),
+        "platform_settings": read_company_platform_settings(getattr(company, "platform_settings", None)),
         "created_at": company.created_at,
         "updated_at": company.updated_at,
     }
+
+
+def company_manager_settings_out(company) -> CompanyManagerSettingsOut:
+    return CompanyManagerSettingsOut(
+        tax_config=company.tax_config or {},
+        worklog_definitions=company.worklog_definitions or {},
+        settings=read_company_settings(company.settings),
+    )
 
 
 def company_full(company) -> CompanyFull:
@@ -247,7 +345,6 @@ def company_reduced(view: CompanyView) -> CompanyReduced:
         rates_config=member.rates_config if member is not None else None,
         worklog_definitions=company.worklog_definitions or {},
         tax_config=company.tax_config or {},
-        settings=_reduced_settings(company.settings, member.settings if member is not None else None),
     )
 
 
@@ -280,3 +377,36 @@ def member_out(detail: MemberDetail) -> MemberOut:
 
 def company_full_with_members(item: CompanyWithMembers) -> CompanyFullWithMembers:
     return CompanyFullWithMembers(**_full_fields(item.company), members=[_member_v2(m) for m in item.members])
+
+
+def invitation_out(view: InvitationView) -> InvitationOut:
+    inv = view.invitation
+    return InvitationOut(
+        id=inv.id,
+        company_id=inv.company_id,
+        email=inv.email,
+        status=inv.status_at(),
+        invited_by_user_id=inv.invited_by_user_id,
+        invited_by_name=view.invited_by_name,
+        expires_at=inv.expires_at,
+        accepted_at=inv.accepted_at,
+        cancelled_at=inv.cancelled_at,
+        created_at=inv.created_at,
+    )
+
+
+def invitation_preview_out(preview: PreviewInvitationResult) -> InvitationPreviewOut:
+    return InvitationPreviewOut(
+        company_id=preview.company.id,
+        company_name=preview.company.name,
+        status="pending",
+        expires_at=preview.invitation.expires_at,
+    )
+
+
+def invitation_accept_out(result: AcceptInvitationResult) -> InvitationAcceptOut:
+    return InvitationAcceptOut(
+        company_id=result.company.id,
+        company_name=result.company.name,
+        membership=member_out(result.detail),
+    )

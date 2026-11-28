@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { TwoFactorCard } from "@/components/auth/two-factor-card";
+import { LegalFooter } from "@/components/legal-footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -35,11 +36,11 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { getUserRates, updateUserRates } from "@/lib/api/settings";
-import { getMyCompanies } from "@/lib/api/companies";
+import { getCompany } from "@/lib/api/companies";
 import { updateMe, changePassword } from "@/lib/api/users";
 import { useAuth } from "@/context/AuthContext";
 import { Company, CompanyMember } from "@/lib/types";
-import { TaxOverridesFields, compactTaxOverrides } from "@/components/admin/tax-overrides-fields";
+import { TaxOverridesFields, compactTaxOverrides, exceedsMaxTaxSum } from "@/components/admin/tax-overrides-fields";
 
 // User Info Form
 const userFormSchema = z.object({
@@ -74,13 +75,12 @@ export default function ProfilePage() {
 
 
 
-  const { data: myCompanies = [] } = useQuery({
-    queryKey: ["myCompanies"],
-    queryFn: getMyCompanies,
-  });
-
   const activeCompanyId = user?.activeCompanyId;
-  const currentCompany = myCompanies.find((c: Company) => c.id === activeCompanyId);
+  const { data: currentCompany } = useQuery({
+    queryKey: ["company", activeCompanyId],
+    queryFn: () => getCompany(activeCompanyId as string),
+    enabled: Boolean(activeCompanyId),
+  });
   const worklogDefinitions = currentCompany?.worklogDefinitions || {};
 
   const isCompanyManaged = Boolean(currentCompany?.isManaged);
@@ -238,6 +238,15 @@ export default function ProfilePage() {
       toast({
         title: "Acción no permitida",
         description: "Esta empresa está en modo gestionado. Las tarifas son administradas por la dirección.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (exceedsMaxTaxSum(currentCompany?.taxConfig, data.taxOverrides)) {
+      toast({
+        title: "Error de validacion",
+        description: "La suma efectiva de impuestos no puede superar el 100%.",
         variant: "destructive"
       });
       return;
@@ -527,6 +536,7 @@ export default function ProfilePage() {
                                       value={field.value || {}}
                                       onChange={field.onChange}
                                       disabled={!canEditRates}
+                                      isManaged={isCompanyManaged}
                                     />
                                     <FormMessage />
                                   </FormItem>
@@ -551,6 +561,10 @@ export default function ProfilePage() {
             </Card>
 
         </div>
+      </div>
+
+      <div className="border-t border-slate-200 pt-4">
+        <LegalFooter />
       </div>
     </div>
   );

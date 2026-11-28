@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getModule, updateModule } from "@/lib/api/modules";
 import { getSubscriptions, createSubscription, updateSubscription } from "@/lib/api/modules";
 import { getCompanies } from "@/lib/api/companies";
-import { getUsers } from "@/lib/api/users";
+import { AxiosError } from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,8 +28,6 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
     const [moduleForm, setModuleForm] = useState({
         name: "",
         description: "",
-        targetScope: "both" as "company" | "user" | "both",
-        priceMonthly: "" as string | number,
         isActive: true,
     });
 
@@ -37,8 +35,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
     const [editingSub, setEditingSub] = useState<ModuleSubscription | null>(null);
 
     const [subForm, setSubForm] = useState({
-        scope: "company" as "company" | "user",
-        targetId: "",
+        companyId: "",
         status: "active",
         expiresAt: "",
         notes: "",
@@ -67,11 +64,6 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
         queryFn: getCompanies,
     });
 
-    const { data: users = [] } = useQuery({
-        queryKey: ["users"],
-        queryFn: getUsers,
-    });
-
     // Sincronizar formulario de módulo
     useEffect(() => {
         if (module) {
@@ -79,8 +71,6 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
             setModuleForm({
                 name: module.name,
                 description: module.description || "",
-                targetScope: module.targetScope,
-                priceMonthly: module.priceMonthly != null ? module.priceMonthly : "",
                 isActive: module.isActive,
             });
         }
@@ -101,10 +91,10 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["subscriptions", { moduleId }] });
             setShowSubForm(false);
-            setSubForm({ scope: "company", targetId: "", status: "active", expiresAt: "", notes: "" });
+            setSubForm({ companyId: "", status: "active", expiresAt: "", notes: "" });
             toast.success("Suscripción registrada correctamente.");
         },
-        onError: () => toast.error("Error al registrar la suscripción."),
+        onError: (e: AxiosError<{ detail?: string }>) => toast.error(e?.response?.data?.detail ?? "Error al registrar la suscripción."),
     });
 
     const editSubMutation = useMutation({
@@ -113,10 +103,10 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
             queryClient.invalidateQueries({ queryKey: ["subscriptions", { moduleId }] });
             setEditingSub(null);
             setShowSubForm(false);
-            setSubForm({ scope: "company", targetId: "", status: "active", expiresAt: "", notes: "" });
+            setSubForm({ companyId: "", status: "active", expiresAt: "", notes: "" });
             toast.success("Suscripción actualizada correctamente.");
         },
-        onError: () => toast.error("Error al actualizar la suscripción."),
+        onError: (e: AxiosError<{ detail?: string }>) => toast.error(e?.response?.data?.detail ?? "Error al actualizar la suscripción."),
     });
 
     const cancelSubMutation = useMutation({
@@ -133,15 +123,13 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
         updateModuleMutation.mutate({
             name: moduleForm.name,
             description: moduleForm.description,
-            targetScope: moduleForm.targetScope,
-            priceMonthly: moduleForm.priceMonthly !== "" ? Number(moduleForm.priceMonthly) : null,
             isActive: moduleForm.isActive,
         });
     };
 
     const handleSaveSubscription = () => {
-        if (!subForm.targetId && !editingSub) {
-            toast.error("Por favor, selecciona una entidad para la suscripción.");
+        if (!subForm.companyId && !editingSub) {
+            toast.error("Por favor, selecciona una empresa para la suscripción.");
             return;
         }
 
@@ -157,9 +145,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
         } else {
             addSubMutation.mutate({
                 moduleId,
-                scope: subForm.scope,
-                companyId: subForm.scope === "company" ? subForm.targetId : undefined,
-                userId: subForm.scope === "user" ? subForm.targetId : undefined,
+                companyId: subForm.companyId,
                 status: subForm.status,
                 expiresAt: parseDate(subForm.expiresAt) || undefined,
                 notes: subForm.notes || undefined,
@@ -170,8 +156,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
     const handleOpenEditSub = (sub: ModuleSubscription) => {
         setEditingSub(sub);
         setSubForm({
-            scope: sub.scope,
-            targetId: sub.scope === "company" ? (sub.companyId || "") : (sub.userId || ""),
+            companyId: sub.companyId || "",
             status: sub.status,
             expiresAt: sub.expiresAt ? sub.expiresAt.substring(0, 10) : "",
             notes: sub.notes || "",
@@ -180,16 +165,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
     };
 
     const getAssigneeName = (sub: ModuleSubscription) => {
-        if (sub.scope === "company") {
-            return sub.company?.name ?? (sub.companyId ? `Empresa: ${sub.companyId.substring(0, 8)}...` : "Empresa sin ID");
-        } else {
-            const u = sub.user;
-            if (!u) {
-                return sub.userId ? `Usuario: ${sub.userId.substring(0, 8)}...` : "Usuario sin ID";
-            }
-            const fullName = `${u.firstName || ""} ${u.lastName || ""}`.trim();
-            return fullName ? `${fullName} (${u.email})` : u.email;
-        }
+        return sub.company?.name ?? (sub.companyId ? `Empresa: ${sub.companyId.substring(0, 8)}...` : "Empresa sin ID");
     };
 
     if (loadingModule) {
@@ -245,7 +221,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
                             <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
                                 <Sparkles className="h-4 w-4 text-indigo-500" /> Datos del Módulo
                             </CardTitle>
-                            <CardDescription className="text-xs">Actualiza los datos visuales y de alcance del catálogo</CardDescription>
+                            <CardDescription className="text-xs">Actualiza los datos del catálogo de módulos</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-1">
@@ -272,34 +248,6 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
                                     onChange={e => setModuleForm(p => ({ ...p, description: e.target.value }))}
                                     className="min-h-[100px] bg-slate-50/50 focus-visible:ring-indigo-500 text-sm leading-relaxed"
                                 />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <Label className="text-xs font-bold text-slate-600">Alcance</Label>
-                                    <Select
-                                        value={moduleForm.targetScope}
-                                        onValueChange={(v: "company" | "user" | "both") => setModuleForm(p => ({ ...p, targetScope: v }))}
-                                    >
-                                        <SelectTrigger className="bg-slate-50/50">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="both">Empresa y Usuario</SelectItem>
-                                            <SelectItem value="company">Solo Empresa</SelectItem>
-                                            <SelectItem value="user">Solo Usuario</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-xs font-bold text-slate-600">Precio mensual (€)</Label>
-                                    <Input
-                                        type="number"
-                                        value={moduleForm.priceMonthly}
-                                        onChange={e => setModuleForm(p => ({ ...p, priceMonthly: e.target.value }))}
-                                        placeholder="0.00"
-                                        className="bg-slate-50/50 focus-visible:ring-indigo-500"
-                                    />
-                                </div>
                             </div>
                             <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-2">
                                 <div className="space-y-0.5">
@@ -336,9 +284,8 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
                                 size="sm"
                                 disabled={!module.isActive || showSubForm}
                                 onClick={() => {
-                                    const defaultScope = moduleForm.targetScope === "both" ? "company" : moduleForm.targetScope;
                                     setEditingSub(null);
-                                    setSubForm({ scope: defaultScope, targetId: "", status: "active", expiresAt: "", notes: "" });
+                                    setSubForm({ companyId: "", status: "active", expiresAt: "", notes: "" });
                                     setShowSubForm(true);
                                 }}
                                 className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs"
@@ -365,62 +312,25 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ moduleI
                                         </Button>
                                     </div>
                                     <div className="space-y-3">
-                                        {/* Scope Select - Solo si el alcance general es 'both' y es creación */}
-                                        {moduleForm.targetScope === "both" && !editingSub && (
-                                            <div className="space-y-1">
-                                                <Label className="text-xs font-bold text-slate-600">Tipo de suscripción</Label>
-                                                <Select
-                                                    value={subForm.scope}
-                                                    onValueChange={(v: "company" | "user") => setSubForm(p => ({ ...p, scope: v, targetId: "" }))}
-                                                >
-                                                    <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="company">Empresa</SelectItem>
-                                                        <SelectItem value="user">Usuario</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                        )}
-
                                         {/* Target Entity Selector - Solo en creación, en edición se muestra lectura */}
                                         {!editingSub ? (
                                             <div className="space-y-1">
-                                                <Label className="text-xs font-bold text-slate-600">
-                                                    {subForm.scope === "company" ? "Seleccionar Empresa" : "Seleccionar Usuario"}
-                                                </Label>
-                                                {subForm.scope === "company" ? (
-                                                    <Select
-                                                        value={subForm.targetId}
-                                                        onValueChange={v => setSubForm(p => ({ ...p, targetId: v }))}
-                                                    >
-                                                        <SelectTrigger className="bg-white focus:ring-indigo-500">
-                                                            <SelectValue placeholder="Selecciona una empresa..." />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {companies.map(c => (
-                                                                <SelectItem key={c.id} value={c.id}>
-                                                                    {c.name}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                ) : (
-                                                    <Select
-                                                        value={subForm.targetId}
-                                                        onValueChange={v => setSubForm(p => ({ ...p, targetId: v }))}
-                                                    >
-                                                        <SelectTrigger className="bg-white focus:ring-indigo-500">
-                                                            <SelectValue placeholder="Selecciona un usuario..." />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {users.map(u => (
-                                                                <SelectItem key={u.id} value={u.id}>
-                                                                    {u.firstName || u.lastName ? `${u.firstName || ""} ${u.lastName || ""}`.trim() : u.email} ({u.email})
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                )}
+                                                <Label className="text-xs font-bold text-slate-600">Seleccionar Empresa</Label>
+                                                <Select
+                                                    value={subForm.companyId}
+                                                    onValueChange={v => setSubForm(p => ({ ...p, companyId: v }))}
+                                                >
+                                                    <SelectTrigger className="bg-white focus:ring-indigo-500">
+                                                        <SelectValue placeholder="Selecciona una empresa..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {companies.map(c => (
+                                                            <SelectItem key={c.id} value={c.id}>
+                                                                {c.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
                                             </div>
                                         ) : (
                                             <div>

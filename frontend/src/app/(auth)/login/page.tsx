@@ -30,6 +30,13 @@ function twoFactorErrorMessage(err: unknown): string {
   return "Código incorrecto o expirado"
 }
 
+// Mensaje de error segun el estado devuelto por /token (R-ACC-10)
+function loginErrorMessage(err: unknown): string {
+  const status = (err as { response?: { status?: number } })?.response?.status
+  if (status === 403) return "Tu cuenta ha sido suspendida. Contacta con soporte"
+  return "Credenciales inválidas, código incorrecto o error de conexión"
+}
+
 export default function LoginPage() {
   const { login, devLogin, verify2FA } = useAuth()
   const router = useRouter()
@@ -75,18 +82,29 @@ export default function LoginPage() {
     };
   }, []);
 
+  const getNextPath = () => {
+    if (typeof window === "undefined") return undefined
+    const next = new URLSearchParams(window.location.search).get("next")
+    return next && next.startsWith("/") && !next.startsWith("//") ? next : undefined
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
+    const nextPath = getNextPath()
 
     try {
       if (showTwoFactor) {
-        await verify2FA(twoFactorCode, getLastCompanyId(LAST_COMPANY_KEY) ?? undefined);
+        if (nextPath) {
+          await verify2FA(twoFactorCode, getLastCompanyId(LAST_COMPANY_KEY) ?? undefined, nextPath)
+        } else {
+          await verify2FA(twoFactorCode, getLastCompanyId(LAST_COMPANY_KEY) ?? undefined)
+        }
       } else if (isDevMode && (!email || !password || email === devEmail)) {
         await devLogin();
       } else {
-        const result = await login(email, password);
+        const result = nextPath ? await login(email, password, nextPath) : await login(email, password);
         if (result.requires2FA) {
           setShowTwoFactor(true);
         }
@@ -95,7 +113,7 @@ export default function LoginPage() {
       setError(
         showTwoFactor
           ? twoFactorErrorMessage(err)
-          : "Credenciales inválidas, código incorrecto o error de conexión"
+          : loginErrorMessage(err)
       );
     } finally {
       setIsLoading(false)
@@ -202,8 +220,11 @@ export default function LoginPage() {
                           nextInput?.focus();
                         } else if (val && index === 5 && newCodeStr.length === 6) {
                           setIsLoading(true);
-                          // Small delay to allow state update? passed directly
-                          verify2FA(newCodeStr, getLastCompanyId(LAST_COMPANY_KEY) ?? undefined)
+                          const nextPath = getNextPath();
+                          const verifyCall = nextPath
+                            ? verify2FA(newCodeStr, getLastCompanyId(LAST_COMPANY_KEY) ?? undefined, nextPath)
+                            : verify2FA(newCodeStr, getLastCompanyId(LAST_COMPANY_KEY) ?? undefined);
+                          verifyCall
                             .catch((err) => {
                               setError(twoFactorErrorMessage(err));
                               setTwoFactorCode("");

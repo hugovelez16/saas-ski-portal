@@ -53,6 +53,22 @@ describe("validateTaxRows", () => {
         const rows = Array.from({ length: 21 }, (_, i) => ({ key: `T${i}`, value: "1" }));
         expect(validateTaxRows(rows).global).toBeDefined();
     });
+
+    it("acepta suma exacta de 100% y rechaza si supera 100%", () => {
+        expect(
+            validateTaxRows([
+                { key: "IRPF", value: "70" },
+                { key: "SS", value: "30" },
+            ]).global
+        ).toBeUndefined();
+
+        expect(
+            validateTaxRows([
+                { key: "IRPF", value: "60" },
+                { key: "SS", value: "50" },
+            ]).global
+        ).toMatch(/100%/);
+    });
 });
 
 describe("conversion de escala", () => {
@@ -114,5 +130,38 @@ describe("TaxConfigBuilder", () => {
         fireEvent.click(screen.getByRole("button", { name: /Guardar/i }));
         expect(onSave).not.toHaveBeenCalled();
         expect(screen.getByText(/duplicado/i)).toBeInTheDocument();
+    });
+
+    it("muestra la suma de porcentajes y avisa y bloquea si supera el 100%", () => {
+        const onSave = vi.fn();
+        render(<TaxConfigBuilder initialValue={{ IRPF: 0.6, SS: 0.5 }} onSave={onSave} />);
+        expect(screen.getByText(/110%/)).toBeInTheDocument();
+        expect(screen.getByRole("alert")).toHaveTextContent(/100%/);
+        fireEvent.click(screen.getByRole("button", { name: /Guardar/i }));
+        expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it("muestra la suma y permite guardar cuando suma exactamente 100%", () => {
+        const onSave = vi.fn();
+        render(<TaxConfigBuilder initialValue={{ IRPF: 0.7, SS: 0.3 }} onSave={onSave} />);
+        expect(screen.getByText(/100%/)).toBeInTheDocument();
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: /Guardar/i }));
+        expect(onSave).toHaveBeenCalledWith({ IRPF: 0.7, SS: 0.3 });
+    });
+
+    it("acepta coma decimal en los porcentajes y calcula correctamente la fraccion 0..1", () => {
+        const onSave = vi.fn();
+        render(<TaxConfigBuilder initialValue={{}} onSave={onSave} />);
+        fireEvent.click(screen.getByRole("button", { name: /Anadir impuesto/i }));
+        const name = screen.getByLabelText(/Nombre del impuesto/i) as HTMLInputElement;
+        const value = screen.getByLabelText(/Valor/i) as HTMLInputElement;
+
+        fireEvent.change(name, { target: { value: "SS" } });
+        fireEvent.change(value, { target: { value: "6,48" } });
+        expect(screen.getByText(/6\.48%/)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: /Guardar/i }));
+        expect(onSave).toHaveBeenCalledWith({ SS: 0.0648 });
     });
 });

@@ -16,7 +16,7 @@ body:
       label: Contexto a leer
       description: Rutas exactas (y seccion si el fichero es largo). Nunca "docs/".
       placeholder: |
-        - docs/empresa/logica-negocio-empresa.md#5-membresia
+        - docs/dominio/membresia.md
         - backend/routers/v2/companies.py
     validations:
       required: true

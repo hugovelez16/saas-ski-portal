@@ -73,13 +73,16 @@ async def reorder_members(
 async def remove_member(
     company_id: UUID,
     user_id: UUID,
-    actor: models.User = Depends(deps.require_platform_admin),
+    ctx: deps.AccessContext = Depends(deps.require_company(access_policy.ROLE_MANAGER)),
     member_repo=Depends(v2_deps.get_member_repository),
     audit_log=Depends(v2_deps.get_audit_log),
 ):
-    """Solo PA. Sin turnos borra la membresia; con turnos la desactiva y conserva los turnos."""
+    """PA: cualquier membresia. Manager: solo workers de su empresa activa (R-MEM-10)."""
     result = await RemoveMemberUseCase(member_repo, audit_log).execute(
-        actor_id=str(actor.id), company_id=str(company_id), user_id=str(user_id)
+        actor_id=str(ctx.user.id),
+        company_id=str(company_id),
+        user_id=str(user_id),
+        actor_is_platform_admin=ctx.is_platform_admin,
     )
     return schemas.MemberDeleteOut(deleted=result.deleted, deactivated=result.deactivated, reason=result.reason)
 
@@ -89,14 +92,19 @@ async def set_member_status(
     company_id: UUID,
     user_id: UUID,
     body: schemas.MemberStatusIn,
-    actor: models.User = Depends(deps.require_platform_admin),
+    ctx: deps.AccessContext = Depends(deps.require_company(access_policy.ROLE_MANAGER)),
+    company_repo=Depends(v2_deps.get_company_repository),
     member_repo=Depends(v2_deps.get_member_repository),
     user_repo=Depends(v2_deps.get_user_repository),
     audit_log=Depends(v2_deps.get_audit_log),
 ):
-    """Solo PA. Reactivar fuerza el rol `worker`."""
-    detail = await SetMemberStatusUseCase(member_repo, user_repo, audit_log).execute(
-        actor_id=str(actor.id), company_id=str(company_id), user_id=str(user_id), is_active=body.is_active
+    """PA: cualquier membresia. Manager: solo workers de su empresa activa. Conserva el rol previo (R-MEM-10 a R-MEM-12)."""
+    detail = await SetMemberStatusUseCase(member_repo, user_repo, audit_log, company_repo).execute(
+        actor_id=str(ctx.user.id),
+        company_id=str(company_id),
+        user_id=str(user_id),
+        is_active=body.is_active,
+        actor_is_platform_admin=ctx.is_platform_admin,
     )
     return schemas.member_out(detail)
 
@@ -107,12 +115,13 @@ async def set_member_role(
     user_id: UUID,
     body: schemas.MemberRoleIn,
     actor: models.User = Depends(deps.require_platform_admin),
+    company_repo=Depends(v2_deps.get_company_repository),
     member_repo=Depends(v2_deps.get_member_repository),
     user_repo=Depends(v2_deps.get_user_repository),
     audit_log=Depends(v2_deps.get_audit_log),
 ):
     """Solo PA. Sin guardia de ultimo manager (E7)."""
-    detail = await SetMemberRoleUseCase(member_repo, user_repo, audit_log).execute(
+    detail = await SetMemberRoleUseCase(member_repo, user_repo, audit_log, company_repo).execute(
         actor_id=str(actor.id), company_id=str(company_id), user_id=str(user_id), role=body.role
     )
     return schemas.member_out(detail)

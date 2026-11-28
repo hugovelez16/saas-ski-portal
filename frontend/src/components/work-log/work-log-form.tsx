@@ -31,33 +31,29 @@ interface WorkLogFormProps {
     setLogType: (type: string) => void;
     companies: any[];
     hideCompanySelector?: boolean;
+    editingType?: string;
 }
 
-export function WorkLogForm({ formData, setFormData, logType, setLogType, companies, hideCompanySelector }: WorkLogFormProps) {
+export function WorkLogForm({ formData, setFormData, logType, setLogType, companies, hideCompanySelector, editingType }: WorkLogFormProps) {
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const { user } = useAuth();
 
     const selectedCompany = companies.find(c => c.id === formData.companyId);
 
-    // SaaS JSON Driven Definitions
-    // Example: { "particular": { "label": "Particular", "fields": ["description", "client"], "options": ["coordination"] } }
     const worklogDefinitions = React.useMemo(() => {
-        return selectedCompany?.worklogDefinitions || {
-            "particular": { "label": "Particular", "fields": ["description"], "options": [] }
+        const raw: Record<string, any> = selectedCompany?.worklogDefinitions || {
+            "particular": { "unit": "hours", "label": "Particular", "options": [], "is_active": true }
         };
-    }, [selectedCompany?.worklogDefinitions]);
+        const filtered: Record<string, any> = {};
+        for (const [key, def] of Object.entries(raw)) {
+            if (def?.is_active !== false || key === editingType) {
+                filtered[key] = def;
+            }
+        }
+        return filtered;
+    }, [selectedCompany?.worklogDefinitions, editingType]);
 
     const currentDefinition = worklogDefinitions[logType] || null;
-
-    useEffect(() => {
-        console.log("DEBUG: WorkLogForm Render", {
-            companyName: selectedCompany?.name,
-            logType,
-            availableDefs: Object.keys(worklogDefinitions),
-            currentDefinitionFields: currentDefinition?.fields,
-            hasDescription: currentDefinition?.fields?.includes('description')
-        });
-    }, [selectedCompany, logType, worklogDefinitions, currentDefinition]);
 
     useEffect(() => {
         if (companies.length > 0 && !formData.companyId) {
@@ -240,32 +236,6 @@ export function WorkLogForm({ formData, setFormData, logType, setLogType, compan
                     placeholder="Descripción general"
                 />
             </div>
-
-            {currentDefinition?.fields?.map((fieldName: string) => (
-                <div key={fieldName} className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
-                    <Label htmlFor={fieldName} className="text-left sm:text-right">{fieldName}</Label>
-                    <Input
-                        id={fieldName}
-                        name={fieldName}
-                        className="w-full sm:col-span-3"
-                        value={formData.extraData?.datos?.[fieldName] || ''}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            setFormData(prev => ({
-                                ...prev,
-                                extraData: {
-                                    ...(prev.extraData || {}),
-                                    datos: {
-                                        ...(prev.extraData?.datos || {}),
-                                        [fieldName]: val
-                                    }
-                                }
-                            }));
-                        }}
-                        placeholder={fieldName}
-                    />
-                </div>
-            ))}
 
             {currentDefinition?.options?.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-2 sm:gap-4">

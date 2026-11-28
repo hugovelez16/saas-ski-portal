@@ -8,10 +8,12 @@ import {
 } from "@/components/admin/tax-overrides-fields";
 
 describe("helpers de overrides", () => {
-    it("parsePercentText: vacio es null, 0 es valido, fuera de rango es NaN", () => {
+    it("parsePercentText: vacio es null, 0 es valido, acepta coma o punto y fuera de rango es NaN", () => {
         expect(parsePercentText("")).toBeNull();
         expect(parsePercentText("0")).toBe(0);
         expect(parsePercentText("6.48")).toBe(0.0648);
+        expect(parsePercentText("6,48")).toBe(0.0648);
+        expect(parsePercentText("6,4,8")).toBeNaN();
         expect(parsePercentText("101")).toBeNaN();
         expect(parsePercentText("-1")).toBeNaN();
         expect(parsePercentText("abc")).toBeNaN();
@@ -68,5 +70,31 @@ describe("TaxOverridesFields", () => {
         const last = onChange.mock.calls.at(-1)?.[0];
         expect(Number.isNaN(last.IRPF)).toBe(true);
         expect(screen.getByText(/entre 0 y 100/i)).toBeInTheDocument();
+    });
+
+    it("muestra la suma efectiva y avisa si supera el 100%", () => {
+        render(
+            <TaxOverridesFields
+                companyTaxConfig={{ IRPF: 0.6, SS: 0.2 }}
+                value={{ Extra: 0.3 }}
+                onChange={() => {}}
+            />
+        );
+        expect(screen.getByText(/110%/)).toBeInTheDocument();
+        expect(screen.getByRole("alert")).toHaveTextContent(/100%/);
+    });
+
+    it("conserva impuestos propios como no editables cuando isManaged es true", () => {
+        render(
+            <TaxOverridesFields
+                companyTaxConfig={{ IRPF: 0.15 }}
+                value={{ Mutua: 0.05 }}
+                onChange={() => {}}
+                isManaged={true}
+            />
+        );
+        const mutuaInput = screen.getByLabelText(/Mutua/) as HTMLInputElement;
+        expect(mutuaInput.disabled).toBe(true);
+        expect(screen.getByText(/no editable en modo gestionado/i)).toBeInTheDocument();
     });
 });

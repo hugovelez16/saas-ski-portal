@@ -43,7 +43,7 @@ gh issue list --repo hugovelez16/saas-ski-portal --state all --search "<palabras
 | Idea sin refinar o futura | `idea.yml` | `### Problema`, `### Propuesta`, `### Prioridad sugerida` |
 
 En "Contexto a leer" van rutas exactas con seccion, por ejemplo
-`docs/empresa/logica-negocio-empresa.md#5-membresia`, nunca "docs/". El indice
+`docs/dominio/membresia.md`, nunca "docs/". El indice
 de documentacion esta en `docs/README.md`.
 
 ### 3. Titulo y labels

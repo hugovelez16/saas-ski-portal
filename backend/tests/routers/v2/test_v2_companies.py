@@ -37,8 +37,8 @@ VIEW_AS_MANAGER = {"view_as": "manager"}
 
 ESCUELA_NORTE = "Escuela Norte"
 TAX_CONFIG = {"social_security": 0.0648}
-DEFINITIONS = {"particular": {"unit": "hours", "label": "Particular", "fields": []}}
-SETTINGS = {"modules": {"daily_report": True}, "allowed_rates": ["particular"]}
+DEFINITIONS = {"particular": {"unit": "hours", "label": "Particular", "options": [], "is_active": True}}
+SETTINGS = {"default_is_gross": False}
 
 # Claves de estructura del contrato (CompanyFull, CompanyReduced, miembro y usuario del miembro).
 FULL_KEYS = {
@@ -49,6 +49,7 @@ FULL_KEYS = {
     "tax_config",
     "worklog_definitions",
     "settings",
+    "platform_settings",
     "created_at",
     "updated_at",
 }
@@ -63,9 +64,7 @@ REDUCED_KEYS = {
     "rates_config",
     "worklog_definitions",
     "tax_config",
-    "settings",
 }
-REDUCED_SETTINGS_KEYS = {"worker_experience", "ui_customization", "modules", "business_logic"}
 MEMBER_KEYS = {
     "user_id",
     "company_id",
@@ -186,8 +185,8 @@ def _assert_no_leak(body):
 def _assert_reduced(body, *, role):
     assert set(body) == REDUCED_KEYS, sorted(body)
     assert "is_active" not in body
-    assert set(body["settings"]) == REDUCED_SETTINGS_KEYS, sorted(body["settings"])
-    assert "allowed_rates" not in body["settings"]
+    assert "settings" not in body
+    assert "platform_settings" not in body
     assert body["role"] == role
     _assert_no_leak(body)
     _assert_snake_case(body)
@@ -342,6 +341,7 @@ def test_create_company_accepts_empty_tax_config(client, world):
         pytest.param({"": 0.1}, id="empty_tax_name"),
         pytest.param({"x" * 51: 0.1}, id="tax_name_51_chars"),
         pytest.param({f"t{i}": 0.01 for i in range(21)}, id="more_than_20_taxes"),
+        pytest.param({"irpf": 0.6, "ss": 0.5}, id="tax_sum_above_one"),
     ],
 )
 def test_create_company_rejects_invalid_tax_config(client, db, world, tax_config):
@@ -357,7 +357,7 @@ def test_create_company_rejects_invalid_tax_config(client, db, world, tax_config
 @pytest.mark.parametrize("unit", ["days", "fixed"])
 def test_create_company_accepts_days_and_fixed_worklog_units(client, world, unit):
     as_user(client, world.pa, world.company)
-    definitions = {"guardia": {"unit": unit, "label": "Guardia", "fields": []}}
+    definitions = {"guardia": {"unit": unit, "label": "Guardia", "options": [], "is_active": True}}
 
     resp = client.post(BASE, json={"name": "Turnos", "tax_config": {}, "worklog_definitions": definitions})
 
@@ -368,8 +368,9 @@ def test_create_company_accepts_days_and_fixed_worklog_units(client, world, unit
 @pytest.mark.parametrize(
     "definition",
     [
-        pytest.param({"unit": "weeks", "label": "G", "fields": []}, id="unit_weeks"),
-        pytest.param({"label": "G", "fields": []}, id="missing_unit"),
+        pytest.param({"unit": "weeks", "label": "G"}, id="unit_weeks"),
+        pytest.param({"label": "G"}, id="missing_unit"),
+        pytest.param({"unit": "hours", "label": "G", "fields": []}, id="fields_retirado"),
     ],
 )
 def test_create_company_rejects_invalid_worklog_unit(client, db, world, definition):
@@ -411,11 +412,25 @@ def test_create_company_rejects_null_is_active(client, db, world):
 # (payload v2, accion de auditoria esperada, campo que cambia)
 EVENT_CASES = [
     pytest.param({"tax_config": {"social_security": 0.1}}, "company.tax_config_changed", "tax_config", id="tax_config"),
+    pytest.param({"settings": {"default_is_gross": True}}, "company.settings_changed", "settings", id="settings"),
     pytest.param(
-        {"settings": {"modules": {"coordination": True}}}, "company.settings_changed", "settings", id="settings"
+        {
+            "platform_settings": {
+                "plan": "pro",
+                "limits": {"max_monitors": 10, "max_managers": 2},
+                "modules": {"coordination": True},
+            }
+        },
+        "company.platform_settings_changed",
+        "platform_settings",
+        id="platform_settings",
     ),
     pytest.param(
-        {"worklog_definitions": {"guardia": {"unit": "hours", "label": "Guardia", "fields": []}}},
+        {
+            "worklog_definitions": {
+                "guardia": {"unit": "hours", "label": "Guardia", "options": [], "is_active": True}
+            }
+        },
         "company.worklog_definitions_changed",
         "worklog_definitions",
         id="worklog_definitions",
@@ -429,6 +444,7 @@ EVENT_CASES = [
 OLD_VALUES = {
     "tax_config": TAX_CONFIG,
     "settings": SETTINGS,
+    "platform_settings": {},
     "worklog_definitions": DEFINITIONS,
     "name": ESCUELA_NORTE,
     "is_managed": False,
@@ -512,7 +528,7 @@ def test_put_rejects_reason_longer_than_500_chars(client, db, world):
     assert _audit_count(db) == before
 
 
-@pytest.mark.parametrize("field", ["tax_config", "worklog_definitions", "settings"])
+@pytest.mark.parametrize("field", ["tax_config", "worklog_definitions", "settings", "platform_settings"])
 def test_put_rejects_explicit_null_json_field(client, db, world, field):
     as_user(client, world.pa, world.company)
     before = _audit_count(db)
@@ -531,16 +547,23 @@ def test_put_rejects_explicit_null_json_field(client, db, world, field):
         pytest.param({"is_active": True}, id="same_is_active"),
         pytest.param({"is_managed": False}, id="same_is_managed"),
         pytest.param({"tax_config": TAX_CONFIG}, id="same_tax_config"),
+        pytest.param({"settings": SETTINGS}, id="same_settings"),
+        pytest.param({"worklog_definitions": DEFINITIONS}, id="same_worklog_definitions"),
+        pytest.param(
+            {"platform_settings": {"plan": None, "limits": {"max_monitors": None, "max_managers": None}, "modules": {}}},
+            id="same_platform_settings_defaults",
+        ),
     ],
 )
-def test_put_without_changes_returns_422_and_writes_no_audit(client, db, world, payload):
+def test_put_without_changes_returns_200_and_writes_no_audit(client, db, world, payload):
     as_user(client, world.pa, world.company)
     before = _audit_count(db)
 
     resp = client.put(f"{BASE}/{world.company.id}", json=payload)
 
-    assert resp.status_code == 422, resp.text
-    assert resp.json()["detail"] == MSG_NO_CHANGES
+    assert resp.status_code == 200, resp.text
+    _assert_full(resp.json())
+    assert resp.json()["name"] == ESCUELA_NORTE
     assert _audit_count(db) == before
 
 
@@ -554,6 +577,7 @@ def test_put_without_changes_returns_422_and_writes_no_audit(client, db, world, 
         pytest.param({"name": "x" * 121}, id="name_121_chars"),
         pytest.param({"settings": {"cost_markup": 1.2}}, id="cost_markup_in_settings"),
         pytest.param({"tax_config": {"iva": 2}}, id="tax_rate_above_one"),
+        pytest.param({"tax_config": {"irpf": 0.7, "ss": 0.4}}, id="tax_sum_above_one"),
         pytest.param({"worklog_definitions": {"g": {"unit": "weeks", "label": "G"}}}, id="invalid_unit"),
     ],
 )
@@ -656,8 +680,6 @@ def test_delete_company_with_subscription_lists_subscriptions(client, db, world)
         models.ModuleSubscription(
             module_id=module.id,
             company_id=subscribed.id,
-            user_id=None,
-            scope=models.SubscriptionScope.company,
             status=models.SubscriptionStatus.active,
         )
     )
@@ -681,8 +703,6 @@ def test_delete_company_lists_all_blockers_separated_by_comma(client, db, world)
         models.ModuleSubscription(
             module_id=module.id,
             company_id=cid,
-            user_id=None,
-            scope=models.SubscriptionScope.company,
             status=models.SubscriptionStatus.active,
         )
     )
@@ -716,7 +736,12 @@ def test_get_company_pa_acting_gets_full_view(client, world):
     assert resp.status_code == 200, resp.text
     _assert_full(resp.json())
     assert resp.json()["id"] == str(world.company.id)
-    assert resp.json()["settings"]["allowed_rates"] == ["particular"]
+    assert resp.json()["settings"] == {"default_is_gross": False}
+    assert resp.json()["platform_settings"] == {
+        "plan": None,
+        "limits": {"max_monitors": None, "max_managers": None},
+        "modules": {},
+    }
 
 
 @pytest.mark.parametrize(
@@ -741,9 +766,8 @@ def test_get_company_gets_reduced_view_for_non_acting_pa(client, world, actor, r
     assert body["is_active_member"] is True
     assert body["worklog_definitions"] == DEFINITIONS
     assert body["tax_config"] == TAX_CONFIG
-    assert set(body["settings"]) == REDUCED_SETTINGS_KEYS
-    assert body["settings"]["modules"] == {"daily_report": True}
-    assert body["settings"]["business_logic"] == {"price_type": "net"}
+    assert "settings" not in body
+    assert "platform_settings" not in body
 
 
 @pytest.mark.parametrize("actor", ["manager", "worker"])
@@ -950,16 +974,14 @@ def test_every_v2_company_response_is_snake_case(client, world):
 # --- 8. Mi lista de empresas: /v2/me/companies ---
 
 
-def test_me_companies_pa_acting_returns_all_companies_as_full_view(client, db, world):
+def test_me_companies_pa_acting_returns_empty_list(client, db, world):
+    """R-ACC-26 / R-ACC-81: el PA no tiene membresias; lista todas desde /v2/admin/companies."""
     as_user(client, world.pa, world.company)
 
     resp = client.get(ME_COMPANIES)
 
     assert resp.status_code == 200, resp.text
-    assert isinstance(resp.json(), list)
-    assert _ids(resp.json()) == {str(company.id) for company in db.query(models.Company).all()}
-    for item in resp.json():
-        _assert_full(item)
+    assert resp.json() == []
 
 
 def test_me_companies_worker_lists_only_own_active_memberships(client, db, world):
@@ -972,33 +994,26 @@ def test_me_companies_worker_lists_only_own_active_memberships(client, db, world
 
     assert resp.status_code == 200, resp.text
     assert isinstance(resp.json(), list)
-    assert _ids(resp.json()) == {str(world.company.id)}
+    assert resp.json() == [{"id": str(world.company.id), "name": world.company.name, "role": "worker"}]
     assert str(stranger.id) not in _ids(resp.json())
     assert str(world.suspended.id) not in _ids(resp.json())
-    for item in resp.json():
-        _assert_reduced(item, role="worker")
-        assert item["is_active_member"] is True
 
 
-def test_me_companies_manager_lists_own_company_with_manager_role(client, world):
+def test_me_companies_manager_lists_own_company_with_manager_role(client, db, world):
+    second = make_company(db, name="Escuela Secundaria")
+    make_member(db, world.manager, second, role="worker")
     as_user(client, world.manager, world.company)
 
     resp = client.get(ME_COMPANIES)
 
     assert resp.status_code == 200, resp.text
-    assert _ids(resp.json()) == {str(world.company.id)}
-    _assert_reduced(resp.json()[0], role="manager")
-
-
-def test_me_companies_pa_view_as_with_membership_returns_reduced_list(client, db, world):
-    make_member(db, world.pa, world.company, role="manager")
-    as_user(client, world.pa, world.company, claims=VIEW_AS_WORKER)
-
-    resp = client.get(ME_COMPANIES)
-
-    assert resp.status_code == 200, resp.text
-    assert len(resp.json()) == 1
-    _assert_reduced(resp.json()[0], role="manager")
+    by_id = {item["id"]: item for item in resp.json()}
+    assert by_id == {
+        str(world.company.id): {"id": str(world.company.id), "name": world.company.name, "role": "manager"},
+        str(second.id): {"id": str(second.id), "name": second.name, "role": "worker"},
+    }
+    for item in resp.json():
+        assert set(item) == {"id", "name", "role"}
 
 
 def test_me_companies_pa_view_as_without_membership_returns_empty_list(client, world):
@@ -1141,13 +1156,14 @@ def test_user_companies_forbidden_for_worker_and_pa_view_as(client, world, actor
     [
         pytest.param({"tax_config": {"social_security": 0.1}}, id="tax_config"),
         pytest.param(
-            {"worklog_definitions": {"guardia": {"unit": "hours", "label": "G", "fields": []}}},
+            {"worklog_definitions": {"guardia": {"unit": "hours", "label": "G"}}},
             id="worklog_definitions",
         ),
-        pytest.param({"settings": {"modules": {"daily_report": False}, "allowed_rates": ["particular"]}}, id="settings"),
+        pytest.param({"settings": {"default_is_gross": True}}, id="settings"),
+        pytest.param({"platform_settings": {"plan": "pro"}}, id="platform_settings"),
     ],
 )
-def test_manager_cannot_change_tax_worklog_or_settings(client, db, world, payload):
+def test_manager_cannot_change_company_via_pa_put_endpoint(client, db, world, payload):
     cid = world.company.id
     before = copy.deepcopy(
         {
@@ -1205,21 +1221,20 @@ def test_suspension_blocks_manager_with_token_still_valid(client, db, world):
     assert resp.status_code == 403, resp.text
 
 
-def test_me_companies_pa_acting_reports_is_active_and_is_managed(client, db, world):
+def test_admin_companies_pa_acting_reports_is_active_and_is_managed(client, db, world):
     flagged = make_company(db, name="Suspendida y gestionada", is_active=False, is_managed=True)
-    make_member(db, world.pa, flagged, role="manager")
     as_user(client, world.pa)
 
-    resp = client.get(ME_COMPANIES)
+    resp = client.get("/v2/admin/companies")
 
     assert resp.status_code == 200, resp.text
-    entries = {item["id"]: item for item in resp.json()}
+    entries = {item["id"]: item for item in resp.json()["items"]}
     assert entries[str(flagged.id)]["is_active"] is False
     assert entries[str(flagged.id)]["is_managed"] is True
 
 
-def test_member_settings_only_expose_whitelisted_keys(client, db, world):
-    """Solo pasan la whitelist de settings del miembro: ui_preferences si; business_logic y allowed_rates no."""
+def test_reduced_endpoints_never_expose_company_or_member_settings(client, db, world):
+    """Ni /v2/me/companies ni /v2/companies/{id} exponen settings de empresa ni platform_settings a no-PA."""
     member = db.query(models.CompanyMember).filter_by(user_id=world.worker.id, company_id=world.company.id).one()
     member.settings = {
         "ui_preferences": {"theme": "dark"},
@@ -1233,12 +1248,11 @@ def test_member_settings_only_expose_whitelisted_keys(client, db, world):
     detail = client.get(f"{BASE}/{world.company.id}")
 
     assert listed.status_code == 200, listed.text
+    assert set(listed.json()[0]) == {"id", "name", "role"}
     assert detail.status_code == 200, detail.text
-    for body in (listed.json()[0], detail.json()):
-        assert body["settings"]["ui_preferences"] == {"theme": "dark"}
-        # Valor por defecto de la empresa (price_type "net"); el del miembro ("gross") no se expone.
-        assert body["settings"]["business_logic"] == {"price_type": "net"}
-        assert "allowed_rates" not in body["settings"]
+    body = detail.json()
+    assert "settings" not in body
+    assert "platform_settings" not in body
 
 
 def test_user_companies_manager_with_token_where_only_worker_is_403(client, db, world):
@@ -1275,13 +1289,14 @@ SETTINGS_OUTSIDE_CONTRACT = [
     pytest.param({"allow_tutorial": True}, id="allow_tutorial_retirada"),
     pytest.param({"allow_coordination": False}, id="allow_coordination_retirada"),
     pytest.param({"is_managed": True}, id="is_managed_retirada"),
-    pytest.param({"business_logic": {"cost_markup": 0}}, id="cost_markup_retirada"),
-    pytest.param({"billing": {"cost_markup_percent": 32.0}}, id="cost_markup_percent_retirada"),
+    pytest.param({"business_logic": {"price_type": "net"}}, id="business_logic_retirada"),
+    pytest.param({"worker_experience": {"input_mode": "manual_single"}}, id="worker_experience_retirada"),
+    pytest.param({"ui_customization": {"labels": {"worklog": "Turno"}}}, id="ui_customization_retirada"),
+    pytest.param({"modules": {"reports": True}}, id="modules_pertenece_a_plataforma"),
+    pytest.param({"allowed_rates": ["particular"]}, id="allowed_rates_retirada"),
+    pytest.param({"price_type": "net"}, id="price_type_retirada"),
     pytest.param({"clave_inventada": 1}, id="clave_desconocida"),
-    pytest.param({"business_logic": {"price_type": "bruto"}}, id="price_type_fuera_de_enum"),
-    pytest.param({"worker_experience": {"input_mode": "voz"}}, id="input_mode_fuera_de_enum"),
-    pytest.param({"worker_experience": {"allow_manual_amount": "si"}}, id="allow_manual_amount_no_bool"),
-    pytest.param({"ui_customization": {"labels": {"worklog": "x" * 61}}}, id="label_de_61_caracteres"),
+    pytest.param({"default_is_gross": "si"}, id="default_is_gross_no_booleano"),
 ]
 
 
@@ -1298,6 +1313,7 @@ def test_put_rejects_settings_outside_contract_and_keeps_previous(client, db, wo
 
 WORKLOG_DEFINITIONS_OUTSIDE_CONTRACT = [
     pytest.param({"guardia": {"is_range": True, "label": "Guardia"}}, id="sin_unit_con_is_range"),
+    pytest.param({"guardia": {"unit": "hours", "label": "Guardia", "fields": []}}, id="fields_retirado"),
     pytest.param({"guardia": {"unit": "hours", "label": "x" * 61}}, id="label_de_61_caracteres"),
     pytest.param({"guardia": {"unit": "hours", "label": ""}}, id="label_vacio"),
     pytest.param({"": {"unit": "hours", "label": "Guardia"}}, id="clave_vacia"),
@@ -1324,14 +1340,12 @@ def test_get_company_pa_returns_settings_with_defaults(client, db):
     resp = client.get(f"{BASE}/{company.id}")
 
     assert resp.status_code == 200, resp.text
-    settings = resp.json()["settings"]
-    assert settings["business_logic"]["price_type"] == "net"
-    assert "cost_markup" not in settings["business_logic"]
-    assert settings["worker_experience"]["input_mode"] == "manual_single"
-    assert settings["worker_experience"]["allow_manual_amount"] is False
-    assert settings["modules"] == {}
-    labels = settings["ui_customization"]["labels"]
-    assert {key: value for key, value in labels.items() if value is not None} == {}
+    assert resp.json()["settings"] == {"default_is_gross": False}
+    assert resp.json()["platform_settings"] == {
+        "plan": None,
+        "limits": {"max_monitors": None, "max_managers": None},
+        "modules": {},
+    }
 
 
 def test_create_company_rejects_null_tax_config(client, db, world):
@@ -1480,8 +1494,6 @@ def test_worker_with_daily_report_module_in_two_companies_cannot_list_companies(
             models.ModuleSubscription(
                 module_id=module.id,
                 company_id=company.id,
-                user_id=None,
-                scope=models.SubscriptionScope.company,
                 status=models.SubscriptionStatus.active,
             )
         )
@@ -1491,3 +1503,283 @@ def test_worker_with_daily_report_module_in_two_companies_cannot_list_companies(
     resp = client.get(BASE)
 
     assert resp.status_code == 403, resp.text
+
+
+# --- 8. Repaso de dominio (#138): settings de manager, tipos inactivos y borrado seguro ---
+
+
+def test_manager_can_read_and_update_own_company_settings(client, db, world):
+    cid = world.company.id
+    as_user(client, world.manager, world.company)
+
+    get_resp = client.get(f"{BASE}/{cid}/settings")
+    assert get_resp.status_code == 200, get_resp.text
+    assert get_resp.json()["settings"] == {"default_is_gross": False}
+
+    before_audit = _audit_count(db)
+    no_change = client.put(f"{BASE}/{cid}/settings", json={"settings": {"default_is_gross": False}})
+    assert no_change.status_code == 200, no_change.text
+    assert _audit_count(db) == before_audit
+
+    updated = client.put(
+        f"{BASE}/{cid}/settings",
+        json={
+            "settings": {"default_is_gross": True},
+            "tax_config": {"social_security": 0.08},
+            "worklog_definitions": {
+                "particular": {"unit": "hours", "label": "Particular", "options": ["extra"], "is_active": True}
+            },
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert body["settings"] == {"default_is_gross": True}
+    assert body["tax_config"] == {"social_security": 0.08}
+    assert body["worklog_definitions"]["particular"]["options"] == ["extra"]
+    assert _audit_count(db) == before_audit + 3
+
+
+@pytest.mark.parametrize(
+    "forbidden_field",
+    [
+        {"is_active": False},
+        {"is_managed": True},
+        {"name": "Otro Nombre"},
+        {"platform_settings": {"plan": "pro"}},
+    ],
+)
+def test_manager_settings_endpoint_rejects_platform_and_admin_fields(client, world, forbidden_field):
+    as_user(client, world.manager, world.company)
+
+    resp = client.put(f"{BASE}/{world.company.id}/settings", json=forbidden_field)
+
+    assert resp.status_code == 422, resp.text
+
+
+def test_worker_cannot_access_manager_settings_endpoint(client, world):
+    as_user(client, world.worker, world.company)
+
+    assert client.get(f"{BASE}/{world.company.id}/settings").status_code == 403
+    assert client.put(f"{BASE}/{world.company.id}/settings", json={"settings": {"default_is_gross": True}}).status_code == 403
+
+
+def test_manager_cannot_manage_settings_of_other_or_suspended_company(client, db, world):
+    make_member(db, world.manager, world.other, role="manager")
+    as_user(client, world.manager, world.company)
+    other_resp = client.put(f"{BASE}/{world.other.id}/settings", json={})
+    assert other_resp.status_code == 403
+    assert other_resp.json()["detail"] == MSG_SWITCH_COMPANY
+
+    as_user(client, world.manager, world.suspended)
+    susp_resp = client.put(f"{BASE}/{world.suspended.id}/settings", json={})
+    assert susp_resp.status_code == 403
+    assert susp_resp.json()["detail"] == MSG_SUSPENDED
+
+
+def test_deactivated_shift_type_blocks_new_shifts_but_keeps_existing_and_allows_reactivation(client, db, world):
+    cid = world.company.id
+    worker_member = (
+        db.query(models.CompanyMember).filter_by(user_id=world.worker.id, company_id=cid).one()
+    )
+    worker_member.rates_config = {"particular": {"base_rate": 30.0, "is_gross": True, "tax_overrides": {}}}
+    db.commit()
+    existing = make_work_log(db, world.worker, world.company, type="particular", net_amount=28.0)
+
+    # Desactivar tipo particular como manager
+    as_user(client, world.manager, world.company)
+    deact = client.put(
+        f"{BASE}/{cid}/settings",
+        json={
+            "worklog_definitions": {
+                "particular": {"unit": "hours", "label": "Particular", "options": [], "is_active": False}
+            }
+        },
+    )
+    assert deact.status_code == 200, deact.text
+
+    # Worker no puede crear nuevos turnos ni en lote con el tipo desactivado
+    as_user(client, world.worker, world.company)
+    create_resp = client.post(
+        "/work-logs",
+        json={
+            "company_id": str(cid),
+            "user_id": str(world.worker.id),
+            "type": "particular",
+            "start_date": "2026-03-10",
+            "end_date": "2026-03-10",
+            "start_time": "10:00:00",
+            "end_time": "11:00:00",
+        },
+    )
+    assert create_resp.status_code == 400, create_resp.text
+    assert "desactivado" in create_resp.json()["detail"].lower()
+
+    # Tampoco un manager puede crear turnos en lote con el tipo desactivado
+    as_user(client, world.manager, world.company)
+    bulk_resp = client.post(
+        "/work-logs/bulk",
+        json={
+            "company_id": str(cid),
+            "user_ids": [str(world.worker.id)],
+            "type": "particular",
+            "start_date": "2026-03-11",
+            "end_date": "2026-03-11",
+            "start_time": "10:00:00",
+            "end_time": "11:00:00",
+        },
+    )
+    assert bulk_resp.status_code == 400, bulk_resp.text
+    assert "desactivado" in bulk_resp.json()["detail"].lower()
+
+    # El turno existente sigue pudiendo editarse sin cambiar de tipo
+    as_user(client, world.worker, world.company)
+    edit_existing = client.put(
+        f"/work-logs/{existing.id}",
+        json={"description": "Actualizado tras desactivar tipo"},
+    )
+    assert edit_existing.status_code == 200, edit_existing.text
+
+    # Reactivar permite volver a crear turnos
+    as_user(client, world.manager, world.company)
+    react = client.put(
+        f"{BASE}/{cid}/settings",
+        json={
+            "worklog_definitions": {
+                "particular": {"unit": "hours", "label": "Particular", "options": [], "is_active": True}
+            }
+        },
+    )
+    assert react.status_code == 200, react.text
+
+    as_user(client, world.worker, world.company)
+    retry = client.post(
+        "/work-logs",
+        json={
+            "company_id": str(cid),
+            "user_id": str(world.worker.id),
+            "type": "particular",
+            "start_date": "2026-03-12",
+            "end_date": "2026-03-12",
+            "start_time": "10:00:00",
+            "end_time": "11:00:00",
+        },
+    )
+    assert retry.status_code == 200, retry.text
+
+
+def test_delete_shift_type_blocked_with_work_logs_and_cleans_rates_when_unused(client, db, world):
+    cid = world.company.id
+    company = _fresh(db, cid)
+    company.worklog_definitions = {
+        "particular": {"unit": "hours", "label": "Particular", "options": [], "is_active": True},
+        "evento": {"unit": "fixed", "label": "Evento", "options": [], "is_active": True},
+    }
+    worker_member = db.query(models.CompanyMember).filter_by(user_id=world.worker.id, company_id=cid).one()
+    worker_member.rates_config = {
+        "particular": {"base_rate": 30.0, "is_gross": True, "tax_overrides": {}},
+        "evento": {"base_rate": 100.0, "is_gross": True, "tax_overrides": {}},
+    }
+    db.commit()
+    make_work_log(db, world.worker, company, type="particular", net_amount=28.0)
+
+    as_user(client, world.manager, company)
+    usage = client.get(f"{BASE}/{cid}/worklog-definitions/usage")
+    assert usage.status_code == 200, usage.text
+    assert usage.json() == {
+        "particular": {"work_logs_count": 1, "member_rates_count": 2},
+        "evento": {"work_logs_count": 0, "member_rates_count": 1},
+    }
+
+    # No se puede borrar "particular" porque tiene 1 turno
+    blocked = client.put(
+        f"{BASE}/{cid}/settings",
+        json={"worklog_definitions": {"evento": {"unit": "fixed", "label": "Evento", "options": [], "is_active": True}}},
+    )
+    assert blocked.status_code == 409, blocked.text
+
+    # Si se puede borrar "evento" (0 turnos) y limpia su tarifa en rates_config del miembro
+    cleaned = client.put(
+        f"{BASE}/{cid}/settings",
+        json={
+            "worklog_definitions": {
+                "particular": {"unit": "hours", "label": "Particular", "options": [], "is_active": True}
+            }
+        },
+    )
+    assert cleaned.status_code == 200, cleaned.text
+    db.expire_all()
+    refreshed_member = db.query(models.CompanyMember).filter_by(user_id=world.worker.id, company_id=cid).one()
+    assert "evento" not in refreshed_member.rates_config
+    assert "particular" in refreshed_member.rates_config
+
+    as_user(client, world.pa, company)
+    pa_usage = client.get(f"/v2/admin/companies/{cid}/worklog-definitions/usage")
+    assert pa_usage.status_code == 200, pa_usage.text
+    assert pa_usage.json() == {"particular": {"work_logs_count": 1, "member_rates_count": 2}}
+
+
+@pytest.mark.parametrize(
+    "plan, expected_limits",
+    [
+        ("pista_verde", {"max_monitors": 10, "max_managers": 1}),
+        ("pista_azul", {"max_monitors": 25, "max_managers": 2}),
+        ("pista_roja", {"max_monitors": 50, "max_managers": None}),
+    ],
+)
+def test_pa_assigns_commercial_plan_presets_with_auto_limits(client, world, plan, expected_limits):
+    as_user(client, world.pa)
+
+    resp = client.put(
+        f"/v2/admin/companies/{world.company.id}",
+        json={"platform_settings": {"plan": plan}},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["platform_settings"]["plan"] == plan
+    assert resp.json()["platform_settings"]["limits"] == expected_limits
+
+
+def test_pa_assigns_personalizado_plan_with_custom_limits(client, world):
+    as_user(client, world.pa)
+
+    resp = client.put(
+        f"/v2/admin/companies/{world.company.id}",
+        json={"platform_settings": {"plan": "personalizado", "limits": {"max_monitors": 18, "max_managers": 3}}},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["platform_settings"]["plan"] == "personalizado"
+    assert resp.json()["platform_settings"]["limits"] == {"max_monitors": 18, "max_managers": 3}
+
+
+def test_worklog_definition_key_cannot_be_renamed_when_used_by_shifts(client, db, world):
+    """R-EMP-40: la clave es inmutable; intentar renombrarla si tiene turnos se rechaza con 409 y conserva la original."""
+    cid = world.company.id
+    make_work_log(db, world.worker, world.company, type="particular", net_amount=25.0)
+    as_user(client, world.manager, world.company)
+
+    rename_attempt = client.put(
+        f"{BASE}/{cid}/settings",
+        json={
+            "worklog_definitions": {
+                "clase_privada": {"unit": "hours", "label": "Clase Privada", "options": [], "is_active": True}
+            }
+        },
+    )
+    assert rename_attempt.status_code == 409, rename_attempt.text
+    assert "particular" in rename_attempt.json()["detail"]
+    stored = _fresh(db, cid).worklog_definitions
+    assert "particular" in stored
+    assert "clase_privada" not in stored
+
+    # Solo editar la etiqueta conservando la misma clave si esta permitido
+    label_update = client.put(
+        f"{BASE}/{cid}/settings",
+        json={
+            "worklog_definitions": {
+                "particular": {"unit": "hours", "label": "Clase Particular Editada", "options": [], "is_active": True}
+            }
+        },
+    )
+    assert label_update.status_code == 200, label_update.text
+    assert _fresh(db, cid).worklog_definitions["particular"]["label"] == "Clase Particular Editada"

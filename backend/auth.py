@@ -5,10 +5,11 @@ This module handles password hashing, token creation/verification, and current u
 It uses OAuth2 with Password Flow and JWT tokens.
 """
 
+import hashlib
 import os
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import access_policy
 import crud
@@ -20,8 +21,10 @@ from database import get_db
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+from jwt_keys import load_jwt_keys
 from passlib.context import CryptContext
 from redis_config import redis_manager
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 # Cryptographic Configuration
@@ -31,72 +34,8 @@ ALGORITHM = "RS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
-# Load RSA Keys
-KEYS_DIR = os.path.join(os.path.dirname(__file__), "keys")
-try:
-    with open(os.path.join(KEYS_DIR, "public_key.pem"), "r") as f:
-        PUBLIC_KEY = f.read()
-
-    with open(os.path.join(KEYS_DIR, "private_key.pem"), "rb") as f:
-        private_key_data = f.read()
-
-    from cryptography.hazmat.backends import default_backend
-    from cryptography.hazmat.primitives import serialization
-
-    passphrase = os.getenv("JWT_PRIVATE_KEY_PASSPHRASE")
-    try:
-        private_key_obj = serialization.load_pem_private_key(
-            private_key_data, password=passphrase.encode() if passphrase else None, backend=default_backend()
-        )
-    except TypeError:
-        private_key_obj = serialization.load_pem_private_key(
-            private_key_data, password=None, backend=default_backend()
-        )
-
-    PRIVATE_KEY = private_key_obj.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    ).decode("utf-8")
-except (FileNotFoundError, ValueError, TypeError):
-    # Fallback for dev/CI if keys don't exist yet or decryption fails
-    PRIVATE_KEY = os.getenv("PRIVATE_KEY", "")
-    PUBLIC_KEY = os.getenv("PUBLIC_KEY", "")
-    if not PRIVATE_KEY and not PUBLIC_KEY:
-        try:
-            print("RSA keys not found or failed to load. Generating a new key pair for local development...")
-            from cryptography.hazmat.backends import default_backend
-            from cryptography.hazmat.primitives import serialization
-            from cryptography.hazmat.primitives.asymmetric import rsa
-
-            # Generate new RSA key pair
-            private_key_obj = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
-
-            # Serialize key pair (unencrypted for easy local development)
-            pem_private = private_key_obj.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
-            pem_public = private_key_obj.public_key().public_bytes(
-                encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo
-            )
-
-            # Write key pair back to disk to persist across hot-reloads if writable
-            try:
-                os.makedirs(KEYS_DIR, exist_ok=True)
-                with open(os.path.join(KEYS_DIR, "private_key.pem"), "wb") as f:
-                    f.write(pem_private)
-                with open(os.path.join(KEYS_DIR, "public_key.pem"), "wb") as f:
-                    f.write(pem_public)
-                print("Successfully auto-generated RSA key pair for local development (saved under keys/).")
-            except Exception as write_err:
-                print(f"Warning: Could not save RSA keys to disk ({write_err}). Using in-memory keys for this session.")
-
-            PRIVATE_KEY = pem_private.decode("utf-8")
-            PUBLIC_KEY = pem_public.decode("utf-8")
-        except Exception as gen_err:
-            raise RuntimeError(f"Failed to generate RSA key: {gen_err}")
+# Load RSA Keys (ficheros, variables de entorno o par efimero si esta permitido)
+PRIVATE_KEY, PUBLIC_KEY = load_jwt_keys()
 
 
 # Encryption key for OTP secrets
@@ -156,11 +95,17 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(
+    data: dict, expires_delta: timedelta | None = None, expires_at: datetime | None = None
+):
     """Creates a JWT access token with an expiration time."""
     to_encode = data.copy()
-    now = datetime.utcnow()
-    expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    now = datetime.now(UTC)
+    expire = (
+        expires_at
+        if expires_at is not None
+        else now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    )
     # Added jti for revocation support
     to_encode.update({"exp": expire, "iat": now, "type": "access", "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
@@ -169,7 +114,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 def create_refresh_token(data: dict):
     """Creates a long-lived JWT refresh token."""
     to_encode = data.copy()
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "iat": now, "type": "refresh", "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
@@ -181,7 +126,7 @@ _consumed_reset_jtis = set()
 def create_reset_token(email: str) -> str:
     """Creates a short-lived JWT reset token (valid for 30 minutes)."""
     to_encode = {"sub": email, "type": "reset"}
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     expire = now + timedelta(minutes=30)
     to_encode.update({"exp": expire, "iat": now, "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
@@ -310,7 +255,8 @@ def generate_user_tokens(
             data["view_as"] = view_as
 
     access_token = create_access_token(data=data)
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    refresh_data = {k: v for k, v in data.items() if k in ("sub", "scope", "cid", "view_as")}
+    refresh_token = create_refresh_token(data=refresh_data)
     return access_token, refresh_token
 
 
@@ -327,6 +273,7 @@ def _attach_context(db: Session, user: models.User, token_data: schemas.TokenDat
     user.active_company_id = token_data.company_id
     user.token_scope = token_data.scope
     user.admin_user_id = token_data.admin_user_id
+    user.token_exp = token_data.exp
 
     user.view_as = None
     if user.is_platform_admin and token_data.company_id and view_as_claim in access_policy.VIEW_AS_ROLES:
@@ -334,6 +281,9 @@ def _attach_context(db: Session, user: models.User, token_data: schemas.TokenDat
     if request is not None:
         try:
             access_policy.assert_view_as_read_only(user.view_as, request.method, request.scope["path"])
+            access_policy.assert_impersonation_read_only(
+                token_data.scope, request.method, request.scope["path"]
+            )
         except access_policy.PolicyError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -378,6 +328,7 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
             company_id=payload.get("cid"),
             scope=payload.get("scope", "full"),
             admin_user_id=payload.get("admin_user_id"),
+            exp=payload.get("exp"),
         )
         view_as_claim = payload.get("view_as")
     except JWTError:
@@ -441,6 +392,7 @@ async def get_verified_user(
             company_id=payload.get("cid"),
             scope=payload.get("scope", "full"),
             admin_user_id=payload.get("admin_user_id"),
+            exp=payload.get("exp"),
         )
         view_as_claim = payload.get("view_as")
     except JWTError:
@@ -527,13 +479,38 @@ def verify_totp_with_protection(user: models.User, code: str) -> bool:
 # --- Session Management ---
 
 
-def create_session(db: Session, user_id: str, refresh_token: str, device_name: str = None, ip_address: str = None):
+def hash_refresh_token(refresh_token: str) -> str:
+    """Devuelve el hash SHA-256 hexadecimal del refresh token."""
+    return hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
+
+
+def _extract_refresh_expires_at(refresh_token: str) -> datetime:
+    """Extrae la caducidad UTC del JWT de refresh o usa el TTL por defecto."""
+    try:
+        claims = jwt.get_unverified_claims(refresh_token)
+        exp = claims.get("exp")
+        if isinstance(exp, (int, float)) and not isinstance(exp, bool):
+            return datetime.fromtimestamp(exp, UTC)
+    except JWTError:
+        pass
+    return datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+
+
+def create_session(
+    db: Session,
+    user_id: str,
+    refresh_token: str,
+    device_name: str = None,
+    ip_address: str = None,
+    expires_at: datetime | None = None,
+):
     session = models.UserSession(
         user_id=user_id,
-        refresh_token=refresh_token,
+        refresh_token_hash=hash_refresh_token(refresh_token),
+        expires_at=expires_at or _extract_refresh_expires_at(refresh_token),
         device_name=device_name,
         ip_address=ip_address,
-        last_active=datetime.utcnow(),
+        last_active=datetime.now(UTC),
     )
     db.add(session)
     db.commit()
@@ -541,17 +518,33 @@ def create_session(db: Session, user_id: str, refresh_token: str, device_name: s
 
 
 def get_session_by_token(db: Session, refresh_token: str):
+    now = datetime.now(UTC)
+    token_hash = hash_refresh_token(refresh_token)
     return (
         db.query(models.UserSession)
-        .filter(models.UserSession.refresh_token == refresh_token, models.UserSession.is_active == True)
+        .filter(
+            models.UserSession.refresh_token_hash == token_hash,
+            models.UserSession.is_active == True,
+            models.UserSession.revoked_at.is_(None),
+            or_(models.UserSession.expires_at.is_(None), models.UserSession.expires_at > now),
+        )
         .first()
     )
 
 
 def revoke_session(db: Session, refresh_token: str):
-    session = get_session_by_token(db, refresh_token)
+    token_hash = hash_refresh_token(refresh_token)
+    session = (
+        db.query(models.UserSession)
+        .filter(
+            models.UserSession.refresh_token_hash == token_hash,
+            models.UserSession.is_active == True,
+        )
+        .first()
+    )
     if session:
         session.is_active = False
+        session.revoked_at = datetime.now(UTC)
         db.commit()
     return session
 
@@ -565,7 +558,7 @@ def blacklist_token(token: str):
         jti = payload.get("jti")
         exp = payload.get("exp")
         if jti and exp:
-            now = datetime.utcnow().timestamp()
+            now = datetime.now(UTC).timestamp()
             ttl = int(exp - now)
             if ttl > 0:
                 redis_manager.set(f"bl_{jti}", "1", ex=ttl)

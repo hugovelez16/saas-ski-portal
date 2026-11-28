@@ -87,7 +87,6 @@ def test_worker_with_daily_report_module_explicit_company_id(client, db):
     subscription = models.ModuleSubscription(
         module_id=module.id,
         company_id=company.id,
-        scope=models.SubscriptionScope.company,
         status=models.SubscriptionStatus.active,
     )
     db.add(subscription)

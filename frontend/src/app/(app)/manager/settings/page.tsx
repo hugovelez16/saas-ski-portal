@@ -59,8 +59,8 @@ export default function ManagerSettingsPage() {
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Configuración de Escuela</h1>
                 <p className="text-muted-foreground text-sm">
                     {isPlatformAdmin
-                        ? "Gestiona los turnos, tarifas, reglas de negocio y opciones del panel para tu escuela."
-                        : "La configuración de la empresa la gestiona el administrador de la plataforma."}
+                        ? "Gestiona los ajustes de empresa, tipos de turno, impuestos y ajustes de plataforma."
+                        : "Gestiona los tipos de turno, impuestos y ajustes de tu empresa."}
                 </p>
             </div>
 

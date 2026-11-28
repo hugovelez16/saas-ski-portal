@@ -11,7 +11,7 @@ import os
 from contextlib import asynccontextmanager
 
 from access_policy import PolicyError
-from contracts import MissingWorklogUnitError
+from contracts import MissingWorklogDatesError, MissingWorklogUnitError
 from database import SessionLocal
 from domain.exceptions.domain_exceptions import (
     ConflictException,
@@ -39,13 +39,13 @@ def perform_session_cleanup():
     """
     Síncrona: Borra de la base de datos las sesiones inactivas por más de 30 días.
     """
-    from datetime import datetime, timedelta
+    from datetime import UTC, datetime, timedelta
 
     import models
 
     db = SessionLocal()
     try:
-        limit_date = datetime.utcnow() - timedelta(days=30)
+        limit_date = datetime.now(UTC) - timedelta(days=30)
         deleted_count = (
             db.query(models.UserSession)
             .filter(models.UserSession.last_active < limit_date)
@@ -169,6 +169,11 @@ async def missing_worklog_unit_error_handler(request: Request, exc: MissingWorkl
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
+@app.exception_handler(MissingWorklogDatesError)
+async def missing_worklog_dates_error_handler(request: Request, exc: MissingWorklogDatesError):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 def _replace_non_finite(value):
     """Sustituye NaN e infinitos por texto: JSONResponse no admite floats no finitos."""
     if isinstance(value, float) and not math.isfinite(value):
@@ -190,7 +195,7 @@ async def request_validation_error_handler(request: Request, exc: RequestValidat
 @app.get("/health", tags=["system"])
 def health_check():
     """Endpoint de comprobacion de salud para Docker Compose y Gateway Nginx."""
-    return {"status": "ok"}
+    return {"status": "ok", "version": os.getenv("APP_VERSION", "dev")}
 
 
 @app.middleware("http")

@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getMyCompanies } from "@/lib/api/companies";
-import { CompanyResponse } from "@/lib/types";
+import { CompanyResponse, MyCompany } from "@/lib/types";
 import { useAuth } from "@/context/AuthContext";
 import { LayoutDashboard, FileText, Calendar, Users, Building2, Banknote, CalendarDays, Package, ScrollText, LucideIcon } from "lucide-react";
 import { Sidebar, SidebarProvider } from "@/components/ui/sidebar";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Suspense } from "react";
 import { useModules } from "@/hooks/useModules";
 import { ViewAsBanner } from "@/components/view-as-banner";
-import { LegalFooter } from "@/components/legal-footer";
+import { AppVersion } from "@/components/app-version";
 import { CONTACT_EMAIL } from "@/lib/config";
 import { SUSPENDED_COMPANY_MESSAGE } from "@/lib/api";
 
@@ -33,12 +33,6 @@ const MODULE_SIDEBAR_REGISTRY: Record<string, {
         label: "Parte Diario",
         icon: FileText,
         allowedRoles: ["manager", "worker"],
-    },
-    "billing": {
-        href: "/manager/billing",
-        label: "Facturación",
-        icon: Banknote,
-        allowedRoles: ["manager"],
     },
     "reports": {
         href: "/reports",
@@ -72,7 +66,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     // Company Selection Guard (Legacy removed as we now use context switching)
 
     // Fetch My Companies (Used for both Manager and Worker special access)
-    const { data: myCompanies = [] } = useQuery<CompanyResponse[]>({
+    const { data: myCompanies = [] } = useQuery<MyCompany[]>({
         queryFn: getMyCompanies,
         queryKey: ['myCompanies'],
         enabled: !!user
@@ -134,13 +128,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
             managerItems.push(
                 { href: "/manager/users", label: "Usuarios", icon: Users },
-                { href: "/manager/shifts", label: "Turnos", icon: CalendarDays }
+                { href: "/manager/shifts", label: "Turnos", icon: CalendarDays },
+                { href: "/manager/billing", label: "Facturación", icon: Banknote }
             );
-
-            const billingItem = activeModuleItems.find(item => item.codeName === "billing");
-            if (billingItem) {
-                managerItems.push(billingItem);
-            }
 
             const reportsItem = activeModuleItems.find(item => item.codeName === "reports");
             if (reportsItem) {
@@ -203,13 +193,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
             managerItems.push(
                 { href: "/manager/users", label: "Usuarios", icon: Users },
-                { href: "/manager/shifts", label: "Turnos", icon: CalendarDays }
+                { href: "/manager/shifts", label: "Turnos", icon: CalendarDays },
+                { href: "/manager/billing", label: "Facturación", icon: Banknote }
             );
-
-            const billingItem = activeModuleItems.find(item => item.codeName === "billing");
-            if (billingItem) {
-                managerItems.push(billingItem);
-            }
 
             const reportsItem = activeModuleItems.find(item => item.codeName === "reports");
             if (reportsItem) {
@@ -307,8 +293,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     <div className="flex-1 p-4 md:p-8">
                         {children}
                     </div>
-                    <footer className="border-t border-slate-200 px-4 py-3 md:px-8">
-                        <LegalFooter />
+                    <footer className="px-4 py-1.5 text-center md:px-8">
+                        <AppVersion />
                     </footer>
                 </main>
 

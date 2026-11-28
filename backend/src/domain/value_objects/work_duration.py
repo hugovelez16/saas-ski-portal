@@ -4,8 +4,11 @@ Value Object WorkDuration: Modela la duracion de una jornada o servicio.
 
 from dataclasses import dataclass
 from datetime import date, time
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Optional
+
+from contracts import MissingWorklogDatesError
 
 
 class WorkUnit(str, Enum):
@@ -35,19 +38,21 @@ class WorkDuration:
             if duration_hours is not None and duration_hours > 0:
                 return cls(unit=WorkUnit.HOURS, value=float(duration_hours))
             if start_time is not None and end_time is not None:
-                start_h = start_time.hour + start_time.minute / 60.0
-                end_h = end_time.hour + end_time.minute / 60.0
-                diff = end_h - start_h
-                if diff < 0:
-                    diff += 24.0
-                return cls(unit=WorkUnit.HOURS, value=round(diff, 2))
+                start_minutes = Decimal(start_time.hour * 60 + start_time.minute) + Decimal(start_time.second) / Decimal(
+                    60
+                )
+                end_minutes = Decimal(end_time.hour * 60 + end_time.minute) + Decimal(end_time.second) / Decimal(60)
+                diff = (end_minutes - start_minutes) / Decimal(60)
+                if diff < Decimal("0"):
+                    diff += Decimal("24")
+                return cls(unit=WorkUnit.HOURS, value=float(diff.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)))
             return cls(unit=WorkUnit.HOURS, value=0.0)
 
         elif unit == WorkUnit.DAYS:
-            if start_date is not None and end_date is not None:
-                delta = (end_date - start_date).days + 1
-                return cls(unit=WorkUnit.DAYS, value=float(max(delta, 1)))
-            return cls(unit=WorkUnit.DAYS, value=1.0)
+            if start_date is None or end_date is None:
+                raise MissingWorklogDatesError("Un turno con unidad 'days' requiere fecha de inicio y de fin")
+            delta = (end_date - start_date).days + 1
+            return cls(unit=WorkUnit.DAYS, value=float(max(delta, 1)))
 
         else:
             return cls(unit=WorkUnit.FIXED, value=1.0)
