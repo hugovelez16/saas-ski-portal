@@ -39,6 +39,8 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL or "sqlite://"
 # Clave efimera generada en cada ejecucion: no se versiona ningun valor con forma de clave.
 os.environ.setdefault("ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ["ENVIRONMENT"] = "test"
+# Los tests no tienen claves JWT fijas: permiten el par efimero en memoria.
+os.environ.setdefault("ALLOW_EPHEMERAL_JWT_KEYS", "true")
 os.environ.pop("DEV_LOGIN_BYPASS", None)
 os.environ.pop("NODE_ENV", None)
 
