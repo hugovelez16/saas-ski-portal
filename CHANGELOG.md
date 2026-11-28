@@ -25,6 +25,9 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 ### Corregido
 - **Claves RSA fijas y sin reintento de 401**: el backend ya no genera un par RSA al vuelo salvo con `ALLOW_EPHEMERAL_JWT_KEYS=true` (activado solo en `docker-compose.dev.yml` y en los tests); sin claves en `backend/keys/` ni en `PRIVATE_KEY`/`PUBLIC_KEY` falla al arrancar con un mensaje claro, lo que evita los 401 intermitentes por tener un par distinto por worker; `PRIVATE_KEY` y `PUBLIC_KEY` por variable se cargan como los ficheros, respetando `JWT_PRIVATE_KEY_PASSPHRASE`. React Query deja de reintentar las respuestas 401 y 403. Paso previo de despliegue en `docs/operaciones/tareas-manuales-release.md`: el `.env` de dev y produccion debe definir las claves (#170)
 
+### Anadido
+- El dashboard del manager recuerda por empresa el periodo y el rango personalizado elegidos en el navegador (#172)
+
 ### Cambiado
 - **Limpieza del editor JSON obsoleto**: eliminado `JsonEditor` y su test, ya sin uso desde la sustitucion de las pestanas de edicion por `ReadOnlyJsonButton` (#166)
 - **Test de limites de lineas (ADR-0007)**: `backend/tests/test_limites_de_lineas.py` falla si un fichero de `backend/src/` o `backend/routers/` supera 300 lineas fuera de la lista de excepciones `backend/tests/limites_excepciones.json` (que solo puede encoger) o si una clase `*UseCase` supera 120 lineas; `routers/v2/admin.py` pasa a un paquete con un router por recurso (empresas, membresias, invitaciones, usuarios, modulos y auditoria) y `invitations.py` se parte en un fichero por caso de uso (ADR-0006), sin cambiar rutas ni comportamiento (#164)
