@@ -4,8 +4,10 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
+from application.use_cases.company.accept_invitation import AcceptInvitationResult
 from application.use_cases.company.common import CompanyView, CompanyWithMembers, MemberDetail
-from application.use_cases.company.invitations import AcceptInvitationResult, InvitationView, PreviewInvitationResult
+from application.use_cases.company.invitation_common import InvitationView
+from application.use_cases.company.preview_invitation import PreviewInvitationResult
 from contracts import (
     MEMBER_SETTINGS_ALLOWED_KEYS,
     CompanySettings,
