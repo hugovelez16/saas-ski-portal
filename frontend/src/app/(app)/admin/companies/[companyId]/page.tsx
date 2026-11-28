@@ -37,7 +37,7 @@ export default function CompanyDetailsPage() {
     const queryClient = useQueryClient();
 
     const { data: companies = [], isLoading } = useQuery({
-        queryFn: getCompaniesDetailed,
+        queryFn: () => getCompaniesDetailed({ asAdmin: true }),
         queryKey: ["companiesDetailed"],
     });
 

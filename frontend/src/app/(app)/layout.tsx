@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getMyCompanies } from "@/lib/api/companies";
-import { CompanyResponse } from "@/lib/types";
+import { CompanyResponse, MyCompany } from "@/lib/types";
 import { useAuth } from "@/context/AuthContext";
 import { LayoutDashboard, FileText, Calendar, Users, Building2, Banknote, CalendarDays, Package, ScrollText, LucideIcon } from "lucide-react";
 import { Sidebar, SidebarProvider } from "@/components/ui/sidebar";
@@ -72,7 +72,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     // Company Selection Guard (Legacy removed as we now use context switching)
 
     // Fetch My Companies (Used for both Manager and Worker special access)
-    const { data: myCompanies = [] } = useQuery<CompanyResponse[]>({
+    const { data: myCompanies = [] } = useQuery<MyCompany[]>({
         queryFn: getMyCompanies,
         queryKey: ['myCompanies'],
         enabled: !!user

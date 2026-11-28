@@ -64,9 +64,9 @@ export function homePathFor(u: UserProfile | null | undefined): string {
 const VISITOR_PATHS: string[] = ['/', ...LEGAL_LINKS.map((link) => link.href)];
 const PUBLIC_PATHS: string[] = [...VISITOR_PATHS, '/login', '/forgot-password', '/reset-password'];
 
-// Un PA no tiene empresa recordada: su contexto es neutro.
+// Un PA o una sesion suplantada no guardan empresa recordada.
 function rememberActiveCompany(u: UserProfile | null | undefined) {
-  if (!u || isPlatformAdminUser(u) || !u.activeCompanyId) return;
+  if (!u || isPlatformAdminUser(u) || u.isImpersonated || !u.activeCompanyId) return;
   setLastCompanyId(LAST_COMPANY_KEY, u.activeCompanyId);
 }
 

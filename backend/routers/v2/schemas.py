@@ -11,6 +11,7 @@ from contracts import (
     RatesConfig,
     TaxConfig,
     WorklogDefinitions,
+    validate_allowed_email_domain,
     validate_member_settings,
 )
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -143,6 +144,11 @@ class MemberDeleteOut(V2Model):
 class MemberAddIn(V2Model):
     email: EmailStr
 
+    @field_validator("email")
+    @classmethod
+    def _validate_email_domain(cls, value: EmailStr) -> str:
+        return validate_allowed_email_domain(str(value))
+
 
 class MemberStatusIn(V2Model):
     is_active: bool
@@ -183,6 +189,19 @@ class CompanyReduced(V2Model):
     worklog_definitions: dict[str, Any] = {}
     tax_config: dict[str, float] = {}
     settings: dict[str, Any]
+
+
+class MyCompanyOut(V2Model):
+    """Selector de empresas (`GET /v2/me/companies`): solo id, name y role (R-ACC-81)."""
+
+    id: UUID
+    name: str
+    role: str
+
+
+def my_company_out(view: CompanyView) -> MyCompanyOut:
+    role = view.member.role.value if view.member is not None else view.role
+    return MyCompanyOut(id=view.company.id, name=view.company.name, role=role or "worker")
 
 
 # --- Conversion desde el dominio ---

@@ -1074,6 +1074,12 @@ def join_company(db: Session, user_id: str, company_id: str):
     """
     Adds a user to a company or returns existing membership.
     """
+    user = get_user(db, user_id)
+    if user is not None and user.role == models.UserRole.admin:
+        from access_policy import PolicyError
+
+        raise PolicyError(422, "Un administrador de plataforma no puede ser miembro de una empresa")
+
     member = get_company_member(db, user_id, company_id)
     if not member:
         new_member = models.CompanyMember(

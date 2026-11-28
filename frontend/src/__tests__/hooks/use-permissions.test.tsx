@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { usePermissions } from '@/hooks/use-permissions';
-import { getMyCompanies } from '@/lib/api/companies';
+import { getCompany } from '@/lib/api/companies';
 import type { CompanyResponse } from '@/lib/types';
 
 const authState = vi.hoisted(() => ({ user: null as any }));
@@ -13,10 +13,10 @@ vi.mock('@/context/AuthContext', () => ({
 }));
 
 vi.mock('@/lib/api/companies', () => ({
-    getMyCompanies: vi.fn(),
+    getCompany: vi.fn(),
 }));
 
-const mockedGetMyCompanies = vi.mocked(getMyCompanies);
+const mockedGetCompany = vi.mocked(getCompany);
 
 const makeWrapper = () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -39,8 +39,8 @@ const baseUser = { id: 'u-self', email: 'x@x.com', role: 'user', isPlatformAdmin
 
 describe('usePermissions', () => {
     beforeEach(() => {
-        mockedGetMyCompanies.mockReset();
-        mockedGetMyCompanies.mockResolvedValue([]);
+        mockedGetCompany.mockReset();
+        mockedGetCompany.mockResolvedValue(company());
     });
 
     it('platform admin sin rol de empresa puede todo', () => {
@@ -110,20 +110,20 @@ describe('usePermissions', () => {
         expect(result.current.canEditRates('u-self')).toBe(false);
     });
 
-    it('sin empresa pasada usa la empresa activa de getMyCompanies', async () => {
+    it('sin empresa pasada usa la empresa activa de getCompany', async () => {
         authState.user = { ...baseUser, activeRole: 'worker' };
-        mockedGetMyCompanies.mockResolvedValue([company({ id: 'c1', isManaged: true })]);
+        mockedGetCompany.mockResolvedValue(company({ id: 'c1', isManaged: true }));
         const { result } = renderHook(() => usePermissions(), { wrapper: makeWrapper() });
 
         await waitFor(() => expect(result.current.isManaged).toBe(true));
-        expect(mockedGetMyCompanies).toHaveBeenCalled();
+        expect(mockedGetCompany).toHaveBeenCalledWith('c1');
         expect(result.current.canCreateWorkLog).toBe(false);
     });
 
-    it('con empresa pasada no consulta getMyCompanies', () => {
+    it('con empresa pasada no consulta getCompany', () => {
         authState.user = { ...baseUser, activeRole: 'manager' };
         renderHook(() => usePermissions(company()), { wrapper: makeWrapper() });
 
-        expect(mockedGetMyCompanies).not.toHaveBeenCalled();
+        expect(mockedGetCompany).not.toHaveBeenCalled();
     });
 });

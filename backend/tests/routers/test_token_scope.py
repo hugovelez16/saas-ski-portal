@@ -660,18 +660,90 @@ def test_impersonation_token(client, db):
     assert me["isPlatformAdmin"] is False
 
 
-def test_switch_scope_rejected_while_impersonating(client, db):
+def test_switch_scope_allowed_while_impersonating_preserves_readonly_and_exp(client, db):
+    """R-ACC-42 / R-ACC-66: durante suplantacion, switch-scope cambia entre empresas activas
+    del suplantado manteniendo scope=impersonated, admin_user_id, solo lectura y la exp original."""
     pa = make_user(db, role="admin")
     target = make_user(db)
-    company, _member = _join(db, target, 1)
+    company_a, _ = _join(db, target, 1, role="worker")
+    company_b, _ = _join(db, target, 2, role="manager")
     as_user(client, pa)
     resp = client.post(f"/admin/impersonate/{target.id}")
     assert resp.status_code == 200, resp.text
+    initial_payload = _decode(_cookie(resp, "access_token"))
+    assert initial_payload["cid"] == str(company_a.id)
     _use_token(client, _cookie(resp, "access_token"))
 
-    resp = client.post("/auth/switch-scope", json={"companyId": str(company.id)})
+    switch_resp = client.post("/auth/switch-scope", json={"companyId": str(company_b.id)})
 
-    assert resp.status_code == 403
+    assert switch_resp.status_code == 200, switch_resp.text
+    switched_access = _cookie(switch_resp, "access_token")
+    switched_refresh = _cookie(switch_resp, "refresh_token")
+    switched_payload = _decode(switched_access)
+    assert switched_payload["scope"] == "impersonated"
+    assert switched_payload["admin_user_id"] == str(pa.id)
+    assert switched_payload["sub"] == str(target.id)
+    assert switched_payload["cid"] == str(company_b.id)
+    assert switched_payload["exp"] == initial_payload["exp"]
+
+    _use_token(client, switched_access)
+    me = _me(client)
+    assert me["activeCompanyId"] == str(company_b.id)
+    assert me["activeRole"] == "manager"
+    assert me["isImpersonated"] is True
+    assert me["isReadOnlyView"] is True
+
+    # Solo lectura durante suplantacion (R-ACC-66)
+    write_resp = client.post("/work-logs", json=_work_log_body(target, company_b))
+    assert write_resp.status_code == 403, write_resp.text
+
+    # No se puede renovar el refresh tras cambiar de empresa
+    _use_refresh(client, switched_refresh)
+    assert client.post("/refresh-token").status_code == 401
+
+
+@pytest.mark.parametrize(
+    "scenario, expected_status, expected_detail",
+    [
+        ("sin_company_id", 400, "company_id is required"),
+        ("view_as", 403, MSG_VIEW_AS),
+        ("sin_membresia", 403, MSG_NO_ACCESS),
+        ("membresia_inactiva", 403, MSG_NO_ACCESS),
+        ("empresa_suspendida", 403, MSG_SUSPENDED),
+        ("empresa_inexistente", 403, MSG_NO_ACCESS),
+    ],
+)
+def test_switch_scope_while_impersonating_rejects_invalid_targets(
+    client, db, scenario, expected_status, expected_detail
+):
+    pa = make_user(db, role="admin")
+    target = make_user(db)
+    home, _ = _join(db, target, 1)
+    as_user(client, pa)
+    imp = client.post(f"/admin/impersonate/{target.id}")
+    assert imp.status_code == 200, imp.text
+    _use_token(client, _cookie(imp, "access_token"))
+
+    if scenario == "sin_company_id":
+        body = {}
+    elif scenario == "view_as":
+        body = {"companyId": str(home.id), "viewAs": "worker"}
+    elif scenario == "sin_membresia":
+        body = {"companyId": str(make_company(db).id)}
+    elif scenario == "membresia_inactiva":
+        inactive = make_company(db)
+        make_member(db, target, inactive, is_active=False)
+        body = {"companyId": str(inactive.id)}
+    elif scenario == "empresa_suspendida":
+        suspended, _ = _join(db, target, 2, company_active=False)
+        body = {"companyId": str(suspended.id)}
+    else:
+        body = {"companyId": str(uuid.uuid4())}
+
+    resp = client.post("/auth/switch-scope", json=body)
+
+    assert resp.status_code == expected_status, resp.text
+    assert resp.json()["detail"] == expected_detail
 
 
 # --- 10. refresh conserva el contexto de la sesion ---

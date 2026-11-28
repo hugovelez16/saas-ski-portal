@@ -11,7 +11,7 @@ from application.use_cases.company.common import (
 )
 from audit import AuditAction
 from domain.entities.company_member import CompanyMember, CompanyRole
-from domain.exceptions.domain_exceptions import EntityNotFoundException
+from domain.exceptions.domain_exceptions import EntityNotFoundException, ValidationDomainException
 from domain.ports.audit_port import AuditLogPort
 from domain.ports.repositories.company_repository_port import CompanyMemberRepositoryPort, CompanyRepositoryPort
 from domain.ports.repositories.user_repository_port import UserRepositoryPort
@@ -43,6 +43,8 @@ class AddMemberUseCase:
         user = await self.user_repo.get_by_email(email)
         if user is None:
             raise EntityNotFoundException(MSG_USER_EMAIL_NOT_FOUND)
+        if user.is_platform_admin:
+            raise ValidationDomainException("Un administrador de plataforma no puede ser miembro de una empresa")
 
         member = await self.member_repo.get_membership(user.id, company_id)
         if member is not None and member.is_active:

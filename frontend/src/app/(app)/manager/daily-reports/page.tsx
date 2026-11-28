@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format, addDays, subDays, isSameDay, parseISO, startOfDay } from "date-fns";
 import { getUsers, getUserCompanies } from "@/lib/api/users";
 import { deleteWorkLog } from "@/lib/api/work-logs";
-import { getDailyReport, getMyCompanies } from "@/lib/api/companies";
+import { getCompany, getDailyReport, getMyCompanies } from "@/lib/api/companies";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -84,14 +84,23 @@ function ManagerDailyReportInner() {
         queryKey: ["myCompanies"],
     });
 
+    const { data: activeCompanyDetail } = useQuery({
+        queryFn: () => getCompany(activeCompanyId as string),
+        queryKey: ["company", activeCompanyId],
+        enabled: Boolean(activeCompanyId),
+    });
+
     const managedCompanies = useMemo(() => {
-        return myCompanies.filter((c: any) => {
-            const role = (c.role || c.pivot?.role || '').toLowerCase();
+        return myCompanies.filter((c) => {
+            const role = (c.role || '').toLowerCase();
             const isManager = ['manager', 'admin', 'owner'].includes(role);
-            const isModuleActive = Boolean(c.settings?.modules?.worker_daily_report ?? false);
-            return isManager && isModuleActive;
+            if (!isManager) return false;
+            if (activeCompanyDetail && activeCompanyDetail.id === c.id) {
+                return Boolean(activeCompanyDetail.settings?.modules?.worker_daily_report ?? false);
+            }
+            return c.id === activeCompanyId;
         });
-    }, [myCompanies]);
+    }, [myCompanies, activeCompanyDetail, activeCompanyId]);
 
     // Auto-select first company if not selected
     if (!selectedCompanyId && managedCompanies.length > 0) {

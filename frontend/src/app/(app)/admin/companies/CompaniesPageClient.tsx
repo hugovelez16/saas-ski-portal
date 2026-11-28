@@ -62,7 +62,7 @@ export default function AdminCompaniesPage() {
     };
 
     const { data: companies = [], isLoading } = useQuery({
-        queryFn: getCompaniesDetailed,
+        queryFn: () => getCompaniesDetailed({ asAdmin: true }),
         queryKey: ["companiesDetailed"],
     });
 

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Building2, LayoutDashboard } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { CompanyResponse } from "@/lib/types";
+import { CompanyResponse, MyCompany } from "@/lib/types";
 import { useAuth } from "@/context/AuthContext";
 import {
     Select,
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 
 interface CompanySwitcherProps {
-    companies: CompanyResponse[];
+    companies: (CompanyResponse | MyCompany)[];
 }
 
 export function CompanySwitcher({ companies }: CompanySwitcherProps) {

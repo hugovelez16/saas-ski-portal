@@ -23,7 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { getMyCompanies, getCompanyMembers, getCompaniesDetailed } from "@/lib/api/companies";
+import { getCompany, getCompanyMembers, getCompaniesDetailed } from "@/lib/api/companies";
 import { getUsers } from "@/lib/api/users";
 import { getAllWorkLogs, getWorkLogSummary } from "@/lib/api/work-logs";
 import { Company } from "@/lib/types";
@@ -37,8 +37,12 @@ export default function ReportsPage() {
 
     // -- Queries -- 
     const { data: companies = [] } = useQuery({
-        queryFn: isAdmin ? getCompaniesDetailed : getMyCompanies,
-        queryKey: isAdmin ? ['allCompanies'] : ['myCompanies'],
+        queryFn: async () => {
+            if (isAdmin) return getCompaniesDetailed({ asAdmin: true });
+            if (!user?.activeCompanyId) return [];
+            return [await getCompany(user.activeCompanyId)];
+        },
+        queryKey: isAdmin ? ['allCompanies'] : ['company', user?.activeCompanyId],
         enabled: !!user
     });
 

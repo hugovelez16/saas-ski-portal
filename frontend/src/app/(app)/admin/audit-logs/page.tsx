@@ -85,7 +85,7 @@ export default function AuditLogsPage() {
 
     const { data: companies = [] } = useQuery({
         queryKey: ["companiesDetailed"],
-        queryFn: getCompaniesDetailed,
+        queryFn: () => getCompaniesDetailed({ asAdmin: true }),
         enabled: isPlatformAdmin,
     });
 

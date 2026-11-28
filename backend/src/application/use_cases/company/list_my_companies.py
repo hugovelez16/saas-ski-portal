@@ -11,13 +11,8 @@ class ListMyCompaniesUseCase:
         self.company_repo = company_repo
         self.member_repo = member_repo
 
-    async def execute(self, *, user_id: str, as_platform_admin: bool) -> List[CompanyView]:
-        """PA actuando: todas las empresas. Resto (y PA en "ver como"): membresias activas en empresas activas."""
-        if as_platform_admin:
-            total = await self.company_repo.count_companies()
-            companies = await self.company_repo.list_companies(skip=0, limit=max(total, 1))
-            return [CompanyView(company=c, member=None, role="admin") for c in companies]
-
+    async def execute(self, *, user_id: str) -> List[CompanyView]:
+        """Membresias activas del usuario en empresas activas (`R-ACC-81`)."""
         views: List[CompanyView] = []
         for member in await self.member_repo.list_companies_by_user(user_id):
             if not member.is_active:

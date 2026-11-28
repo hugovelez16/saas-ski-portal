@@ -172,13 +172,51 @@ def test_seed_creates_when_no_platform_admin(db, monkeypatch):
     assert result is True
     admin = db.query(models.User).filter_by(email=ADMIN_EMAIL).one()
     assert admin.role == models.UserRole.admin
+    # R-ACC-26: el PA no tiene membresia en la empresa inicial.
+    assert db.query(models.CompanyMember).filter_by(user_id=admin.id).count() == 0
+
     company = db.query(models.Company).filter_by(name=ADMIN_COMPANY).one()
-    member = db.query(models.CompanyMember).filter_by(user_id=admin.id, company_id=company.id).one()
-    assert member.role == models.CompanyRole.manager
+    manager = db.query(models.User).filter_by(email="manager.demo@vesotel.com").one()
+    worker = db.query(models.User).filter_by(email="worker.demo@vesotel.com").one()
+    assert manager.role == models.UserRole.user
+    assert worker.role == models.UserRole.user
+    assert db.query(models.CompanyMember).filter_by(user_id=manager.id, company_id=company.id).one().role == models.CompanyRole.manager
+    assert db.query(models.CompanyMember).filter_by(user_id=worker.id, company_id=company.id).one().role == models.CompanyRole.worker
 
 
-def test_dev_seed_membership_role_is_manager(db):
+def test_seed_defaults_company_name_to_demo_without_env(db, monkeypatch):
+    monkeypatch.setenv("INITIAL_ADMIN_EMAIL", ADMIN_EMAIL)
+    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", ADMIN_PASSWORD)
+    monkeypatch.delenv("INITIAL_COMPANY_NAME", raising=False)
+    db.query(models.User).filter(models.User.role == models.UserRole.admin).update(
+        {"role": models.UserRole.user}
+    )
+    db.flush()
+
+    assert seed.seed_initial_data(db) is True
+    assert db.query(models.Company).filter_by(name="Demo").one().is_active is True
+
+
+def test_dev_seed_creates_demo_members_and_no_pa_membership(db, monkeypatch):
+    monkeypatch.delenv("DEV_ADMIN_COMPANY", raising=False)
     user = dev_seed.ensure_dev_admin_user(db)
 
-    member = db.query(models.CompanyMember).filter_by(user_id=user.id).one()
-    assert member.role == models.CompanyRole.manager
+    assert db.query(models.CompanyMember).filter_by(user_id=user.id).count() == 0
+    demo_company = db.query(models.Company).filter_by(name="Demo").first() or db.query(models.Company).first()
+    assert demo_company is not None
+    manager = db.query(models.User).filter_by(email="manager.demo@vesotel.com").one()
+    worker = db.query(models.User).filter_by(email="worker.demo@vesotel.com").one()
+    assert (
+        db.query(models.CompanyMember)
+        .filter_by(user_id=manager.id, company_id=demo_company.id)
+        .one()
+        .role
+        == models.CompanyRole.manager
+    )
+    assert (
+        db.query(models.CompanyMember)
+        .filter_by(user_id=worker.id, company_id=demo_company.id)
+        .one()
+        .role
+        == models.CompanyRole.worker
+    )

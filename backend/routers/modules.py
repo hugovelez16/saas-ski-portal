@@ -24,16 +24,6 @@ from routers import deps
 router = APIRouter(prefix="/modules", tags=["modules"])
 
 
-# ─── Helpers ────────────────────────────────────────────────────────────────
-
-
-def _require_admin(current_user: models.User):
-    if not deps.acting_platform_admin(current_user):
-        raise HTTPException(
-            status_code=403, detail="Solo el administrador de la plataforma puede realizar esta acción."
-        )
-
-
 # ─── Catálogo de Módulos ─────────────────────────────────────────────────────
 
 
@@ -53,11 +43,9 @@ def list_modules(
 def create_module(
     data: schemas.AppModuleCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user),
+    current_user: models.User = Depends(deps.require_platform_admin),
 ):
     """Crea un nuevo módulo en el catálogo (Platform Admin)."""
-    _require_admin(current_user)
-
     existing = crud.get_module_by_code(db, data.code_name)
     if existing:
         raise HTTPException(status_code=400, detail=f"Ya existe un módulo con el código '{data.code_name}'.")
@@ -70,11 +58,9 @@ def update_module(
     module_id: str,
     data: schemas.AppModuleUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user),
+    current_user: models.User = Depends(deps.require_platform_admin),
 ):
     """Actualiza un módulo del catálogo (Platform Admin)."""
-    _require_admin(current_user)
-
     updated = crud.update_module(db, module_id, data)
     if not updated:
         raise HTTPException(status_code=404, detail="Módulo no encontrado.")
@@ -131,11 +117,9 @@ def list_subscriptions(
 def create_subscription(
     data: schemas.ModuleSubscriptionCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user),
+    current_user: models.User = Depends(deps.require_platform_admin),
 ):
     """Crea una suscripción a un módulo (Platform Admin)."""
-    _require_admin(current_user)
-
     # Verify module exists
     module = crud.get_module_by_id(db, str(data.module_id))
     if not module:
@@ -156,11 +140,9 @@ def update_subscription(
     sub_id: str,
     data: schemas.ModuleSubscriptionUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user),
+    current_user: models.User = Depends(deps.require_platform_admin),
 ):
     """Actualiza el estado/expiración de una suscripción (Platform Admin)."""
-    _require_admin(current_user)
-
     updated = crud.update_subscription(db, sub_id, data)
     if not updated:
         raise HTTPException(status_code=404, detail="Suscripción no encontrada.")
@@ -169,11 +151,9 @@ def update_subscription(
 
 @router.delete("/subscriptions/{sub_id}")
 def delete_subscription(
-    sub_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+    sub_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(deps.require_platform_admin)
 ):
     """Elimina una suscripción (Platform Admin)."""
-    _require_admin(current_user)
-
     deleted = crud.delete_subscription(db, sub_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Suscripción no encontrada.")
@@ -209,7 +189,7 @@ def get_my_modules(
         if raw_company_id:
             # Empresa del token: si esta suspendida o ya no hay membresia, solo cuentan las suscripciones personales
             facts = deps.load_company_facts(db, current_user, raw_company_id)
-            has_access = facts.membership_active or bool(getattr(current_user, "is_platform_admin", False))
+            has_access = facts.membership_active or is_admin
             if facts.exists and facts.is_active and has_access:
                 effective_company_id = facts.company_id
 
@@ -268,10 +248,9 @@ def get_my_modules(
 
 @router.get("/{module_id}", response_model=schemas.AppModuleResponse)
 def get_module(
-    module_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)
+    module_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(deps.require_platform_admin)
 ):
     """Obtiene un módulo específico por su ID (Platform Admin)."""
-    _require_admin(current_user)
     module = crud.get_module_by_id(db, module_id)
     if not module:
         raise HTTPException(status_code=404, detail="Módulo no encontrado.")
