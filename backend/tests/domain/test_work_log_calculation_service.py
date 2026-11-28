@@ -58,24 +58,6 @@ def test_calculate_daily_rate_gross_to_net_with_extras():
     assert snapshot.net_amount == Decimal("293.25")
 
 
-def test_manual_override_amount():
-    duration = WorkDuration(unit=WorkUnit.HOURS, value=4.0)
-    rate_def = RateDefinition(base_rate=Decimal("25.00"), is_gross=False)
-    tax_config = TaxConfiguration(taxes={"IRPF": Decimal("0.15")})
-
-    snapshot = WorkLogCalculationService.calculate(
-        duration=duration,
-        rate_definition=rate_def,
-        tax_configuration=tax_config,
-        manual_net_amount=Decimal("150.00"),
-    )
-
-    assert snapshot.net_amount == Decimal("150.00")
-    assert snapshot.gross_amount == Decimal("150.00")
-    assert snapshot.metadata.get("type") == "manual_override"
-    assert snapshot.tax_applied == {}
-
-
 def test_tax_configuration_resolves_free_keys_like_resolve_taxes():
     config = TaxConfiguration.from_dict(
         {"IRPF": 0.15, "Seguridad Social": 0.0648},

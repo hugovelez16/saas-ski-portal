@@ -7,9 +7,9 @@ import crud
 import models
 import schemas
 from access_policy import PolicyError
-from contracts import MissingWorklogUnitError
+from contracts import MissingWorklogDatesError, MissingWorklogUnitError
 from database import get_db
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from routers import deps
@@ -66,8 +66,10 @@ def create_work_log(
             extra_data={"work_log_id": str(new_log.id), "user_id": str(work_log.user_id)},
         )
         return new_log
-    except MissingWorklogUnitError:
+    except (MissingWorklogUnitError, MissingWorklogDatesError):
         raise
+    except (crud.MissingRateError, crud.UnknownWorkLogTypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -101,8 +103,10 @@ def create_work_log_bulk(
                 },
             )
         return logs  # Returns the first one created as a representative
-    except MissingWorklogUnitError:
+    except (MissingWorklogUnitError, MissingWorklogDatesError):
         raise
+    except (crud.MissingRateError, crud.UnknownWorkLogTypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -318,13 +322,65 @@ def delete_work_log(
     return {"ok": True}
 
 
+@router.post("/{work_log_id}/recalculate-preview", response_model=schemas.WorkLogRecalculatePreviewResponse)
+def preview_work_log_recalculation(
+    work_log_id: UUID,
+    work_log: schemas.WorkLogUpdate | None = Body(default=None),
+    apply_to_group: bool = False,
+    recalculate_with_current_rates: bool = True,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_verified_user),
+):
+    """
+    Previsualiza el importe actual frente al nuevo antes de confirmar un recalculo con tarifa vigente
+    o un cambio de tipo de turno (R-TUR-20, R-TUR-21), sin persistir cambios.
+    """
+    log = db.query(models.WorkLog).filter(models.WorkLog.id == work_log_id).first()
+    if not log:
+        raise _work_log_not_found(current_user)
+
+    role = _authorize_work_log_write(db, current_user, log)
+
+    if apply_to_group and role not in _COMPANY_VIEW_ROLES:
+        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+
+    if recalculate_with_current_rates and role not in _COMPANY_VIEW_ROLES:
+        raise PolicyError(403, access_policy.MSG_FORBIDDEN)
+
+    payload = work_log or schemas.WorkLogUpdate()
+    if (payload.user_id is not None and str(payload.user_id) != str(log.user_id)) or (
+        payload.company_id is not None and str(payload.company_id) != str(log.company_id)
+    ):
+        raise PolicyError(422, "No se puede cambiar la empresa ni el usuario de un turno")
+
+    try:
+        preview = crud.preview_work_log_recalculation(
+            db,
+            str(work_log_id),
+            payload,
+            company_id=log.company_id,
+            apply_to_group=apply_to_group,
+            recalculate_with_current_rates=recalculate_with_current_rates,
+        )
+    except (MissingWorklogUnitError, MissingWorklogDatesError):
+        raise
+    except (crud.MissingRateError, crud.UnknownWorkLogTypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    if preview is None:
+        raise _work_log_not_found(current_user)
+
+    return schemas.WorkLogRecalculatePreviewResponse(**preview)
+
+
 @router.put("/{work_log_id}", response_model=schemas.WorkLogResponse)
 def update_work_log(
     work_log_id: UUID,
     work_log: schemas.WorkLogUpdate,
     apply_to_group: bool = False,
     recalculate_with_current_rates: bool = False,
-    keep_manual_amount: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user),
 ):
@@ -338,11 +394,11 @@ def update_work_log(
     if apply_to_group and role not in _COMPANY_VIEW_ROLES:
         raise PolicyError(403, access_policy.MSG_FORBIDDEN)
 
-    # T5: recalcular con la tarifa vigente solo lo piden manager y PA
+    # R-TUR-20: recalcular con la tarifa vigente solo lo piden manager y PA
     if recalculate_with_current_rates and role not in _COMPANY_VIEW_ROLES:
         raise PolicyError(403, access_policy.MSG_FORBIDDEN)
 
-    # T3: empresa y usuario de un turno no cambian; se aceptan solo si coinciden con los actuales
+    # R-TUR-02: empresa y usuario de un turno no cambian; se aceptan solo si coinciden con los actuales
     if (work_log.user_id is not None and str(work_log.user_id) != str(log.user_id)) or (
         work_log.company_id is not None and str(work_log.company_id) != str(log.company_id)
     ):
@@ -356,13 +412,10 @@ def update_work_log(
             company_id=log.company_id,
             apply_to_group=apply_to_group,
             recalculate_with_current_rates=recalculate_with_current_rates,
-            keep_manual_amount=keep_manual_amount,
         )
-    except MissingWorklogUnitError:
+    except (MissingWorklogUnitError, MissingWorklogDatesError):
         raise
-    except crud.ManualAmountChoiceError as e:
-        raise HTTPException(status_code=409, detail={"code": "manual_amount_choice", "message": str(e)})
-    except crud.MissingRateError as e:
+    except (crud.MissingRateError, crud.UnknownWorkLogTypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

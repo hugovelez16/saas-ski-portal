@@ -224,7 +224,7 @@ def require_active_member(db: Session, user_id: Any, company_id: Any) -> models.
             .first()
         )
     if member is None:
-        raise PolicyError(422, "El usuario no tiene una membresia activa en esta empresa")
+        raise PolicyError(403, "El usuario no tiene una membresia activa en esta empresa")
     return member
 
 
