@@ -327,8 +327,6 @@ export interface AppModule {
     name: string;
     description?: string | null;
     isActive: boolean;
-    targetScope: 'company' | 'user' | 'both';
-    priceMonthly?: number | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -336,9 +334,7 @@ export interface AppModule {
 export interface ModuleSubscription {
     id: string;
     moduleId: string;
-    companyId?: string | null;
-    userId?: string | null;
-    scope: 'company' | 'user';
+    companyId: string;
     status: 'active' | 'trial' | 'cancelled' | 'expired';
     expiresAt?: string | null;
     notes?: string | null;
@@ -346,7 +342,6 @@ export interface ModuleSubscription {
     updatedAt: string;
     module?: AppModule;
     company?: Company;
-    user?: User;
 }
 
 // ─── Dynamic Billing ──────────────────────────────────────────────────────

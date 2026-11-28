@@ -34,13 +34,18 @@ interface CompanyConfigurationTabProps {
     company: any;
 }
 
+const PLAN_PRESETS: Record<string, { max_monitors: number | null; max_managers: number | null }> = {
+    pista_verde: { max_monitors: 10, max_managers: 1 },
+    pista_azul: { max_monitors: 25, max_managers: 2 },
+    pista_roja: { max_monitors: 50, max_managers: null },
+};
+
 const PLAN_OPTIONS = [
     { value: "__none__", label: "Sin plan asignado" },
-    { value: "basico", label: "Pista Verde (Basico)" },
-    { value: "escuela", label: "Pista Azul (Escuela)" },
-    { value: "grande", label: "Pista Roja (Grande)" },
-    { value: "pista_negra", label: "Pista Negra" },
-    { value: "custom", label: "Personalizado" },
+    { value: "pista_verde", label: "Pista Verde (10 monitores, 1 responsable)" },
+    { value: "pista_azul", label: "Pista Azul (25 monitores, 2 responsables)" },
+    { value: "pista_roja", label: "Pista Roja (50 monitores, responsables ilimitados)" },
+    { value: "personalizado", label: "Personalizado" },
 ];
 
 function CompanySettingsBuilder({
@@ -126,16 +131,39 @@ function PlatformSettingsBuilder({
         return n;
     };
 
+    const hasPreset = plan in PLAN_PRESETS;
+    const isCustomOrUnassigned = !hasPreset;
+
+    const handlePlanChange = (nextPlan: string) => {
+        setPlan(nextPlan);
+        if (nextPlan in PLAN_PRESETS) {
+            const preset = PLAN_PRESETS[nextPlan];
+            setMaxMonitors(preset.max_monitors !== null ? String(preset.max_monitors) : "");
+            setMaxManagers(preset.max_managers !== null ? String(preset.max_managers) : "");
+        } else if (nextPlan === "__none__") {
+            setMaxMonitors("");
+            setMaxManagers("");
+        }
+    };
+
     const handleSave = () => {
+        const preset = plan in PLAN_PRESETS ? PLAN_PRESETS[plan] : null;
         onSave({
             plan: plan === "__none__" ? null : plan,
-            limits: {
-                max_monitors: parseLimit(maxMonitors),
-                max_managers: parseLimit(maxManagers),
-            },
+            limits: preset
+                ? { ...preset }
+                : {
+                      max_monitors: parseLimit(maxMonitors),
+                      max_managers: parseLimit(maxManagers),
+                  },
             modules: initialValue?.modules ? { ...initialValue.modules } : {},
         });
     };
+
+    const planChoices =
+        plan !== "__none__" && !PLAN_OPTIONS.some((option) => option.value === plan)
+            ? [...PLAN_OPTIONS, { value: plan, label: plan }]
+            : PLAN_OPTIONS;
 
     return (
         <div className="space-y-4">
@@ -144,12 +172,12 @@ function PlatformSettingsBuilder({
                     <Label htmlFor="platform-plan" className="text-xs text-muted-foreground">
                         Plan comercial
                     </Label>
-                    <Select value={plan} onValueChange={setPlan}>
+                    <Select value={plan} onValueChange={handlePlanChange}>
                         <SelectTrigger id="platform-plan">
                             <SelectValue placeholder="Selecciona un plan" />
                         </SelectTrigger>
                         <SelectContent>
-                            {PLAN_OPTIONS.map((option) => (
+                            {planChoices.map((option) => (
                                 <SelectItem key={option.value} value={option.value}>
                                     {option.label}
                                 </SelectItem>
@@ -167,6 +195,7 @@ function PlatformSettingsBuilder({
                         min={0}
                         placeholder="Sin limite"
                         value={maxMonitors}
+                        disabled={!isCustomOrUnassigned}
                         onChange={(e) => setMaxMonitors(e.target.value)}
                     />
                 </div>
@@ -180,10 +209,16 @@ function PlatformSettingsBuilder({
                         min={0}
                         placeholder="Sin limite"
                         value={maxManagers}
+                        disabled={!isCustomOrUnassigned}
                         onChange={(e) => setMaxManagers(e.target.value)}
                     />
                 </div>
             </div>
+            {hasPreset && (
+                <p className="text-xs text-muted-foreground">
+                    Los limites de este plan comercial son fijos; selecciona &quot;Personalizado&quot; para fijar otros numeros.
+                </p>
+            )}
             <div className="flex justify-end">
                 <Button type="button" onClick={handleSave}>
                     <Save className="mr-2 h-4 w-4" />

@@ -5,7 +5,7 @@ import { SubscriptionBadge } from "./SubscriptionBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, User, Layers, Edit2 } from "lucide-react";
+import { Building2, Edit2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface Props {
@@ -16,28 +16,12 @@ interface Props {
     onEditSubscription: (sub: ModuleSubscription) => void;
 }
 
-const scopeIcons = {
-    company: Building2,
-    user: User,
-    both: Layers,
-};
-
 export function ModuleCard({ module, subscriptions, onAddSubscription, onCancelSubscription, onEditSubscription }: Props) {
     const router = useRouter();
-    const Icon = scopeIcons[module.targetScope] ?? Layers;
     const registeredSubs = subscriptions.filter(s => s.status === "active" || s.status === "trial" || s.status === "expired" || s.status === "cancelled");
 
     const getAssigneeName = (sub: ModuleSubscription) => {
-        if (sub.scope === "company") {
-            return sub.company?.name ?? (sub.companyId ? `Empresa: ${sub.companyId.substring(0, 8)}...` : "Empresa sin ID");
-        } else {
-            const u = sub.user;
-            if (!u) {
-                return sub.userId ? `Usuario: ${sub.userId.substring(0, 8)}...` : "Usuario sin ID";
-            }
-            const fullName = `${u.firstName || ""} ${u.lastName || ""}`.trim();
-            return fullName ? `${fullName} (${u.email})` : u.email;
-        }
+        return sub.company?.name ?? (sub.companyId ? `Empresa: ${sub.companyId.substring(0, 8)}...` : "Empresa sin ID");
     };
 
     const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -59,7 +43,7 @@ export function ModuleCard({ module, subscriptions, onAddSubscription, onCancelS
             <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
                 <div className="flex items-start gap-3">
                     <div className={`rounded-lg p-2.5 ${module.isActive ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-500"}`}>
-                        <Icon className="h-5 w-5" />
+                        <Building2 className="h-5 w-5" />
                     </div>
                     <div>
                         <CardTitle className="text-base font-bold text-slate-800">{module.name}</CardTitle>
@@ -70,11 +54,6 @@ export function ModuleCard({ module, subscriptions, onAddSubscription, onCancelS
                 </div>
                 <div className="flex gap-1.5">
                     {!module.isActive && <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] font-semibold border border-slate-200">Inactivo</Badge>}
-                    {module.priceMonthly != null && (
-                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200/80 text-[10px] font-bold">
-                            {module.priceMonthly}€/mes
-                        </Badge>
-                    )}
                 </div>
             </CardHeader>
             <CardContent className="space-y-4 pt-0">
