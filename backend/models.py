@@ -246,8 +246,6 @@ class AuditLog(Base):
     __table_args__ = (Index("ix_audit_logs_company_created", "company_id", "created_at"),)
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     action = Column(String, nullable=False, index=True)
-    impersonated_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    admin_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     actor_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     company_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     target_user_id = Column(UUID(as_uuid=True), nullable=True, index=True)

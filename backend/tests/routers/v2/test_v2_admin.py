@@ -37,6 +37,8 @@ def world(db):
         ("GET", lambda w: "/v2/admin/modules/subscriptions"),
         ("GET", lambda w: "/v2/admin/audit-logs"),
         ("GET", lambda w: "/v2/admin/audit-logs/actions"),
+        ("GET", lambda w: "/v2/admin/audit-logs/purge-preview?before=2026-01-01T00:00:00Z"),
+        ("POST", lambda w: "/v2/admin/audit-logs/purge"),
     ],
 )
 @pytest.mark.parametrize("actor", ["worker", "manager", "pa_view_as_manager"])
@@ -100,6 +102,8 @@ def test_v2_admin_impersonate_and_audit_logs_work_for_pa(client, world):
 
     imp = client.post(f"/v2/admin/impersonate/{world.worker.id}")
     logs = client.get("/v2/admin/audit-logs")
+    preview = client.get("/v2/admin/audit-logs/purge-preview", params={"before": "2026-01-01T00:00:00Z"})
 
     assert imp.status_code == 200, imp.text
     assert logs.status_code == 200, logs.text
+    assert preview.status_code == 200, preview.text

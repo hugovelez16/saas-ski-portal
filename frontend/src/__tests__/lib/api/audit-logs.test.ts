@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import api from '@/lib/api';
-import { getAuditLogs, getAuditActions } from '@/lib/api/audit-logs';
+import { getAuditLogs, getAuditActions, getAuditPurgePreview, purgeAuditLogs } from '@/lib/api/audit-logs';
 
 vi.mock('@/lib/api', () => ({
     default: {
@@ -78,5 +78,30 @@ describe('Audit logs API Client', () => {
 
         expect(mockedApi.get).toHaveBeenCalledWith('/audit-logs/actions');
         expect(result).toEqual(['company.update', 'user.reset_2fa']);
+    });
+
+    it('getAuditPurgePreview hace GET /audit-logs/purge-preview con before', async () => {
+        (mockedApi.get as any).mockResolvedValue({ data: { before: '2026-01-01T00:00:00Z', count: 12 } });
+
+        const result = await getAuditPurgePreview('2026-01-01T00:00:00Z');
+
+        expect(mockedApi.get).toHaveBeenCalledWith('/audit-logs/purge-preview', {
+            params: { before: '2026-01-01T00:00:00Z' },
+        });
+        expect(result).toEqual({ before: '2026-01-01T00:00:00Z', count: 12 });
+    });
+
+    it('purgeAuditLogs hace POST /audit-logs/purge con before y motivo opcional', async () => {
+        (mockedApi.post as any).mockResolvedValue({
+            data: { before: '2026-01-01T00:00:00Z', deletedCount: 12, auditLogId: 'log-99' },
+        });
+
+        const result = await purgeAuditLogs({ before: '2026-01-01T00:00:00Z', reason: 'Limpieza' });
+
+        expect(mockedApi.post).toHaveBeenCalledWith('/audit-logs/purge', {
+            before: '2026-01-01T00:00:00Z',
+            reason: 'Limpieza',
+        });
+        expect(result.deletedCount).toBe(12);
     });
 });

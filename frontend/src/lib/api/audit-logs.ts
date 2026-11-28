@@ -54,3 +54,31 @@ export const getAuditActions = async (): Promise<string[]> => {
     const response = await api.get<string[]>("/audit-logs/actions");
     return response.data;
 };
+
+export interface AuditLogPurgePreview {
+    before: string;
+    count: number;
+}
+
+export interface AuditLogPurgeRequest {
+    before: string;
+    reason?: string;
+}
+
+export interface AuditLogPurgeResponse {
+    before: string;
+    deletedCount: number;
+    auditLogId: string;
+}
+
+export const getAuditPurgePreview = async (before: string): Promise<AuditLogPurgePreview> => {
+    const response = await api.get<AuditLogPurgePreview>("/audit-logs/purge-preview", {
+        params: { before },
+    });
+    return response.data;
+};
+
+export const purgeAuditLogs = async (data: AuditLogPurgeRequest): Promise<AuditLogPurgeResponse> => {
+    const response = await api.post<AuditLogPurgeResponse>("/audit-logs/purge", data);
+    return response.data;
+};
