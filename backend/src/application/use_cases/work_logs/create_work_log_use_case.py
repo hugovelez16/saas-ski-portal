@@ -9,7 +9,11 @@ from typing import Any, Dict, Optional
 
 from contracts import MissingWorklogUnitError
 from domain.entities.work_log import WorkLog
-from domain.exceptions.domain_exceptions import EntityNotFoundException, InactiveMembershipException
+from domain.exceptions.domain_exceptions import (
+    DomainException,
+    EntityNotFoundException,
+    InactiveMembershipException,
+)
 from domain.ports.repositories.company_repository_port import CompanyMemberRepositoryPort, CompanyRepositoryPort
 from domain.ports.repositories.work_log_repository_port import WorkLogRepositoryPort
 from domain.services.work_log_calculation_service import WorkLogCalculationService
@@ -42,7 +46,6 @@ class CreateWorkLogUseCase:
         duration_hours: Optional[float] = None,
         description: Optional[str] = None,
         extra_data: Optional[Dict[str, Any]] = None,
-        manual_amount: Optional[float] = None,
     ) -> WorkLog:
         # 1. Validar membresia
         member = await self.member_repo.get_membership(user_id=user_id, company_id=company_id)
@@ -55,7 +58,9 @@ class CreateWorkLogUseCase:
             raise EntityNotFoundException("Empresa no encontrada")
 
         company_defs = company.worklog_definitions or {}
-        type_def = company_defs.get(log_type, {})
+        if log_type not in company_defs or not isinstance(company_defs[log_type], dict):
+            raise DomainException(f"El tipo de turno '{log_type}' no existe en la configuracion de la empresa.")
+        type_def = company_defs[log_type]
 
         # Determinar unidad de trabajo
         unit_str = type_def.get("unit")
@@ -78,6 +83,10 @@ class CreateWorkLogUseCase:
         rates_config = member.rates_config or {}
         user_rate_dict = rates_config.get(log_type, {})
         rate_definition = RateDefinition.from_dict(user_rate_dict)
+        if rate_definition.base_rate <= 0:
+            raise DomainException(
+                f"No se ha encontrado un precio (rate) configurado para el tipo '{log_type}' para este usuario."
+            )
         tax_config = TaxConfiguration.from_dict(
             company_tax_config=company.tax_config,
             user_tax_overrides=rate_definition.tax_overrides,
@@ -87,15 +96,12 @@ class CreateWorkLogUseCase:
         extras_payload = extra_data or {}
         options = extras_payload.get("opciones", {})
 
-        manual_money = Money.from_float_or_str(manual_amount) if manual_amount is not None else None
-
         # 5. Ejecutar servicio de dominio de calculo
         snapshot = WorkLogCalculationService.calculate(
             duration=duration,
             rate_definition=rate_definition,
             tax_configuration=tax_config,
             options=options,
-            manual_net_amount=manual_money.amount if manual_money else None,
         )
 
         # 6. Crear y persistir entidad

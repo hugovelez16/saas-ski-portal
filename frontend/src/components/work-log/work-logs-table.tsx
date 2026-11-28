@@ -332,6 +332,7 @@ export function WorkLogsTable({
                 open={!!viewLog}
                 onOpenChange={() => setViewLog(null)}
                 companies={companies}
+                onUpdated={onUpdate}
             />
 
             {/* Edit Form Dialog */}

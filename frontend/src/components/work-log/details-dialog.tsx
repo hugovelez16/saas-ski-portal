@@ -13,15 +13,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import { es } from "date-fns/locale";
-import { WorkLog, UserSettings, Company } from "@/lib/types";
+import { WorkLog, UserSettings, Company, WorkLogRecalculatePreview } from "@/lib/types";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getMyCompanies } from "@/lib/api/companies";
+import { previewWorkLogRecalculation, updateWorkLog } from "@/lib/api/work-logs";
+import { notifyWorkLogWarnings } from "@/lib/work-log-warnings";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
+import { Loader2, RefreshCw } from "lucide-react";
+import { RecalculateConfirmDialog } from "./recalculate-confirm-dialog";
 
 interface WorkLogDetailsDialogProps {
     log: WorkLog | null;
@@ -31,11 +36,24 @@ interface WorkLogDetailsDialogProps {
     userSettings?: UserSettings | null;
     onEdit?: (log: WorkLog, applyToGroup: boolean) => void;
     onDelete?: (log: WorkLog) => void;
+    onUpdated?: () => void;
 }
 
-export function WorkLogDetailsDialog({ log, open, onOpenChange, companies: initialCompanies, userSettings, onEdit, onDelete }: WorkLogDetailsDialogProps) {
+export function WorkLogDetailsDialog({ log, open, onOpenChange, companies: initialCompanies, userSettings, onEdit, onDelete, onUpdated }: WorkLogDetailsDialogProps) {
     const { user } = useAuth();
+    const { toast } = useToast();
+    const queryClient = useQueryClient();
     const [applyToGroup, setApplyToGroup] = React.useState(false);
+    const [recalcPreview, setRecalcPreview] = React.useState<WorkLogRecalculatePreview | null>(null);
+    const [isPreviewLoading, setIsPreviewLoading] = React.useState(false);
+    const [isRecalculating, setIsRecalculating] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!open) {
+            setRecalcPreview(null);
+            setApplyToGroup(false);
+        }
+    }, [open]);
 
     // Fetch companies if not provided (cached by React Query)
     const { data: myCompanies = [] } = useQuery({
@@ -48,11 +66,52 @@ export function WorkLogDetailsDialog({ log, open, onOpenChange, companies: initi
 
     // Empresa del turno: sus reglas (gestionada o autonoma) deciden si se puede editar o borrar
     const logCompany = log ? companies?.find(c => c.id === log.companyId) ?? null : null;
-    const { canEditWorkLog, role, isManaged } = usePermissions(logCompany);
+    const { canEditWorkLog, isPlatformAdmin, role, isManaged } = usePermissions(logCompany);
     const canEdit = !!log && !!logCompany && canEditWorkLog(log);
+    const isManagerLike = isPlatformAdmin || role === 'manager';
     const isManagedWorker = role === 'worker' && isManaged;
 
     if (!log) return null;
+
+    const handlePreviewRecalculate = async () => {
+        setIsPreviewLoading(true);
+        try {
+            const preview = await previewWorkLogRecalculation(log.id, {}, applyToGroup, {
+                recalculateWithCurrentRates: true,
+            });
+            setRecalcPreview(preview);
+        } catch (error: any) {
+            const detail = error?.response?.data?.detail;
+            const msg = typeof detail === "string" ? detail : detail?.message || "No se pudo previsualizar el recálculo.";
+            toast({ title: "Error al recalcular", description: msg, variant: "destructive" });
+        } finally {
+            setIsPreviewLoading(false);
+        }
+    };
+
+    const handleConfirmRecalculate = async () => {
+        setIsRecalculating(true);
+        try {
+            const updated = await updateWorkLog(log.id, {}, applyToGroup, {
+                recalculateWithCurrentRates: true,
+            });
+            toast({ title: "Importe recalculado", description: "El turno se ha actualizado con la tarifa vigente." });
+            notifyWorkLogWarnings(toast, updated);
+            setRecalcPreview(null);
+            queryClient.invalidateQueries({ queryKey: ["workLogs"] });
+            queryClient.invalidateQueries({ queryKey: ["companyWorkLogs"] });
+            queryClient.invalidateQueries({ queryKey: ["daily-report"] });
+            queryClient.invalidateQueries({ queryKey: ["work-logs"] });
+            onUpdated?.();
+            onOpenChange(false);
+        } catch (error: any) {
+            const detail = error?.response?.data?.detail;
+            const msg = typeof detail === "string" ? detail : detail?.message || "No se pudo recalcular el turno.";
+            toast({ title: "Error al recalcular", description: msg, variant: "destructive" });
+        } finally {
+            setIsRecalculating(false);
+        }
+    };
 
     // Resolve Definition
     const company = logCompany;
@@ -71,6 +130,7 @@ export function WorkLogDetailsDialog({ log, open, onOpenChange, companies: initi
     const hasSnapshot = !!snapshot && displayLines.length > 0;
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
@@ -212,12 +272,26 @@ export function WorkLogDetailsDialog({ log, open, onOpenChange, companies: initi
                 </div>
 
                 <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 border-t pt-4">
-                    <div className="flex gap-2 w-full sm:w-auto mr-auto">
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto mr-auto">
                         {onEdit && canEdit && (
                             <Button variant="secondary" onClick={() => {
                                 onEdit(log, applyToGroup);
                             }}>
                                 Editar
+                            </Button>
+                        )}
+                        {canEdit && isManagerLike && (
+                            <Button
+                                variant="outline"
+                                disabled={isPreviewLoading}
+                                onClick={handlePreviewRecalculate}
+                            >
+                                {isPreviewLoading ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <RefreshCw className="mr-2 h-4 w-4" />
+                                )}
+                                Recalcular con tarifa vigente
                             </Button>
                         )}
                         {onDelete && canEdit && (
@@ -237,5 +311,14 @@ export function WorkLogDetailsDialog({ log, open, onOpenChange, companies: initi
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        <RecalculateConfirmDialog
+            open={recalcPreview !== null}
+            preview={recalcPreview}
+            mode="recalculate"
+            isSubmitting={isRecalculating}
+            onConfirm={handleConfirmRecalculate}
+            onCancel={() => setRecalcPreview(null)}
+        />
+        </>
     );
 }

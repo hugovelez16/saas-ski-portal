@@ -7,6 +7,8 @@ from datetime import date, time
 from enum import Enum
 from typing import Optional
 
+from contracts import MissingWorklogDatesError
+
 
 class WorkUnit(str, Enum):
     HOURS = "hours"
@@ -44,10 +46,10 @@ class WorkDuration:
             return cls(unit=WorkUnit.HOURS, value=0.0)
 
         elif unit == WorkUnit.DAYS:
-            if start_date is not None and end_date is not None:
-                delta = (end_date - start_date).days + 1
-                return cls(unit=WorkUnit.DAYS, value=float(max(delta, 1)))
-            return cls(unit=WorkUnit.DAYS, value=1.0)
+            if start_date is None or end_date is None:
+                raise MissingWorklogDatesError("Un turno con unidad 'days' requiere fecha de inicio y de fin")
+            delta = (end_date - start_date).days + 1
+            return cls(unit=WorkUnit.DAYS, value=float(max(delta, 1)))
 
         else:
             return cls(unit=WorkUnit.FIXED, value=1.0)
