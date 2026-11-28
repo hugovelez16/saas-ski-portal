@@ -21,6 +21,7 @@ from database import get_db
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+from jwt_keys import load_jwt_keys
 from passlib.context import CryptContext
 from redis_config import redis_manager
 from sqlalchemy import or_
@@ -33,72 +34,8 @@ ALGORITHM = "RS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
-# Load RSA Keys
-KEYS_DIR = os.path.join(os.path.dirname(__file__), "keys")
-try:
-    with open(os.path.join(KEYS_DIR, "public_key.pem"), "r") as f:
-        PUBLIC_KEY = f.read()
-
-    with open(os.path.join(KEYS_DIR, "private_key.pem"), "rb") as f:
-        private_key_data = f.read()
-
-    from cryptography.hazmat.backends import default_backend
-    from cryptography.hazmat.primitives import serialization
-
-    passphrase = os.getenv("JWT_PRIVATE_KEY_PASSPHRASE")
-    try:
-        private_key_obj = serialization.load_pem_private_key(
-            private_key_data, password=passphrase.encode() if passphrase else None, backend=default_backend()
-        )
-    except TypeError:
-        private_key_obj = serialization.load_pem_private_key(
-            private_key_data, password=None, backend=default_backend()
-        )
-
-    PRIVATE_KEY = private_key_obj.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    ).decode("utf-8")
-except (FileNotFoundError, ValueError, TypeError):
-    # Fallback for dev/CI if keys don't exist yet or decryption fails
-    PRIVATE_KEY = os.getenv("PRIVATE_KEY", "")
-    PUBLIC_KEY = os.getenv("PUBLIC_KEY", "")
-    if not PRIVATE_KEY and not PUBLIC_KEY:
-        try:
-            print("RSA keys not found or failed to load. Generating a new key pair for local development...")
-            from cryptography.hazmat.backends import default_backend
-            from cryptography.hazmat.primitives import serialization
-            from cryptography.hazmat.primitives.asymmetric import rsa
-
-            # Generate new RSA key pair
-            private_key_obj = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
-
-            # Serialize key pair (unencrypted for easy local development)
-            pem_private = private_key_obj.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
-            pem_public = private_key_obj.public_key().public_bytes(
-                encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo
-            )
-
-            # Write key pair back to disk to persist across hot-reloads if writable
-            try:
-                os.makedirs(KEYS_DIR, exist_ok=True)
-                with open(os.path.join(KEYS_DIR, "private_key.pem"), "wb") as f:
-                    f.write(pem_private)
-                with open(os.path.join(KEYS_DIR, "public_key.pem"), "wb") as f:
-                    f.write(pem_public)
-                print("Successfully auto-generated RSA key pair for local development (saved under keys/).")
-            except Exception as write_err:
-                print(f"Warning: Could not save RSA keys to disk ({write_err}). Using in-memory keys for this session.")
-
-            PRIVATE_KEY = pem_private.decode("utf-8")
-            PUBLIC_KEY = pem_public.decode("utf-8")
-        except Exception as gen_err:
-            raise RuntimeError(f"Failed to generate RSA key: {gen_err}")
+# Load RSA Keys (ficheros, variables de entorno o par efimero si esta permitido)
+PRIVATE_KEY, PUBLIC_KEY = load_jwt_keys()
 
 
 # Encryption key for OTP secrets

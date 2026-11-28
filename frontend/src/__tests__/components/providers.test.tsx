@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
-import { Providers, sanitizeEvent, stripUrl } from "@/components/providers";
+import {
+  Providers,
+  sanitizeEvent,
+  shouldRetryQuery,
+  stripUrl,
+} from "@/components/providers";
 import posthog from "posthog-js";
 
 vi.mock("posthog-js", () => ({
@@ -203,6 +208,31 @@ describe("sanitizeEvent utility", () => {
 
     const result = sanitizeEvent(event);
     expect(result?.properties).toEqual({});
+  });
+});
+
+describe("shouldRetryQuery", () => {
+  const axiosError = (status: number) => ({ response: { status } });
+
+  it("should not retry on 401", () => {
+    expect(shouldRetryQuery(0, axiosError(401))).toBe(false);
+  });
+
+  it("should not retry on 403", () => {
+    expect(shouldRetryQuery(0, axiosError(403))).toBe(false);
+  });
+
+  it("should retry on 500 while failureCount is below 3", () => {
+    expect(shouldRetryQuery(0, axiosError(500))).toBe(true);
+    expect(shouldRetryQuery(2, axiosError(500))).toBe(true);
+  });
+
+  it("should stop retrying on 500 when failureCount reaches 3", () => {
+    expect(shouldRetryQuery(3, axiosError(500))).toBe(false);
+  });
+
+  it("should retry on errors without response (network error)", () => {
+    expect(shouldRetryQuery(0, new Error("Network Error"))).toBe(true);
   });
 });
 

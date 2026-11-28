@@ -22,6 +22,9 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ## [Unreleased]
 
+### Corregido
+- **Claves RSA fijas y sin reintento de 401**: el backend ya no genera un par RSA al vuelo salvo con `ALLOW_EPHEMERAL_JWT_KEYS=true` (activado solo en `docker-compose.dev.yml` y en los tests); sin claves en `backend/keys/` ni en `PRIVATE_KEY`/`PUBLIC_KEY` falla al arrancar con un mensaje claro, lo que evita los 401 intermitentes por tener un par distinto por worker; `PRIVATE_KEY` y `PUBLIC_KEY` por variable se cargan como los ficheros, respetando `JWT_PRIVATE_KEY_PASSPHRASE`. React Query deja de reintentar las respuestas 401 y 403. Paso previo de despliegue en `docs/operaciones/tareas-manuales-release.md`: el `.env` de dev y produccion debe definir las claves (#170)
+
 ### Anadido
 - El dashboard del manager recuerda por empresa el periodo y el rango personalizado elegidos en el navegador (#172)
 

@@ -9,6 +9,7 @@ Al terminar un despliegue, marcar la casilla con la fecha.
 | Variable | Donde se define | Bloque | Obligatoria | Efecto si falta |
 |---|---|---|---|---|
 | `NEXT_PUBLIC_CONTACT_EMAIL` | Variable (no secreto) de GitHub Actions del repositorio (Settings > Secrets and variables > Actions > Variables); la usan `deploy-dev.yml` y `deploy-prod.yml` como `build-arg` del frontend. No va en Komodo: se incrusta en el build, que ocurre en GitHub. Para desarrollo local, `.env`/entorno del contenedor de frontend. | PR-19 | No, pero conviene | El correo del administrador no se muestra en la pantalla "No estas vinculado a ninguna empresa" ni en el dialogo "Request Access" del login. No hay valor por defecto en el codigo. |
+| `PRIVATE_KEY` y `PUBLIC_KEY` | `.env` del servidor de cada entorno (dev y produccion), en Komodo. Par RSA en formato PEM; los saltos de linea pueden ir escapados como `\n`. Si la clave privada va cifrada, tambien `JWT_PRIVATE_KEY_PASSPHRASE`. | #170 | Si (paso previo al despliegue) | El backend no arranca (`RuntimeError` al importar `auth`). Antes generaba un par distinto por worker y provocaba 401 intermitentes. |
 
 Notas:
 - Las variables `NEXT_PUBLIC_*` de Next.js se incrustan en el build: cambiar el secreto exige volver a construir y publicar la imagen del frontend (merge a `develop` o `main`), no basta con reiniciar el contenedor.
@@ -18,9 +19,11 @@ Notas:
 ## Checklist por entorno
 
 ### develop (dev)
+- [ ] Antes de desplegar #170: comprobar que el `.env` del servidor dev define `PRIVATE_KEY` y `PUBLIC_KEY` (par RSA PEM, sin imprimirlos; por ejemplo `grep -c '^PRIVATE_KEY=' .env` y `grep -c '^PUBLIC_KEY=' .env` deben dar 1). Sin ellas el backend no arrancara. `ALLOW_EPHEMERAL_JWT_KEYS` no debe estar activado.
 - [ ] Crear la variable `NEXT_PUBLIC_CONTACT_EMAIL` en GitHub (Settings > Secrets and variables > Actions > Variables) antes del merge de PR-19 a `develop`.
 
 ### main (produccion)
+- [ ] Antes de desplegar #170: comprobar que el `.env` de produccion define `PRIVATE_KEY` y `PUBLIC_KEY` (mismas comprobaciones que en dev). Sin ellas el backend no arrancara. `ALLOW_EPHEMERAL_JWT_KEYS` no debe estar activado.
 - [ ] Comprobar que la variable `NEXT_PUBLIC_CONTACT_EMAIL` existe antes del merge a `main` (es la misma variable de repositorio).
 - [ ] Bloques con migracion y script de reparacion (PR-06, PR-09, PR-10, PR-11, PR-23): backup y `--apply` previos, segun las secciones 9 y 10 del plan.
 
