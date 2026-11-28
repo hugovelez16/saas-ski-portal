@@ -149,4 +149,19 @@ describe("TaxConfigBuilder", () => {
         fireEvent.click(screen.getByRole("button", { name: /Guardar/i }));
         expect(onSave).toHaveBeenCalledWith({ IRPF: 0.7, SS: 0.3 });
     });
+
+    it("acepta coma decimal en los porcentajes y calcula correctamente la fraccion 0..1", () => {
+        const onSave = vi.fn();
+        render(<TaxConfigBuilder initialValue={{}} onSave={onSave} />);
+        fireEvent.click(screen.getByRole("button", { name: /Anadir impuesto/i }));
+        const name = screen.getByLabelText(/Nombre del impuesto/i) as HTMLInputElement;
+        const value = screen.getByLabelText(/Valor/i) as HTMLInputElement;
+
+        fireEvent.change(name, { target: { value: "SS" } });
+        fireEvent.change(value, { target: { value: "6,48" } });
+        expect(screen.getByText(/6\.48%/)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: /Guardar/i }));
+        expect(onSave).toHaveBeenCalledWith({ SS: 0.0648 });
+    });
 });

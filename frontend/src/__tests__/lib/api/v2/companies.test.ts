@@ -29,7 +29,8 @@ const companyFull: CompanyFull = {
     is_managed: true,
     tax_config: { iva: 21 },
     worklog_definitions: {},
-    settings: {},
+    settings: { default_is_gross: false },
+    platform_settings: { plan: null, limits: { max_monitors: null, max_managers: null }, modules: {} },
     created_at: '2026-01-01T00:00:00Z',
     updated_at: null,
 };

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Trash2, Save } from "lucide-react";
+import { parsePercentNumber } from "@/components/admin/tax-overrides-fields";
 
 export const TAX_NAME_MAX = 50;
 export const TAX_MAX_ENTRIES = 20;
@@ -29,13 +30,13 @@ export function taxConfigToRows(config: Record<string, number> | null | undefine
     }));
 }
 
-/** Suma los porcentajes validos (0..100) evitando ruido de coma flotante. */
+/** Suma los porcentajes validos (0..100) aceptando punto o coma decimal. */
 export function calculateTaxRowsSumPercent(rows: TaxRow[]): number {
     let scaledTotal = 0;
     rows.forEach((row) => {
         const raw = row.value.trim();
         if (raw === "") return;
-        const n = Number(raw);
+        const n = parsePercentNumber(raw);
         if (Number.isFinite(n) && n >= 0) {
             scaledTotal += Math.round(n * PERCENT_SCALE);
         }
@@ -61,7 +62,7 @@ export function validateTaxRows(rows: TaxRow[]): { errors: Record<number, TaxRow
         }
 
         const raw = row.value.trim();
-        const n = raw === "" ? NaN : Number(raw);
+        const n = parsePercentNumber(raw);
         if (raw === "" || !Number.isFinite(n)) {
             rowErrors.value = "Introduce un numero.";
         } else if (n < 0 || n > 100) {
@@ -83,7 +84,8 @@ export function validateTaxRows(rows: TaxRow[]): { errors: Record<number, TaxRow
 export function taxRowsToConfig(rows: TaxRow[]): Record<string, number> {
     const out: Record<string, number> = {};
     rows.forEach((r) => {
-        out[r.key.trim()] = Math.round((Number(r.value) / 100) * 1000000) / 1000000;
+        const n = parsePercentNumber(r.value);
+        out[r.key.trim()] = Math.round((n / 100) * 1000000) / 1000000;
     });
     return out;
 }
@@ -152,10 +154,8 @@ export function TaxConfigBuilder({ initialValue, onSave }: TaxConfigBuilderProps
                             <div className="relative">
                                 <Input
                                     id={`tax-value-${index}`}
-                                    type="number"
-                                    step="0.01"
-                                    min={0}
-                                    max={100}
+                                    type="text"
+                                    inputMode="decimal"
                                     value={row.value}
                                     onChange={(e) => updateRow(index, "value", e.target.value)}
                                     className="h-9 pr-7"

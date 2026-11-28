@@ -15,7 +15,6 @@ import { format } from "date-fns";
 import { useState, useMemo, useEffect } from "react";
 import { WorkLogsTable } from "@/components/work-log/work-logs-table";
 import { useToast } from "@/hooks/use-toast";
-import { JsonEditor } from "@/components/admin/json-editor";
 import { UserEditDialog } from "@/components/admin/user-edit-dialog";
 import { UserCreateWorkLogDialog } from "@/components/work-log/user-dialog";
 import {

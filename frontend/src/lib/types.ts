@@ -25,22 +25,38 @@ export type User = UserProfile;
 export type UserSettings = any; // Placeholder for legacy references
 
 /**
- * Settings de empresa en la vista reducida (worker, manager, PA en "ver como").
- * El backend no entrega allowed_rates y puede omitir cualquier clave.
- * Ademas puede traer claves propias del miembro (notifications, ui_preferences...).
+ * Ajustes de empresa editables por manager y PA (R-EMP-45).
  */
-export type CompanySettingsReduced = Partial<Omit<CompanySettings, 'allowed_rates'>> & Record<string, any>;
+export interface CompanySettings {
+    default_is_gross: boolean;
+}
+
+/**
+ * Limites de plataforma de una empresa (solo PA).
+ */
+export interface PlatformLimits {
+    max_monitors: number | null;
+    max_managers: number | null;
+}
+
+/**
+ * Ajustes de plataforma de una empresa (plan, limites y modulos; solo PA, R-EMP-45, R-EMP-49).
+ */
+export interface PlatformSettings {
+    plan: string | null;
+    limits: PlatformLimits;
+    modules: Record<string, boolean>;
+}
 
 /**
  * Company Interface
- * Vista reducida por defecto. isActive, createdAt y updatedAt solo llegan en la vista completa (PA actuando).
+ * Vista reducida por defecto: no incluye isActive, settings ni platformSettings (R-ACC-55).
  */
 export interface Company {
     id: string;
     name: string;
     taxConfig: Record<string, number>;
     worklogDefinitions?: Record<string, any>;
-    settings?: CompanySettingsReduced;
     createdAt?: string;
     updatedAt?: string;
 
@@ -53,13 +69,14 @@ export interface Company {
 }
 
 /**
- * Vista completa de empresa (solo PA actuando): incluye isActive, fechas y settings completo.
+ * Vista completa de empresa (solo PA actuando): incluye isActive, fechas, settings y platformSettings.
  */
 export interface CompanyFull extends Company {
     isActive: boolean;
     createdAt: string;
     updatedAt: string;
     settings?: CompanySettings & Record<string, any>;
+    platformSettings?: PlatformSettings;
 }
 
 export type CompanyResponse = Company;
@@ -74,35 +91,13 @@ export interface MyCompany {
 
 /**
  * Payload de PUT /companies/:id (solo platform admin).
- * Reutiliza los campos de Company. `reason` es opcional y solo se registra en auditoria.
+ * Reutiliza los campos de CompanyFull. `reason` es opcional y solo se registra en auditoria.
  */
 export type CompanyUpdatePayload = Partial<
-    Pick<Company, 'name' | 'isActive' | 'isManaged' | 'taxConfig' | 'worklogDefinitions' | 'settings'>
+    Pick<CompanyFull, 'name' | 'isActive' | 'isManaged' | 'taxConfig' | 'worklogDefinitions' | 'settings' | 'platformSettings'>
 > & {
     reason?: string;
 };
-
-/**
- * Settings de empresa (catalogo CompanySettings del backend).
- * El backend entrega los valores por defecto aplicados.
- */
-export interface CompanySettings {
-    business_logic: {
-        /** Solo afecta a la vista del dashboard. net = un unico precio. */
-        price_type: 'net' | 'gross';
-    };
-    worker_experience: {
-        input_mode: 'manual_single' | 'timer' | 'bulk';
-    };
-    ui_customization: {
-        labels: {
-            worklog?: string;
-            client?: string;
-        };
-    };
-    modules: Record<string, boolean>;
-    allowed_rates?: string[];
-}
 
 export interface DynamicRateEntry {
     base_rate: number;
@@ -170,8 +165,8 @@ export interface DailyReportLog {
 export interface DailyReportWorkType {
     label: string;
     unit: string;
-    fields?: string[];
-    icon?: string;
+    options?: string[];
+    is_active?: boolean;
     [key: string]: unknown;
 }
 

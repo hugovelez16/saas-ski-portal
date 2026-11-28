@@ -26,6 +26,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getCompany, getCompanyMembers, getCompaniesDetailed } from "@/lib/api/companies";
 import { getUsers } from "@/lib/api/users";
 import { getAllWorkLogs, getWorkLogSummary } from "@/lib/api/work-logs";
+import { useModules } from "@/hooks/useModules";
 import { Company } from "@/lib/types";
 
 export default function ReportsPage() {
@@ -34,6 +35,7 @@ export default function ReportsPage() {
     const { toast } = useToast();
 
     const isAdmin = user?.role === 'admin';
+    const { hasModule } = useModules(user?.activeCompanyId ?? undefined);
 
     // -- Queries -- 
     const { data: companies = [] } = useQuery({
@@ -49,29 +51,8 @@ export default function ReportsPage() {
     // -- Accessible Companies (Modules Filter) --
     const accessibleCompanies = useMemo(() => {
         if (isAdmin) return companies;
-        return companies.filter(c => {
-            const modules: Record<string, any> = c.settings?.modules || {};
-            const reportsConfig = modules.reports;
-
-            // 1. Basic check
-            if (!reportsConfig) return false;
-
-            // 2. Boolean mode
-            if (typeof reportsConfig === 'boolean') return reportsConfig;
-
-            // 3. Object mode (Advanced SaaS settings)
-            if (typeof reportsConfig === 'object') {
-                if (reportsConfig.enabled === false) return false;
-                
-                if (reportsConfig.access_level === 'managers') {
-                    const role = String(c.role || '').toLowerCase();
-                    return ['manager', 'admin', 'owner'].includes(role);
-                }
-                return true; // All members allowed if not specified
-            }
-            return false;
-        });
-    }, [companies, isAdmin]);
+        return hasModule("reports") ? companies : [];
+    }, [companies, isAdmin, hasModule]);
 
     const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
 

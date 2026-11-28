@@ -359,6 +359,7 @@ export function UserCreateWorkLogDialog({
                         logType={logType}
                         setLogType={setLogType}
                         companies={companies || []}
+                        editingType={logToEdit?.type}
                     />
                 </DialogHeader>
 

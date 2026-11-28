@@ -412,6 +412,7 @@ export function ManagerAddWorkLogDialog({
                         setLogType={setLogType as any}
                         companies={companies}
                         hideCompanySelector={true}
+                        editingType={initialData?.id ? initialData.type : undefined}
                     />
                 </div>
 
