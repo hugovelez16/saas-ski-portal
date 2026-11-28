@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Suspense } from "react";
 import { useModules } from "@/hooks/useModules";
 import { ViewAsBanner } from "@/components/view-as-banner";
-import { LegalFooter } from "@/components/legal-footer";
 import { AppVersion } from "@/components/app-version";
 import { CONTACT_EMAIL } from "@/lib/config";
 import { SUSPENDED_COMPANY_MESSAGE } from "@/lib/api";
@@ -308,9 +307,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     <div className="flex-1 p-4 md:p-8">
                         {children}
                     </div>
-                    <footer className="border-t border-slate-200 px-4 py-3 md:px-8">
-                        <LegalFooter />
-                        <AppVersion className="mt-1 block text-center" />
+                    <footer className="px-4 py-1.5 text-center md:px-8">
+                        <AppVersion />
                     </footer>
                 </main>
 

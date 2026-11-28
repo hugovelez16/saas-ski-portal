@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { TwoFactorCard } from "@/components/auth/two-factor-card";
+import { LegalFooter } from "@/components/legal-footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -551,6 +552,10 @@ export default function ProfilePage() {
             </Card>
 
         </div>
+      </div>
+
+      <div className="border-t border-slate-200 pt-4">
+        <LegalFooter />
       </div>
     </div>
   );
