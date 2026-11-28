@@ -316,3 +316,15 @@ def validate_member_settings(value: dict) -> dict:
     if _json_size_bytes(value) > MEMBER_SETTINGS_MAX_BYTES:
         raise ValueError(f"settings de miembro supera el tamano maximo de {MEMBER_SETTINGS_MAX_BYTES} bytes")
     return value
+
+
+RESERVED_EMAIL_TLDS = frozenset({"invalid", "test", "local"})
+
+
+def validate_allowed_email_domain(email: str) -> str:
+    """Rechaza dominios reservados (.invalid, .test, .local) conforme a R-ACC-69."""
+    domain = email.strip().lower().rsplit("@", 1)[-1]
+    tld = domain.rsplit(".", 1)[-1] if "." in domain else ""
+    if tld in RESERVED_EMAIL_TLDS:
+        raise ValueError("El dominio del correo no es valido (.invalid, .test y .local no estan permitidos)")
+    return email
