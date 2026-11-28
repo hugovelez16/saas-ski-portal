@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     startOfDay,
@@ -22,6 +22,7 @@ import { DateRange } from "react-day-picker";
 import { mkConfig, generateCsv, download } from "export-to-csv";
 import { getAllWorkLogs } from "@/lib/api/work-logs";
 import { getCompany, getCompaniesDetailed, getCompanyDashboardSummary } from "@/lib/api/companies";
+import { getDashboardPeriod, setDashboardPeriod } from "@/lib/dashboard-period";
 
 // Modular Dashboard Components
 import { DashboardHeaderActions } from "./dashboard/dashboard-header-actions";
@@ -44,11 +45,26 @@ interface CompanyDashboardProps {
 
 export function CompanyDashboard({ companyId, companyName }: CompanyDashboardProps) {
     const queryClient = useQueryClient();
-    const [period, setPeriod] = useState<DashboardPeriod>("month");
-    const [customRange, setCustomRange] = useState<DateRange | undefined>({
-        from: startOfMonth(new Date()),
-        to: endOfMonth(new Date())
+    const [period, setPeriod] = useState<DashboardPeriod>(() => getDashboardPeriod(companyId)?.period ?? "month");
+    const [customRange, setCustomRange] = useState<DateRange | undefined>(() => {
+        const saved = getDashboardPeriod(companyId);
+        if (saved?.period === "custom" && saved.from && saved.to) {
+            return { from: parseISO(saved.from), to: parseISO(saved.to) };
+        }
+        return { from: startOfMonth(new Date()), to: endOfMonth(new Date()) };
     });
+
+    useEffect(() => {
+        if (period !== "custom") {
+            setDashboardPeriod(companyId, { period });
+        } else if (customRange?.from && customRange.to) {
+            setDashboardPeriod(companyId, {
+                period,
+                from: format(customRange.from, "yyyy-MM-dd"),
+                to: format(customRange.to, "yyyy-MM-dd")
+            });
+        }
+    }, [companyId, period, customRange]);
 
     // 1. Compute Date Boundaries based on Period
     const dateInterval = useMemo<{ from: Date; to: Date }>(() => {
