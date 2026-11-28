@@ -131,6 +131,31 @@ def test_clave_corrupta_no_se_oculta_con_efimeras(tmp_path):
     assert "BEGIN" not in str(exc.value)
 
 
+def test_publica_que_no_corresponde_a_la_privada_impide_arrancar(tmp_path):
+    private_pem, _ = _make_pair()
+    _, otra_publica = _make_pair()
+    env = {"PRIVATE_KEY": private_pem, "PUBLIC_KEY": otra_publica}
+    with pytest.raises(RuntimeError) as exc:
+        load_jwt_keys(environ=env, keys_dir=str(tmp_path))
+    assert "BEGIN" not in str(exc.value)
+
+
+def test_publica_invalida_impide_arrancar(tmp_path):
+    private_pem, _ = _make_pair()
+    env = {"PRIVATE_KEY": private_pem, "PUBLIC_KEY": "no-es-un-pem"}
+    with pytest.raises(RuntimeError):
+        load_jwt_keys(environ=env, keys_dir=str(tmp_path))
+
+
+def test_publica_de_fichero_que_no_corresponde_impide_arrancar(tmp_path):
+    private_pem, _ = _make_pair()
+    _, otra_publica = _make_pair()
+    (tmp_path / "private_key.pem").write_text(private_pem)
+    (tmp_path / "public_key.pem").write_text(otra_publica)
+    with pytest.raises(RuntimeError):
+        load_jwt_keys(environ={}, keys_dir=str(tmp_path))
+
+
 def test_variable_corrupta_no_se_oculta_con_efimeras(tmp_path):
     env = {
         "PRIVATE_KEY": "contenido-corrupto",

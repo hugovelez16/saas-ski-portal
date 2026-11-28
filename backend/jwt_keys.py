@@ -47,6 +47,21 @@ def _load_private_pem(data: bytes, passphrase: str | None, origin: str) -> str:
     ).decode("utf-8")
 
 
+def _check_pair(private_pem: str, public_pem: str, origin: str) -> None:
+    """Comprueba que la publica es un PEM valido y corresponde a la privada."""
+    try:
+        private_obj = serialization.load_pem_private_key(private_pem.encode("utf-8"), password=None)
+        public_obj = serialization.load_pem_public_key(public_pem.encode("utf-8"))
+        same = private_obj.public_key().public_numbers() == public_obj.public_numbers()
+    except (ValueError, TypeError, AttributeError):
+        same = False
+    if not same:
+        raise RuntimeError(
+            f"La clave publica JWT ({origin}) no es un PEM valido o no corresponde a la clave privada. "
+            "Revise PUBLIC_KEY y PRIVATE_KEY (en una sola linea, los saltos de linea se escriben como \\n)."
+        ) from None
+
+
 def _generate_ephemeral(environ, keys_dir: str) -> tuple[str, str]:
     key_obj = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     pem_private = key_obj.private_bytes(
@@ -95,7 +110,9 @@ def load_jwt_keys(environ=None, keys_dir=None) -> tuple[str, str]:
             private_data = f.read()
         with open(public_path, "r") as f:
             public_pem = f.read()
-        return _load_private_pem(private_data, passphrase, "fichero private_key.pem"), public_pem
+        private_pem = _load_private_pem(private_data, passphrase, "fichero private_key.pem")
+        _check_pair(private_pem, public_pem, "fichero public_key.pem")
+        return private_pem, public_pem
 
     env_private = environ.get("PRIVATE_KEY", "")
     env_public = environ.get("PUBLIC_KEY", "")
@@ -103,7 +120,9 @@ def load_jwt_keys(environ=None, keys_dir=None) -> tuple[str, str]:
         private_pem = _load_private_pem(
             _normalize_pem(env_private).encode("utf-8"), passphrase, "variable PRIVATE_KEY"
         )
-        return private_pem, _normalize_pem(env_public)
+        public_pem = _normalize_pem(env_public)
+        _check_pair(private_pem, public_pem, "variable PUBLIC_KEY")
+        return private_pem, public_pem
 
     if environ.get("ALLOW_EPHEMERAL_JWT_KEYS", "").lower() in _TRUE_VALUES:
         return _generate_ephemeral(environ, keys_dir)
