@@ -149,9 +149,83 @@ def test_overrides_accepts_valid(value):
         {"": 0.1},
         {" ": 0.1},
         {"x" * 51: 0.1},
+        {"A": 0.6, "B": 0.5},
     ],
-    ids=["gt1", "neg", "str", "numeric_str", "bool", "nan", "empty_name", "blank_name", "long_name"],
+    ids=["gt1", "neg", "str", "numeric_str", "bool", "nan", "empty_name", "blank_name", "long_name", "sum_gt1"],
 )
 def test_overrides_rejects_invalid(value):
     with pytest.raises(ValueError):
         validate_tax_overrides(value)
+
+
+def test_tax_config_accepts_sum_equal_to_one():
+    assert _cfg({"IRPF": 0.7, "SS": 0.3}).as_dict() == {"IRPF": 0.7, "SS": 0.3}
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"IRPF": 0.6, "SS": 0.5},
+        {"IRPF": 0.7, "SS": 0.3001},
+        {"A": 0.34, "B": 0.34, "C": 0.33},
+    ],
+)
+def test_tax_config_rejects_sum_greater_than_one(data):
+    with pytest.raises(ValidationError):
+        _cfg(data)
+
+
+def test_overrides_rejects_effective_sum_greater_than_one():
+    with pytest.raises(ValueError):
+        validate_tax_overrides({"Mutua": 0.5}, company_tax_config={"IRPF": 0.6}, is_managed=False)
+
+
+def test_overrides_accepts_when_override_reduces_effective_sum_to_one():
+    result = validate_tax_overrides(
+        {"IRPF": 0.5},
+        company_tax_config={"IRPF": 0.7, "SS": 0.5},
+        is_managed=True,
+    )
+    assert result == {"IRPF": 0.5}
+
+
+def test_overrides_managed_rejects_unknown_name_and_allows_company_key():
+    assert validate_tax_overrides(
+        {"IRPF": 0.2},
+        company_tax_config={"IRPF": 0.15},
+        is_managed=True,
+    ) == {"IRPF": 0.2}
+
+    with pytest.raises(ValueError):
+        validate_tax_overrides(
+            {"Mutua": 0.05},
+            company_tax_config={"IRPF": 0.15},
+            is_managed=True,
+        )
+
+
+def test_overrides_autonomous_allows_custom_name():
+    assert validate_tax_overrides(
+        {"Mutua": 0.05},
+        company_tax_config={"IRPF": 0.15},
+        is_managed=False,
+    ) == {"Mutua": 0.05}
+
+
+def test_overrides_managed_conserves_existing_custom_tax_without_editing():
+    # Conservar sin cambiar: valido
+    assert validate_tax_overrides(
+        {"Mutua": 0.05},
+        company_tax_config={"IRPF": 0.15},
+        is_managed=True,
+        existing_overrides={"Mutua": 0.05},
+    ) == {"Mutua": 0.05}
+
+    # Intentar cambiar su porcentaje en modo gestionado: rechazado
+    with pytest.raises(ValueError):
+        validate_tax_overrides(
+            {"Mutua": 0.08},
+            company_tax_config={"IRPF": 0.15},
+            is_managed=True,
+            existing_overrides={"Mutua": 0.05},
+        )

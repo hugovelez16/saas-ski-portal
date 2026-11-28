@@ -250,7 +250,8 @@ def get_billing_summary(
 
     query = text("""
         SELECT user_id, first_name, last_name, email, type,
-               total_hours, total_net, total_gross, unique_days, logs_count
+               total_hours, total_net, total_gross, unique_days, logs_count,
+               is_active, user_total_net
         FROM get_billing_summary(:company_id, :start_date, :end_date)
     """)
     result = db.execute(
@@ -271,6 +272,8 @@ def get_billing_summary(
                 total_gross=float(row.total_gross or 0.0),
                 unique_days=int(row.unique_days or 0),
                 logs_count=int(row.logs_count or 0),
+                is_active=bool(row.is_active),
+                user_total_net=float(row.user_total_net or 0.0),
             )
         )
     return summary

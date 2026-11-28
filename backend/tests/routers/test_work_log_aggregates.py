@@ -538,3 +538,58 @@ def test_existing_dashboard_summary_still_works(client, db, small):
     assert "workersSummary" in summary
     # small: 2 + 2 + 3 + 1 horas en el rango
     assert summary["periodMetrics"]["totalHours"] == pytest.approx(8.0)
+
+
+def test_work_log_summary_groups_net_by_worker_and_effective_tax_set(client, db):
+    """R-TAR-30 / R-TUR-25: GET /work-logs/summary agrupa por trabajador e impuestos efectivos."""
+    company = make_company(db, tax_config={"IRPF": 0.15})
+    manager = make_user(db)
+    worker = make_user(db)
+    make_member(db, manager, company, role="manager")
+    make_member(db, worker, company, role="worker")
+
+    day = date(2026, 4, 10)
+    for _ in range(10):
+        db.add(
+            models.WorkLog(
+                user_id=worker.id,
+                company_id=company.id,
+                type="particular",
+                start_date=day,
+                end_date=day,
+                duration=1.0,
+                gross_amount=1.01,
+                net_amount=0.86,
+                calculation_snapshot={
+                    "rate_applied": {"base_rate": 1.01, "is_gross": True},
+                    "tax_applied": {"IRPF": 0.15},
+                },
+            )
+        )
+    # Turno con tarifa neta (is_gross=False): 3 x 10.00 neto (gross=11.76) -> neto exacto 30.00
+    for _ in range(3):
+        db.add(
+            models.WorkLog(
+                user_id=worker.id,
+                company_id=company.id,
+                type="tutorial",
+                start_date=day,
+                end_date=day,
+                duration=1.0,
+                gross_amount=11.76,
+                net_amount=10.00,
+                calculation_snapshot={
+                    "rate_applied": {"base_rate": 10.0, "is_gross": False},
+                    "tax_applied": {"IRPF": 0.15},
+                },
+            )
+        )
+    db.commit()
+
+    as_user(client, manager, company, claims=MANAGER_CLAIMS)
+    resp = _get_summary(client, company_id=company.id, start_date="2026-04-01", end_date="2026-04-30")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # 8.59 (particular agrupado) + 30.00 (tutorial neto sin deduccion) = 38.59
+    assert body["totals"]["totalNet"] == 38.59
+    assert body["byUser"][0]["net"] == 38.59

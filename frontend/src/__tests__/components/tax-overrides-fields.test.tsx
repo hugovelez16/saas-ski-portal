@@ -69,4 +69,30 @@ describe("TaxOverridesFields", () => {
         expect(Number.isNaN(last.IRPF)).toBe(true);
         expect(screen.getByText(/entre 0 y 100/i)).toBeInTheDocument();
     });
+
+    it("muestra la suma efectiva y avisa si supera el 100%", () => {
+        render(
+            <TaxOverridesFields
+                companyTaxConfig={{ IRPF: 0.6, SS: 0.2 }}
+                value={{ Extra: 0.3 }}
+                onChange={() => {}}
+            />
+        );
+        expect(screen.getByText(/110%/)).toBeInTheDocument();
+        expect(screen.getByRole("alert")).toHaveTextContent(/100%/);
+    });
+
+    it("conserva impuestos propios como no editables cuando isManaged es true", () => {
+        render(
+            <TaxOverridesFields
+                companyTaxConfig={{ IRPF: 0.15 }}
+                value={{ Mutua: 0.05 }}
+                onChange={() => {}}
+                isManaged={true}
+            />
+        );
+        const mutuaInput = screen.getByLabelText(/Mutua/) as HTMLInputElement;
+        expect(mutuaInput.disabled).toBe(true);
+        expect(screen.getByText(/no editable en modo gestionado/i)).toBeInTheDocument();
+    });
 });

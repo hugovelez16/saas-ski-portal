@@ -9,6 +9,8 @@ combina ambos para obtener los impuestos efectivos.
 import json
 import logging
 import math
+from collections.abc import Iterable
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, Strict, ValidationError, field_validator
@@ -57,6 +59,24 @@ def _validate_tax_rate(name: str, value: Any) -> float | int:
     return value
 
 
+def _to_decimal_safe(value: Any) -> Decimal:
+    """Convierte un valor numerico o texto en Decimal finito (0 si es nulo o invalido)."""
+    if value is None or value == "" or isinstance(value, bool):
+        return Decimal("0")
+    try:
+        dec = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal("0")
+    return dec if dec.is_finite() else Decimal("0")
+
+
+def _validate_tax_sum(rates: Iterable[float | int]) -> None:
+    """R-TAR-16: la suma de tasas efectivas no puede superar 1 (100%)."""
+    total = sum((Decimal(str(rate)) for rate in rates), Decimal("0"))
+    if total > Decimal("1"):
+        raise ValueError("La suma de los impuestos efectivos no puede superar 1 (100%)")
+
+
 class TaxConfig(RootModel[dict[str, float]]):
     """Impuestos de empresa: nombre libre (1..50 caracteres) -> tasa entre 0 y 1, maximo 20 entradas."""
 
@@ -73,28 +93,124 @@ class TaxConfig(RootModel[dict[str, float]]):
             if name in result:
                 raise ValueError(f"Impuesto duplicado: '{name}'")
             result[name] = _validate_tax_rate(name, raw_rate)
+        _validate_tax_sum(result.values())
         return result
 
     def as_dict(self) -> dict[str, float]:
         return dict(self.root)
 
 
-def validate_tax_overrides(value: dict | None) -> dict | None:
-    """Valida overrides de impuestos de un miembro: None, o nombre -> (None | tasa 0..1)."""
+def validate_tax_overrides(
+    value: dict | None,
+    *,
+    company_tax_config: dict | None = None,
+    is_managed: bool | None = None,
+    existing_overrides: dict | None = None,
+) -> dict | None:
+    """Valida overrides de impuestos de un miembro: None, o nombre -> (None | tasa 0..1).
+
+    - Rechaza duplicados tras `strip()` y tasas cuya suma efectiva supere 1 (R-TAR-16).
+    - En empresa gestionada (`is_managed=True`), rechaza nombres inexistentes en `company_tax_config`
+      salvo impuestos propios ya existentes sin modificar (R-ACC-74, R-TAR-08).
+    """
     if value is None:
         return None
     if not isinstance(value, dict):
         raise ValueError("tax_overrides debe ser un objeto o null")
+
+    seen: set[str] = set()
+    normalized: dict[str, float | int | None] = {}
     for raw_name, rate in value.items():
         name = _validate_tax_name(raw_name)
+        if name in seen:
+            raise ValueError(f"Impuesto duplicado: '{name}'")
+        seen.add(name)
         if rate is not None:
             _validate_tax_rate(name, rate)
+        normalized[name] = rate
+
+    if is_managed is True:
+        company_keys = {k.strip() for k in (company_tax_config or {}) if isinstance(k, str)}
+        existing: dict[str, Any] = {}
+        if isinstance(existing_overrides, dict):
+            for raw_k, raw_v in existing_overrides.items():
+                if isinstance(raw_k, str):
+                    existing[raw_k.strip()] = raw_v
+        for name, rate in normalized.items():
+            if name not in company_keys:
+                if name in existing and rate == existing[name]:
+                    continue
+                if name in existing:
+                    raise ValueError(f"En empresa gestionada no se puede editar el impuesto propio '{name}'")
+                raise ValueError(f"El impuesto '{name}' no existe en la configuracion de la empresa")
+
+    effective = resolve_taxes(company_tax_config, normalized)
+    _validate_tax_sum(effective.values())
     return value
 
 
 def resolve_taxes(company_tax_config: dict | None, tax_overrides: dict | None) -> dict[str, float]:
     """Impuestos efectivos: empresa + overrides de miembro (un override None no sustituye)."""
     return {**(company_tax_config or {}), **{k: v for k, v in (tax_overrides or {}).items() if v is not None}}
+
+
+def _extract_snapshot_tax_info(snapshot: Any) -> tuple[bool, tuple[tuple[str, Decimal], ...] | None, Decimal]:
+    """Extrae si aplica calculo agrupado por impuestos y su clave canonica a partir de `calculation_snapshot`."""
+    if not isinstance(snapshot, dict):
+        return False, None, Decimal("0")
+    tax_applied = snapshot.get("tax_applied")
+    if not isinstance(tax_applied, dict):
+        return False, None, Decimal("0")
+
+    rate_applied = snapshot.get("rate_applied")
+    metadata = snapshot.get("metadata")
+    if isinstance(rate_applied, dict):
+        is_gross = bool(rate_applied.get("is_gross", False))
+    elif isinstance(metadata, dict):
+        is_gross = bool(metadata.get("is_gross", False))
+    else:
+        is_gross = True
+
+    if not is_gross:
+        return False, None, Decimal("0")
+
+    normalized: list[tuple[str, Decimal]] = []
+    for key, raw_rate in sorted(tax_applied.items()):
+        rate = _to_decimal_safe(raw_rate)
+        if rate != Decimal("0"):
+            normalized.append((str(key), rate))
+    tax_sum = sum((rate for _, rate in normalized), Decimal("0"))
+    return True, tuple(normalized), tax_sum
+
+
+def compute_grouped_net_total(items: Iterable[tuple[Any, Any, Any, Any]]) -> Decimal:
+    """Calcula el total neto agrupando por trabajador y conjunto efectivo de impuestos (R-TAR-27, R-TAR-30).
+
+    Cada elemento de `items` es `(user_id, gross_amount, net_amount, calculation_snapshot)`.
+    Para turnos con tarifa bruta y `tax_applied` en el snapshot, suma el bruto del grupo
+    `(user_id, conjunto_impuestos)`, aplica la retencion una sola vez y redondea con `ROUND_HALF_UP`.
+    Para turnos con tarifa neta (R-TAR-13) o sin `tax_applied` en el snapshot, suma `net_amount`.
+    """
+    gross_groups: dict[tuple[str, tuple[tuple[str, Decimal], ...]], tuple[Decimal, Decimal]] = {}
+    fallback_net = Decimal("0")
+
+    for user_id, gross_amount, net_amount, snapshot in items:
+        use_grouped, tax_key, tax_sum = _extract_snapshot_tax_info(snapshot)
+        if not use_grouped or tax_key is None:
+            fallback_net += _to_decimal_safe(net_amount)
+            continue
+
+        group_key = (str(user_id), tax_key)
+        gross_dec = _to_decimal_safe(gross_amount)
+        prev_gross, _ = gross_groups.get(group_key, (Decimal("0"), tax_sum))
+        gross_groups[group_key] = (prev_gross + gross_dec, tax_sum)
+
+    total = fallback_net.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if fallback_net else Decimal("0.00")
+    for group_gross, tax_sum in gross_groups.values():
+        factor = max(Decimal("0"), Decimal("1") - tax_sum)
+        group_net = (group_gross * factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total += group_net
+    return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _json_size_bytes(value: Any) -> int:

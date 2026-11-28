@@ -995,7 +995,7 @@ def test_rates_with_invalid_tax_overrides_are_rejected_and_keep_previous(client,
 
 @pytest.mark.parametrize(
     "overrides",
-    [None, {}, {"IRPF": 0.2}, {"IRPF": None}, {"IRPF": 0, "Mutua": 1}],
+    [None, {}, {"IRPF": 0.2}, {"IRPF": None}, {"IRPF": 0, "Mutua": 0.9}],
     ids=["null", "empty", "value", "none_value", "bounds"],
 )
 def test_rates_with_valid_tax_overrides_are_accepted_and_stored(client, db, overrides):
@@ -1009,6 +1009,89 @@ def test_rates_with_valid_tax_overrides_are_accepted_and_stored(client, db, over
 
     assert resp.status_code == 200, resp.text
     assert _membership(db, s.worker, s.company).rates_config["particular"]["tax_overrides"] == overrides
+
+
+def test_rates_reject_effective_tax_sum_over_one_with_422(client, db):
+    company = make_company(db, is_managed=False, tax_config={"IRPF": 0.6})
+    worker = make_user(db)
+    make_member(db, worker, company, role="worker")
+    as_user(client, worker, company)
+
+    # 0.6 (empresa) + 0.5 (propio) = 1.1 > 1 -> 422
+    resp = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 20, "is_gross": True, "tax_overrides": {"Mutua": 0.5}}}},
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
+def test_rates_managed_company_rejects_unknown_tax_override_with_422(client, db):
+    company = make_company(db, is_managed=True, tax_config={"IRPF": 0.15})
+    manager = make_user(db)
+    make_member(db, manager, company, role="manager")
+    worker = make_user(db)
+    make_member(db, worker, company, role="worker")
+    as_user(client, manager, company)
+
+    resp = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 20, "is_gross": True, "tax_overrides": {"Mutua": 0.05}}}},
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
+def test_rates_autonomous_allows_custom_tax_and_managed_transition_conserves_it(client, db):
+    company = make_company(db, is_managed=False, tax_config={"IRPF": 0.15})
+    manager = make_user(db)
+    make_member(db, manager, company, role="manager")
+    worker = make_user(db)
+    make_member(db, worker, company, role="worker")
+
+    # 1. En empresa autonoma el trabajador crea un impuesto propio
+    as_user(client, worker, company)
+    create_resp = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 20, "is_gross": True, "tax_overrides": {"Mutua": 0.05}}}},
+    )
+    assert create_resp.status_code == 200, create_resp.text
+
+    # 2. La empresa pasa a gestionada
+    company.is_managed = True
+    db.commit()
+
+    # El trabajador ya no puede editar sus tarifas (403)
+    as_user(client, worker, company)
+    worker_edit = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 25, "is_gross": True, "tax_overrides": {"Mutua": 0.05}}}},
+    )
+    assert worker_edit.status_code == 403, worker_edit.text
+
+    # El manager conserva el impuesto propio sin editarlo al actualizar base_rate (200)
+    as_user(client, manager, company)
+    keep_resp = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 25, "is_gross": True, "tax_overrides": {"Mutua": 0.05}}}},
+    )
+    assert keep_resp.status_code == 200, keep_resp.text
+    assert _membership(db, worker, company).rates_config["particular"]["tax_overrides"] == {"Mutua": 0.05}
+
+    # Intentar modificar el porcentaje del impuesto propio en empresa gestionada falla con 422
+    edit_custom = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 25, "is_gross": True, "tax_overrides": {"Mutua": 0.08}}}},
+    )
+    assert edit_custom.status_code == 422, edit_custom.text
+
+    # El manager si puede retirarlo (omitiendolo)
+    remove_custom = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 25, "is_gross": True, "tax_overrides": {}}}},
+    )
+    assert remove_custom.status_code == 200, remove_custom.text
+    assert _membership(db, worker, company).rates_config["particular"]["tax_overrides"] == {}
 
 
 def test_rates_without_tax_overrides_key_are_accepted(client, db):

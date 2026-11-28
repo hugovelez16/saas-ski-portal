@@ -568,6 +568,8 @@ class BillingSummaryItemResponse(CamelModel):
     total_gross: float
     unique_days: int
     logs_count: int
+    is_active: bool = True
+    user_total_net: float | None = None
 class DashboardPeriodMetrics(CamelModel):
     total_hours: float = 0.0
     total_net: float = 0.0
