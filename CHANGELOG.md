@@ -40,12 +40,16 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ### Cambiado
 - **Turnos (membresia inactiva, importe manual y recalculo)**: devolver HTTP 403 al escribir turnos con membresia inactiva (`R-TUR-03`), validar fechas obligatorias en unidad `days` (422, `R-TUR-12`) y tipo existente en `worklog_definitions` (400, `R-TUR-13`), retirar por completo el importe manual (`allow_manual_amount`, `keep_manual_amount`, `manual_override` y `manual_amount_choice`, `R-TUR-18`), y anadir previsualizacion y confirmacion comparativa (`POST /work-logs/{id}/recalculate-preview`) al recalcular con tarifa vigente o cambiar de tipo (`R-TUR-20`, `R-TUR-21`) (#140)
+- **Pie legal en la aplicacion**: `LegalFooter` deja de mostrarse en el pie comun del layout operativo (`(app)/layout.tsx`, que conserva `AppVersion`), se traslada a la pagina de ajustes del usuario (`/profile`), se mantiene en las vistas publicas y de acceso (landing, login, recuperacion y restablecimiento de contrasena y layout legal) y se anade el enlace permanente «Informacion legal» (`/aviso-legal`) en la barra lateral conforme al art. 10.1 LSSI (#127)
 - **Esquema de BD (email y fechas)**: normalizacion a minusculas e indice unico funcional `lower(email)` en `users`, migracion de las 18 columnas `DateTime` a `timestamptz` (UTC) con recreacion de vistas dependientes y sustitucion de `datetime.utcnow` por `datetime.now(UTC)` (#135)
 - **Integridad de BD**: migracion Alembic con `NOT NULL` y `server_default` en booleanos, `users.role`, timestamps y `work_logs.gross_amount`, restriccion `CHECK (end_date >= start_date)` en `work_logs` e indice unico parcial de suscripciones activas por `(module_id, company_id)` (#134)
 - Documentacion: se consolidan en `docs/dominio/` las decisiones del repaso de dominio (D1-D9 y ronda 2), pasan a `Cerrado` las reglas confirmadas, se cierran O17 a O28 en `docs/preguntas-abiertas.md` (con O16 abierto solo en cobro B2C aplazado) y se precisa el recuento simultaneo de monitores en `docs/planes-y-precios.md` (#129)
 - Documentacion: se consolidan las decisiones de la revision de base del producto (P1-P17 y ajustes, tarifas e impuestos S1-S10) en `docs/producto/revision-base.md`, con las reglas `R-ACC-64` a `R-ACC-79` nuevas y las retiradas en `docs/dominio/acceso.md` y los cierres en `docs/preguntas-abiertas.md` (#114)
 - Documentacion: la empresa con `is_managed = false` se llama "autonoma" y no "libre" en `docs/dominio/acceso.md` (R-ACC-71 y casos limite) y en ADR-0009; "libre" queda reservado a la futura unidad de tipo de turno (#120)
 - `deploy-prod` deja de desplegar por webhook y crea el tag git `vX.Y.Z`; `docker-compose.prod.yml` exige `IMAGE_TAG`, y el despliegue y el rollback de produccion se hacen cambiando esa variable en Komodo (`docs/operaciones/despliegue.md`, ADR-0001) (#111)
+
+### Corregido
+- **Refresh de sesion del PA**: `POST /refresh-token` comprueba que la empresa del claim `cid` sigue existiendo cuando el usuario es administrador de plataforma; si fue eliminada, emite el nuevo access token en contexto neutro (sin `cid` ni `view_as`), conservandolo si existe aunque este suspendida (#109)
 
 ## [0.28.0] - 2026-11-22
 
