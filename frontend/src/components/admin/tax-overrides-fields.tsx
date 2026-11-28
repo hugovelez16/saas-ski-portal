@@ -27,12 +27,24 @@ export function fractionToPercentText(v: number | null | undefined): string {
 }
 
 /**
- * Convierte el texto en porcentaje (0..100) a fraccion (0..1).
+ * Convierte texto de porcentaje (0..100, con punto o coma decimal) a numero (0..100).
+ * Devuelve NaN si no es un numero valido.
+ */
+export function parsePercentNumber(text: string): number {
+    const trimmed = text.trim();
+    if (trimmed === "") return NaN;
+    if (!/^[+-]?(\d+([.,]\d+)?|[.,]\d+)$/.test(trimmed)) return NaN;
+    const n = Number(trimmed.replace(",", "."));
+    return Number.isFinite(n) ? n : NaN;
+}
+
+/**
+ * Convierte el texto en porcentaje (0..100, punto o coma) a fraccion (0..1).
  * Devuelve null si esta vacio y NaN si no es valido o esta fuera de rango.
  */
 export function parsePercentText(text: string): number | null {
     if (text.trim() === "") return null;
-    const n = Number(text);
+    const n = parsePercentNumber(text);
     if (!Number.isFinite(n) || n < 0 || n > 100) return NaN;
     return Math.round((n / 100) * 1000000) / 1000000;
 }
@@ -141,10 +153,8 @@ export function TaxOverridesFields({ companyTaxConfig, value, onChange, disabled
                             <Label htmlFor={`tax-override-${key}`}>{key} (%)</Label>
                             <Input
                                 id={`tax-override-${key}`}
-                                type="number"
-                                step="0.01"
-                                min={0}
-                                max={100}
+                                type="text"
+                                inputMode="decimal"
                                 disabled={disabled || isManagedCustomLocked}
                                 placeholder={defaultText !== null ? `Empresa: ${defaultText}` : "Sin valor"}
                                 value={text}

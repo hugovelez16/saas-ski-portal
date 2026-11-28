@@ -353,8 +353,11 @@ def test_accept_invitation_rejects_platform_admin_with_422(client, db, sent_emai
 
 def test_plan_limits_checked_on_invite_and_accept_and_pending_do_not_count(client, db, sent_emails):
     """R-MEM-24, R-MEM-25: limite de plan al invitar y al aceptar; las pendientes no ocupan plaza."""
-    # Limite: max_workers = 2 (ya hay 1 worker en _setup_company -> queda 1 plaza libre)
-    company, manager, _, _ = _setup_company(db, settings={"plan_limits": {"max_workers": 2}})
+    # Limite: max_monitors = 2 (ya hay 1 worker en _setup_company -> queda 1 plaza libre)
+    company, manager, _, _ = _setup_company(
+        db,
+        settings={"_platform": {"limits": {"max_monitors": 2}}},
+    )
     u1 = make_user(db, email="candidato1@sierra.es")
     u2 = make_user(db, email="candidato2@sierra.es")
 

@@ -23,6 +23,7 @@ class CreateCompanyUseCase:
         tax_config: Dict[str, Any],
         worklog_definitions: Optional[Dict[str, Any]] = None,
         settings: Optional[Dict[str, Any]] = None,
+        platform_settings: Optional[Dict[str, Any]] = None,
         is_active: bool = True,
         is_managed: bool = False,
     ) -> Company:
@@ -32,6 +33,7 @@ class CreateCompanyUseCase:
             tax_config=tax_config,
             worklog_definitions=worklog_definitions or {},
             settings=settings or {},
+            platform_settings=platform_settings or {},
             is_active=is_active,
             is_managed=is_managed,
         )

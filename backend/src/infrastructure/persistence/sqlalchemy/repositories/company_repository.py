@@ -16,12 +16,16 @@ from domain.entities.user import User
 from domain.exceptions.domain_exceptions import ConflictException
 from domain.ports.repositories.company_repository_port import CompanyMemberRepositoryPort, CompanyRepositoryPort
 from domain.ports.repositories.user_repository_port import UserRepositoryPort
-from infrastructure.persistence.sqlalchemy.mappers.company_mapper import SqlAlchemyCompanyMapper
+from infrastructure.persistence.sqlalchemy.mappers.company_mapper import (
+    SqlAlchemyCompanyMapper,
+    merge_stored_settings,
+)
 from infrastructure.persistence.sqlalchemy.mappers.user_mapper import (
     SqlAlchemyCompanyMemberMapper,
     SqlAlchemyUserMapper,
 )
 from redis_config import redis_manager
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -128,7 +132,7 @@ class SqlAlchemyCompanyRepository(CompanyRepositoryPort):
             # Copia: el dominio puede reutilizar el mismo dict, y SQLAlchemy no detectaria el cambio en JSONB.
             existing.tax_config = dict(company.tax_config)
             existing.worklog_definitions = dict(company.worklog_definitions)
-            existing.settings = dict(company.settings)
+            existing.settings = merge_stored_settings(company.settings, company.platform_settings)
             existing.is_active = company.is_active
             existing.is_managed = company.is_managed
             _commit_or_rollback(self.db)
@@ -166,6 +170,52 @@ class SqlAlchemyCompanyRepository(CompanyRepositoryPort):
             self.db.query(models.ModuleSubscription).filter(models.ModuleSubscription.company_id == company_id).count()
         )
         return {"members": members, "work_logs": work_logs, "subscriptions": subscriptions}
+
+    async def count_work_logs_by_types(self, company_id: str, shift_types: List[str]) -> Dict[str, int]:
+        counts = {shift_type: 0 for shift_type in shift_types}
+        if not shift_types:
+            return counts
+        rows = (
+            self.db.query(models.WorkLog.type, func.count(models.WorkLog.id))
+            .filter(models.WorkLog.company_id == company_id, models.WorkLog.type.in_(shift_types))
+            .group_by(models.WorkLog.type)
+            .all()
+        )
+        for shift_type, count in rows:
+            counts[shift_type] = int(count)
+        return counts
+
+    async def count_member_rates_by_types(self, company_id: str, shift_types: List[str]) -> Dict[str, int]:
+        counts = {shift_type: 0 for shift_type in shift_types}
+        if not shift_types:
+            return counts
+        members = self.db.query(models.CompanyMember).filter(models.CompanyMember.company_id == company_id).all()
+        for member in members:
+            rates = member.rates_config or {}
+            if not isinstance(rates, dict):
+                continue
+            for shift_type in shift_types:
+                if shift_type in rates:
+                    counts[shift_type] += 1
+        return counts
+
+    async def remove_shift_types_from_rates(self, company_id: str, shift_types: List[str]) -> None:
+        if not shift_types:
+            return
+        targets = set(shift_types)
+        members = self.db.query(models.CompanyMember).filter(models.CompanyMember.company_id == company_id).all()
+        changed = False
+        for member in members:
+            rates = member.rates_config
+            if not isinstance(rates, dict):
+                continue
+            if any(shift_type in rates for shift_type in targets):
+                member.rates_config = {k: v for k, v in rates.items() if k not in targets}
+                flag_modified(member, "rates_config")
+                changed = True
+        if changed:
+            _commit_or_rollback(self.db)
+            redis_manager.delete(f"company_rates:{company_id}")
 
 
 class SqlAlchemyCompanyMemberRepository(CompanyMemberRepositoryPort):

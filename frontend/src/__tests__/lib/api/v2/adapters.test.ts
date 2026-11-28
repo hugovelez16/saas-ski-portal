@@ -13,7 +13,8 @@ const fullCompanyV2 = {
     is_managed: false,
     tax_config: { iva: 21 },
     worklog_definitions: { particular: { label: 'Particular', unit: 'hours' } },
-    settings: { worker_experience: { input_mode: 'timer' } },
+    settings: { default_is_gross: true },
+    platform_settings: { plan: 'pro', limits: { max_monitors: 10, max_managers: 2 }, modules: {} },
     created_at: '2026-01-01T00:00:00',
     updated_at: '2026-02-01T00:00:00',
 };
@@ -27,7 +28,6 @@ const reducedCompanyV2 = {
     rates_config: { particular: { base_rate: 10 } },
     worklog_definitions: {},
     tax_config: { iva: 21 },
-    settings: { modules: { reports: true } },
 };
 
 const memberV2 = {
@@ -50,7 +50,7 @@ describe('fromV2Company', () => {
         const result = fromV2Company(fullCompanyV2 as any);
 
         expect(Object.keys(result).sort()).toEqual(
-            ['createdAt', 'id', 'isActive', 'isManaged', 'name', 'settings', 'taxConfig', 'updatedAt', 'worklogDefinitions'].sort()
+            ['createdAt', 'id', 'isActive', 'isManaged', 'name', 'platformSettings', 'settings', 'taxConfig', 'updatedAt', 'worklogDefinitions'].sort()
         );
         expect(result.isActive).toBe(true);
         expect(result.isManaged).toBe(false);
@@ -74,13 +74,15 @@ describe('fromV2Company', () => {
         expect(result).not.toHaveProperty('members');
     });
 
-    it('convierte la vista reducida sin añadir claves de la vista completa', () => {
+    it('convierte la vista reducida sin añadir claves de la vista completa ni settings', () => {
         const result = fromV2Company(reducedCompanyV2 as any);
 
         expect(Object.keys(result).sort()).toEqual(
-            ['id', 'isActiveMember', 'isManaged', 'name', 'ratesConfig', 'role', 'settings', 'taxConfig', 'worklogDefinitions'].sort()
+            ['id', 'isActiveMember', 'isManaged', 'name', 'ratesConfig', 'role', 'taxConfig', 'worklogDefinitions'].sort()
         );
         expect(result).not.toHaveProperty('isActive');
+        expect(result).not.toHaveProperty('settings');
+        expect(result).not.toHaveProperty('platformSettings');
         expect(result).not.toHaveProperty('createdAt');
         expect(result).not.toHaveProperty('updatedAt');
         expect(result.isActiveMember).toBe(true);
@@ -110,7 +112,7 @@ describe('fromV2Company', () => {
             tax_config: { iva_reducido: 10 },
         } as any);
 
-        expect(result.settings).toEqual({ ui_customization: { some_key: 1, camelKey: 2 } });
+        expect((result as any).settings).toEqual({ ui_customization: { some_key: 1, camelKey: 2 } });
         expect(result.taxConfig).toEqual({ iva_reducido: 10 });
         expect(result.worklogDefinitions).toEqual({ particular: { label: 'Particular', unit: 'hours' } });
     });
@@ -186,6 +188,7 @@ describe('toV2CompanyBody', () => {
             name: 'Escuela 1',
             taxConfig: { iva: 21 },
             worklogDefinitions: {},
+            platformSettings: { plan: 'pro', limits: { max_monitors: 10, max_managers: 2 }, modules: {} },
             isManaged: true,
             isActive: false,
         });
@@ -194,6 +197,7 @@ describe('toV2CompanyBody', () => {
             name: 'Escuela 1',
             tax_config: { iva: 21 },
             worklog_definitions: {},
+            platform_settings: { plan: 'pro', limits: { max_monitors: 10, max_managers: 2 }, modules: {} },
             is_managed: true,
             is_active: false,
         });

@@ -3,7 +3,13 @@ import { CompanyFull, CompanyResponse, CompanyUpdatePayload, CompanyWithMembers,
 import { fromV2Company, fromV2CompanyWithMembers, fromV2Member, toV2CompanyBody } from "@/lib/api/v2/adapters";
 import * as v2Companies from "@/lib/api/v2/companies";
 import * as v2Members from "@/lib/api/v2/members";
-import type { CompanyCreateV2, CompanyUpdateV2 } from "@/lib/api/v2/types";
+import type {
+    CompanyCreateV2,
+    CompanyManagerSettings,
+    CompanyManagerSettingsUpdate,
+    CompanyUpdateV2,
+    WorklogDefinitionUsage,
+} from "@/lib/api/v2/types";
 
 // Las funciones de empresa y miembros consumen la API v2 (`/api/v2/`) y devuelven los tipos
 // camelCase actuales mediante `lib/api/v2/adapters.ts` (temporal, hasta migrar a snake_case).
@@ -17,6 +23,8 @@ export const createCompany = async (data: {
     worklogDefinitions?: Record<string, any>;
     isManaged?: boolean;
     isActive?: boolean;
+    settings?: Record<string, any>;
+    platformSettings?: Record<string, any>;
 }) => {
     const created = await v2Companies.createCompany(toV2CompanyBody<CompanyCreateV2>(data));
     return fromV2Company(created);
@@ -28,6 +36,27 @@ export type { CompanyUpdatePayload };
 export const updateCompany = async (companyId: string, data: CompanyUpdatePayload): Promise<CompanyFull> => {
     const updated = await v2Companies.updateCompany(companyId, toV2CompanyBody<CompanyUpdateV2>(data));
     return fromV2Company(updated) as CompanyFull;
+};
+
+/** Ajustes editables por manager (`GET /v2/companies/:id/settings`). */
+export const getCompanyManagerSettings = async (companyId: string): Promise<CompanyManagerSettings> => {
+    return v2Companies.getCompanyManagerSettings(companyId);
+};
+
+/** Edicion de ajustes por manager (`PUT /v2/companies/:id/settings`). */
+export const updateCompanyManagerSettings = async (
+    companyId: string,
+    data: CompanyManagerSettingsUpdate,
+): Promise<CompanyManagerSettings> => {
+    return v2Companies.updateCompanyManagerSettings(companyId, data);
+};
+
+/** Uso de tipos de turno en BD para borrado seguro o desactivacion. */
+export const getWorklogDefinitionsUsage = async (
+    companyId: string,
+    options?: { asAdmin?: boolean },
+): Promise<Record<string, WorklogDefinitionUsage>> => {
+    return v2Companies.getWorklogDefinitionsUsage(companyId, options);
 };
 
 // Solo platform admin. Los demas roles deben usar getMyCompanies.

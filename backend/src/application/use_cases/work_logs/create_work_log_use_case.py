@@ -61,6 +61,8 @@ class CreateWorkLogUseCase:
         if log_type not in company_defs or not isinstance(company_defs[log_type], dict):
             raise DomainException(f"El tipo de turno '{log_type}' no existe en la configuracion de la empresa.")
         type_def = company_defs[log_type]
+        if type_def.get("is_active") is False:
+            raise DomainException(f"El tipo de turno '{log_type}' esta desactivado en la empresa.")
 
         # Determinar unidad de trabajo
         unit_str = type_def.get("unit")

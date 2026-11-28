@@ -13,20 +13,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Check, X, Shield, Loader2, Settings, Database, Pencil, FileJson, FileCode } from "lucide-react";
+import { Check, X, Shield, Loader2, Pencil } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { AddMemberDialog } from "@/components/admin/add-member-dialog";
 import { CompanyConfigurationTab } from "@/components/admin/company-configuration-tab";
 import { CompanyInvitationsSection } from "@/components/company/company-invitations-section";
 import { useAuth } from "@/context/AuthContext";
-import { CompanyMember, UserCompanyRate } from "@/lib/types";
-import { DailyReportView } from "@/components/admin/daily-report-view";
+import { CompanyMember } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
-import { JsonEditor } from "@/components/admin/json-editor";
-import { TaxConfigBuilder } from "@/components/admin/tax-config-builder";
-import { WorklogDefinitionBuilder } from "@/components/admin/worklog-definition-builder";
 import { UserRatesEditDialog } from "@/components/admin/user-rates-edit-dialog";
 import { formatPercentage } from "@/lib/utils";
 
@@ -44,13 +40,6 @@ export default function CompanyDetailsPage() {
 
     const company = companies.find(c => c.id === companyId);
     const { canManageMembers, canInviteMembers, canEditCompany, isReadOnlyView } = usePermissions();
-
-    const updateCompanyMutation = useMutation({
-        mutationFn: (data: any) => updateCompany(companyId as string, data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["companiesDetailed"] });
-            toast({ title: "Configuración guardada" });
-        },    });
 
     const statusMutation = useMutation({
         mutationFn: ({ userId, status }: { userId: string, status: string }) =>
@@ -180,13 +169,7 @@ export default function CompanyDetailsPage() {
                         <TabsTrigger value="invitations">Invitaciones</TabsTrigger>
                     )}
                     <TabsTrigger value="taxes">Tasas & IRPF</TabsTrigger>
-                    <TabsTrigger value="settings">Ajustes UI</TabsTrigger>
-                    {canEditCompany && (
-                        <TabsTrigger value="master" className="text-indigo-600 font-bold border-l-2 border-indigo-200 ml-2">
-                            <Database className="h-4 w-4 mr-2" />
-                            Master Config
-                        </TabsTrigger>
-                    )}
+                    <TabsTrigger value="settings">Configuración</TabsTrigger>
                 </TabsList>
 
                 {/* WORKERS TAB */}
@@ -257,14 +240,7 @@ export default function CompanyDetailsPage() {
                     </Card>
                 </TabsContent>
 
-                {/* MASTER CONFIG TAB */}
-                {canEditCompany && (
-                    <TabsContent value="master" className="pt-4">
-                        <MasterConfigPanel company={company} onSave={(data) => updateCompanyMutation.mutate(data)} />
-                    </TabsContent>
-                )}
-
-                {/* UI SETTINGS TAB */}
+                {/* CONFIGURATION TAB */}
                 <TabsContent value="settings" className="pt-4">
                     <CompanyConfigurationTab key={company.id} company={company} />
                 </TabsContent>
@@ -361,96 +337,6 @@ function CompanyNameHeading({ companyId, name, canEdit }: { companyId: string, n
             </div>
             {validationError && <p className="text-sm text-destructive">{validationError}</p>}
         </div>
-    );
-}
-
-function MasterConfigPanel({ company, onSave }: { company: any, onSave: (data: any) => void }) {
-    const [activeTab, setActiveTab] = React.useState<'tax' | 'worklog' | 'settings'>('settings');
-
-    const tabs = [
-        { id: 'settings', label: 'settings.json', icon: <FileJson className="h-4 w-4" />, description: 'Ajustes y Módulos' },
-        { id: 'worklog', label: 'worklog_definitions.json', icon: <FileCode className="h-4 w-4" />, description: 'Definiciones de Jornada' },
-        { id: 'tax', label: 'tax_config.json', icon: <Database className="h-4 w-4" />, description: 'Esquema de Impuestos' },
-    ];
-
-    const activeConfig = tabs.find(t => t.id === activeTab);
-
-    return (
-        <Card className="border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden bg-slate-950">
-            <div className="flex flex-col lg:flex-row min-h-[600px]">
-                {/* SIDEBAR */}
-                <div className="w-full lg:w-64 bg-slate-900 border-r border-slate-800 p-2 flex flex-col gap-1">
-                    <div className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Explorer</div>
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
-                            className={`flex items-center gap-2 px-3 py-2 rounded text-sm transition-all ${
-                                activeTab === tab.id 
-                                ? "bg-slate-800 text-indigo-400 border-l-2 border-indigo-500" 
-                                : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
-                            }`}
-                        >
-                            {tab.icon}
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-
-                {/* EDITOR AREA */}
-                <div className="flex-1 flex flex-col bg-slate-950">
-                    {/* BREADCRUMB / TAB HEADER */}
-                    <div className="bg-slate-900/50 border-b border-slate-800 px-4 py-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xs text-slate-400">
-                            <span className="opacity-50">companies</span>
-                            <span>/</span>
-                            <span className="opacity-50">{company.name.toLowerCase().replace(/\s+/g, '_')}</span>
-                            <span>/</span>
-                            <span className="text-slate-200 font-medium">{activeConfig?.label}</span>
-                        </div>
-                        <Badge variant="outline" className="text-[10px] border-slate-700 text-slate-500">
-                            JSON Editor
-                        </Badge>
-                    </div>
-
-                    <div className="p-6 flex-1 flex flex-col">
-                        <div className="mb-6">
-                            <h2 className="text-slate-100 font-bold flex items-center gap-2">
-                                {activeConfig?.icon}
-                                {activeConfig?.description}
-                            </h2>
-                            <p className="text-slate-500 text-xs mt-1">
-                                Edición directa del campo <code className="text-indigo-400">{activeConfig?.id}</code> en la base de datos.
-                            </p>
-                        </div>
-
-                        <div className="flex-1">
-                            {activeTab === 'tax' && (
-                                <JsonEditor 
-                                    initialValue={company.taxConfig} 
-                                    onSave={(val) => onSave({ taxConfig: val })}
-                                    rows={20}
-                                />
-                            )}
-                            {activeTab === 'worklog' && (
-                                <JsonEditor 
-                                    initialValue={company.worklogDefinitions} 
-                                    onSave={(val) => onSave({ worklogDefinitions: val })}
-                                    rows={20}
-                                />
-                            )}
-                            {activeTab === 'settings' && (
-                                <JsonEditor 
-                                    initialValue={company.settings} 
-                                    onSave={(val) => onSave({ settings: val })}
-                                    rows={20}
-                                />
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </Card>
     );
 }
 

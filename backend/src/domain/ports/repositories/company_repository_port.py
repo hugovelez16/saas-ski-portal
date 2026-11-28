@@ -40,6 +40,21 @@ class CompanyRepositoryPort(ABC):
         """Devuelve las claves: members, work_logs, subscriptions."""
         pass
 
+    @abstractmethod
+    async def count_work_logs_by_types(self, company_id: str, shift_types: List[str]) -> Dict[str, int]:
+        """Devuelve el numero de turnos registrados por cada tipo indicado en `shift_types`."""
+        pass
+
+    @abstractmethod
+    async def count_member_rates_by_types(self, company_id: str, shift_types: List[str]) -> Dict[str, int]:
+        """Devuelve cuantos miembros tienen tarifa definida para cada tipo en `shift_types`."""
+        pass
+
+    @abstractmethod
+    async def remove_shift_types_from_rates(self, company_id: str, shift_types: List[str]) -> None:
+        """Elimina las claves de `shift_types` de `rates_config` en todos los miembros de la empresa."""
+        pass
+
 
 class CompanyMemberRepositoryPort(ABC):
     @abstractmethod

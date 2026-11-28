@@ -7,7 +7,8 @@ import { useQuery } from "@tanstack/react-query";
 import { format, addDays, subDays, isSameDay, parseISO, startOfDay } from "date-fns";
 import { getUsers, getUserCompanies } from "@/lib/api/users";
 import { deleteWorkLog } from "@/lib/api/work-logs";
-import { getCompany, getDailyReport, getMyCompanies } from "@/lib/api/companies";
+import { getDailyReport, getMyCompanies } from "@/lib/api/companies";
+import { useModules } from "@/hooks/useModules";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -78,16 +79,12 @@ function ManagerDailyReportInner() {
         }
     }, [activeCompanyId]);
 
+    const { hasModule } = useModules(activeCompanyId || undefined);
+
     // 1. Fetch My Managed Companies
     const { data: myCompanies = [], isLoading: loadingCompanies } = useQuery({
         queryFn: getMyCompanies,
         queryKey: ["myCompanies"],
-    });
-
-    const { data: activeCompanyDetail } = useQuery({
-        queryFn: () => getCompany(activeCompanyId as string),
-        queryKey: ["company", activeCompanyId],
-        enabled: Boolean(activeCompanyId),
     });
 
     const managedCompanies = useMemo(() => {
@@ -95,12 +92,12 @@ function ManagerDailyReportInner() {
             const role = (c.role || '').toLowerCase();
             const isManager = ['manager', 'admin', 'owner'].includes(role);
             if (!isManager) return false;
-            if (activeCompanyDetail && activeCompanyDetail.id === c.id) {
-                return Boolean(activeCompanyDetail.settings?.modules?.worker_daily_report ?? false);
+            if (c.id === activeCompanyId) {
+                return hasModule("worker_daily_report");
             }
-            return c.id === activeCompanyId;
+            return false;
         });
-    }, [myCompanies, activeCompanyDetail, activeCompanyId]);
+    }, [myCompanies, activeCompanyId, hasModule]);
 
     // Auto-select first company if not selected
     if (!selectedCompanyId && managedCompanies.length > 0) {
