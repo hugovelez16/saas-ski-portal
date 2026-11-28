@@ -138,7 +138,7 @@ jobs:
           # Los tests que ejecutan DDL (ALTER/DROP, migraciones) toman locks sobre tablas
           # compartidas de la BD y bloquean a los demas workers (se verifico un bloqueo con 12
           # workers). Se excluyen de la fase paralela y corren despues en serie.
-          DDL_TESTS="tests/test_migration_company_name.py tests/test_migration_fiscal_id.py tests/test_migration_manual_views.py tests/test_migration_settings_definitions.py tests/test_migration_tax_keys.py tests/scripts/test_repair_fiscal_id.py"
+          DDL_TESTS="tests/test_migration_audit_columns.py tests/test_migration_company_name.py tests/test_migration_fiscal_id.py tests/test_migration_manual_views.py tests/test_migration_settings_definitions.py tests/test_migration_tax_keys.py tests/scripts/test_repair_fiscal_id.py"
           IGNORE=""
           for f in $DDL_TESTS; do IGNORE="$IGNORE --ignore=$f"; done
           pytest tests/ -n auto $IGNORE
