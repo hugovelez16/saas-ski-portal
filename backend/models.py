@@ -357,3 +357,48 @@ class ModuleSubscription(Base):
     module = relationship("AppModule", back_populates="subscriptions")
     company = relationship("Company")
     user = relationship("User")
+
+
+class CompanyInvitation(Base):
+    """Invitacion de un solo uso por correo electronico para unirse a una empresa como miembro."""
+
+    __tablename__ = "company_invitations"
+    __table_args__ = (
+        Index("ix_company_invitations_company_id", "company_id"),
+        Index(
+            "uq_company_invitations_pending_company_email",
+            "company_id",
+            text("lower(email)"),
+            unique=True,
+            postgresql_where=text("accepted_at IS NULL AND cancelled_at IS NULL"),
+            sqlite_where=text("accepted_at IS NULL AND cancelled_at IS NULL"),
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    email = Column(String(320), nullable=False)
+    token_hash = Column(String(64), unique=True, nullable=False)
+    invited_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+    accepted_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        onupdate=_utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+    company = relationship("Company")
+    invited_by = relationship("User", foreign_keys=[invited_by_user_id])
+    accepted_by = relationship("User", foreign_keys=[accepted_by_user_id])
+
+    @validates("email")
+    def _normalize_email(self, _key: str, value: str | None) -> str | None:
+        return value.strip().lower() if isinstance(value, str) else value

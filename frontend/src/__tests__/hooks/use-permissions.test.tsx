@@ -50,6 +50,9 @@ describe('usePermissions', () => {
         expect(result.current.isPlatformAdmin).toBe(true);
         expect(result.current.role).toBe('platform_admin');
         expect(result.current.canManageMembers).toBe(true);
+        expect(result.current.canInviteMembers).toBe(true);
+        expect(result.current.canToggleMemberStatus('worker')).toBe(true);
+        expect(result.current.canToggleMemberStatus('manager')).toBe(true);
         expect(result.current.canEditCompany).toBe(true);
         expect(result.current.canCreateWorkLog).toBe(true);
         expect(result.current.canEditRates('u-otro')).toBe(true);
@@ -65,6 +68,9 @@ describe('usePermissions', () => {
         expect(result.current.canEditWorkLog({ userId: 'u-equipo' })).toBe(true);
         expect(result.current.canCreateWorkLog).toBe(true);
         expect(result.current.canManageMembers).toBe(false);
+        expect(result.current.canInviteMembers).toBe(true);
+        expect(result.current.canToggleMemberStatus('worker')).toBe(true);
+        expect(result.current.canToggleMemberStatus('manager')).toBe(false);
         expect(result.current.canEditCompany).toBe(false);
     });
 
@@ -80,6 +86,8 @@ describe('usePermissions', () => {
         expect(result.current.canEditWorkLog({ userId: 'u-self' })).toBe(true);
         expect(result.current.canEditWorkLog({ userId: 'u-otro' })).toBe(false);
         expect(result.current.canManageMembers).toBe(false);
+        expect(result.current.canInviteMembers).toBe(false);
+        expect(result.current.canToggleMemberStatus('worker')).toBe(false);
     });
 
     it('worker en empresa gestionada no puede registrar ni editar', () => {
@@ -106,6 +114,9 @@ describe('usePermissions', () => {
         expect(result.current.canCreateWorkLog).toBe(false);
         expect(result.current.canEditWorkLog({ userId: 'u-self' })).toBe(false);
         expect(result.current.canManageMembers).toBe(false);
+        expect(result.current.canInviteMembers).toBe(false);
+        expect(result.current.canToggleMemberStatus('worker')).toBe(false);
+        expect(result.current.canToggleMemberStatus('manager')).toBe(false);
         expect(result.current.canEditCompany).toBe(false);
         expect(result.current.canEditRates('u-self')).toBe(false);
     });

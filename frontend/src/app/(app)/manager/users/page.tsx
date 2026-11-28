@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
+import { CompanyInvitationsSection } from "@/components/company/company-invitations-section";
 
 import {
     DndContext,
@@ -69,7 +70,7 @@ export default function ManagerUsersPage() {
 
     const { toast } = useToast();
     const queryClient = useQueryClient();
-    const { canManageMembers } = usePermissions();
+    const { canInviteMembers, canToggleMemberStatus, isReadOnlyView } = usePermissions();
 
     const [isEditingOrder, setIsEditingOrder] = useState(false);
     const [userOrder, setUserOrder] = useState<string[]>([]);
@@ -224,9 +225,10 @@ export default function ManagerUsersPage() {
             cell: ({ row }) => {
                 const user = row.original;
                 if (!user._status) return <span className="text-xs text-muted-foreground">-</span>;
+                const canToggle = canToggleMemberStatus(user._role);
                 return (
                     <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
-                        {canManageMembers && (
+                        {canToggle && (
                             <Switch
                                 checked={user._status === 'active'}
                                 disabled={memberStatusMutation.isPending}
@@ -279,6 +281,13 @@ export default function ManagerUsersPage() {
                     onRowClick={(user) => {
                         router.push(`/manager/users/${user.id}`);
                     }}
+                />
+            )}
+
+            {activeCompanyId && canInviteMembers && (
+                <CompanyInvitationsSection
+                    companyId={activeCompanyId}
+                    canInvite={!isReadOnlyView}
                 />
             )}
         </div>

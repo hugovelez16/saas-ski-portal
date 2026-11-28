@@ -22,6 +22,8 @@ vi.mock("@/hooks/use-permissions", () => ({
     usePermissions: () => ({
         canEditCompany: permissions.canEditCompany,
         canManageMembers: permissions.canManageMembers,
+        canInviteMembers: permissions.canManageMembers,
+        isReadOnlyView: false,
     }),
 }));
 
@@ -40,6 +42,7 @@ vi.mock("@/hooks/use-toast", () => ({
 
 // Componentes pesados de las pestanas: no se renderizan en estos tests.
 vi.mock("@/components/admin/add-member-dialog", () => ({ AddMemberDialog: () => null }));
+vi.mock("@/components/company/company-invitations-section", () => ({ CompanyInvitationsSection: () => null }));
 vi.mock("@/components/admin/company-configuration-tab", () => ({ CompanyConfigurationTab: () => null }));
 vi.mock("@/components/admin/daily-report-view", () => ({ DailyReportView: () => null }));
 vi.mock("@/components/admin/json-editor", () => ({ JsonEditor: () => null }));
