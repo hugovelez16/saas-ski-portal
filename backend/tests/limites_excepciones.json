@@ -1,0 +1,6 @@
+{
+  "routers/auth.py": 796,
+  "routers/v2/schemas.py": 412,
+  "routers/work_logs.py": 468,
+  "src/infrastructure/persistence/sqlalchemy/repositories/company_repository.py": 319
+}

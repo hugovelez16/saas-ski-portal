@@ -6,15 +6,13 @@ from uuid import UUID
 import access_policy
 import auth
 import models
-from application.use_cases.company.invitations import (
-    AcceptInvitationUseCase,
-    CancelInvitationUseCase,
-    CreateInvitationUseCase,
-    InvitationEmailDeliveryError,
-    ListInvitationsUseCase,
-    PreviewInvitationUseCase,
-    ResendInvitationUseCase,
-)
+from application.use_cases.company.accept_invitation import AcceptInvitationUseCase
+from application.use_cases.company.cancel_invitation import CancelInvitationUseCase
+from application.use_cases.company.create_invitation import CreateInvitationUseCase
+from application.use_cases.company.invitation_common import InvitationEmailDeliveryError
+from application.use_cases.company.list_invitations import ListInvitationsUseCase
+from application.use_cases.company.preview_invitation import PreviewInvitationUseCase
+from application.use_cases.company.resend_invitation import ResendInvitationUseCase
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from routers import deps
