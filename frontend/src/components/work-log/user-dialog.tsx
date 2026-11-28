@@ -124,12 +124,11 @@ export function UserCreateWorkLogDialog({
     // Set default company
     useEffect(() => {
         if (open && companies.length > 0 && !formData.companyId && !logToEdit) {
-            // Priority: Active Context > Last Selected > User Default > Personal > First Available
+            // Priority: Active Context > Last Selected > First Available
             let targetId = user?.activeCompanyId || lastSelectedCompanyId;
 
             if (!targetId) {
-                const personal = companies.find((c: any) => c.name === "Personal");
-                targetId = personal ? personal.id : companies[0].id;
+                targetId = companies[0].id;
             }
 
             setFormData(prev => ({ ...prev, companyId: targetId || undefined }));

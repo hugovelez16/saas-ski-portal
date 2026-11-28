@@ -316,7 +316,7 @@ export default function ReportsPage() {
                     id: '0', 
                     name: 'Company', 
                     settings: {},
-                    taxConfig: { social_security: 0, irpf_base: 0 },
+                    taxConfig: {},
                     worklogDefinitions: {}
                 } as any;
 

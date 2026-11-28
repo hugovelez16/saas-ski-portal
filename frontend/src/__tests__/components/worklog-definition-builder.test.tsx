@@ -97,4 +97,35 @@ describe('WorklogDefinitionBuilder', () => {
         expect(payload).not.toHaveProperty('evento');
         expect(payload).toHaveProperty('particular');
     });
+
+    it('mantiene la clave inmutable para tipos existentes y permite editarla solo en tipos nuevos (R-EMP-40)', () => {
+        const onSave = vi.fn();
+        render(
+            <WorklogDefinitionBuilder
+                initialValue={{
+                    particular: { label: 'Particular', unit: 'hours', options: [], is_active: true },
+                }}
+                onSave={onSave}
+            />
+        );
+
+        const existingKeyInput = screen.getByDisplayValue('particular') as HTMLInputElement;
+        const existingLabelInput = screen.getByDisplayValue('Particular') as HTMLInputElement;
+        expect(existingKeyInput).toBeDisabled();
+        expect(existingLabelInput).not.toBeDisabled();
+
+        fireEvent.change(existingLabelInput, { target: { value: 'Clase Privada' } });
+        fireEvent.click(screen.getByRole('button', { name: /añadir tipo de turno/i }));
+
+        const newKeyInput = screen.getByDisplayValue('nuevo_turno_2') as HTMLInputElement;
+        expect(newKeyInput).not.toBeDisabled();
+        fireEvent.change(newKeyInput, { target: { value: 'cursillo' } });
+
+        fireEvent.click(screen.getByRole('button', { name: /guardar tipos de turno/i }));
+
+        const payload = onSave.mock.calls[0][0];
+        expect(payload.particular.label).toBe('Clase Privada');
+        expect(payload.cursillo).toBeDefined();
+        expect(payload.nuevo_turno_2).toBeUndefined();
+    });
 });
