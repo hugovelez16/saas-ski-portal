@@ -10,6 +10,21 @@ La decision esta en ADR-0001 y el detalle en `docs/flujo/git.md`. El merge a
 `main` lo hace SIEMPRE el usuario (ADR-0002). El hook `guardas-git` lo bloquea
 de todas formas.
 
+## Delegacion (obligatoria)
+
+La sesion que ejecuta esta skill orquesta: decide, pregunta al usuario
+(AskUserQuestion) y verifica cada resultado con un comando corto. No ejecuta a
+mano los pasos mecanicos, aunque sea Opus y la skill este cargada.
+
+- Subagente haiku (`general-purpose` con `model: haiku`): comprobaciones de
+  git y `gh`, crear issues, worktree y rama, editar `CHANGELOG.md` o los
+  `package.json` con el cambio exacto, commit, push, PR, esperar checks, merge
+  commit y estados del Project. Pasale rutas, comandos, texto exacto y
+  criterio de exito.
+- Sonnet: redactar el resumen SemVer o el cuerpo del PR cuando exija criterio.
+- `code-reviewer`: revision antes de cada merge a `develop`.
+- Prohibidos los forks (heredan el modelo del orquestador).
+
 ## 1. Comprobaciones
 
 ```bash
