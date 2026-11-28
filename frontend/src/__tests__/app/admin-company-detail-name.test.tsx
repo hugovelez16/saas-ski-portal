@@ -45,7 +45,6 @@ vi.mock("@/components/admin/add-member-dialog", () => ({ AddMemberDialog: () => 
 vi.mock("@/components/company/company-invitations-section", () => ({ CompanyInvitationsSection: () => null }));
 vi.mock("@/components/admin/company-configuration-tab", () => ({ CompanyConfigurationTab: () => null }));
 vi.mock("@/components/admin/daily-report-view", () => ({ DailyReportView: () => null }));
-vi.mock("@/components/admin/json-editor", () => ({ JsonEditor: () => null }));
 vi.mock("@/components/admin/tax-config-builder", () => ({ TaxConfigBuilder: () => null }));
 vi.mock("@/components/admin/worklog-definition-builder", () => ({ WorklogDefinitionBuilder: () => null }));
 vi.mock("@/components/admin/user-rates-edit-dialog", () => ({ UserRatesEditDialog: () => null }));
