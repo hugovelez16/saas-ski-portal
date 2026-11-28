@@ -48,7 +48,7 @@ facturacion y costes) no es un modulo: sus reglas estan en `R-TAR`.
 | R-MOD-01 | `code_name` es unico en el catalogo; crear un modulo con un `code_name` existente es un error | Cerrado | 8 | `backend/models.py:AppModule`, `backend/routers/modules.py:create_module` (responde 400) |
 | R-MOD-02 | Solo el PA crea y edita modulos del catalogo; el manager y el worker reciben 403 | Cerrado | 8, matriz de revision-base.md | `backend/routers/modules.py:_require_admin` |
 | R-MOD-03 | Los modulos vendidos y vigentes son dos: `worker_daily_report` (con `name` y `description` de "Cuadrante compartido" en el catalogo) e Informes (`reports`). El modulo de notificaciones push (`push_notifications`) se crea ya en el catalogo como inactivo (`is_active = false`) | Cerrado | P17, O26, Repaso 2026-11-25; `planes-y-precios.md` | `backend/migrations/versions/2314c15d1a0f_seed_default_modules.py`, `0fb22f01dd7d_seed_billing_and_reports_modules.py`; nombre y `push_notifications`: pendiente de implementar (issue de seguimiento) |
-| R-MOD-04 | `billing` no es un modulo del catalogo hasta el billing avanzado (O11); se retira del catalogo y del menu | Cerrado | P17 | pendiente de implementar (issue de seguimiento): `0fb22f01dd7d_seed_billing_and_reports_modules.py` siembra `billing` |
+| R-MOD-04 | `billing` no es un modulo del catalogo hasta el billing avanzado (O11); se retira del catalogo y del menu | Cerrado | P17 | menu retirado en `frontend/src/app/(app)/layout.tsx`; catalogo en BD pendiente de migracion (#142): `0fb22f01dd7d_seed_billing_and_reports_modules.py` siembra `billing` |
 | R-MOD-05 | Un modulo con `is_active = false` no vale como modulo contratado y no se puede suscribir | Cerrado | 8, Repaso 2026-11-25 | `backend/crud.py:user_has_module` (ignora el inactivo); pendiente de implementar (issue de seguimiento): el alta de suscripcion no lo comprueba |
 | R-MOD-06 | Cualquier usuario verificado lista el catalogo activo; solo el PA ve tambien los inactivos | Cerrado | 8, Repaso 2026-11-25 | `backend/routers/modules.py:list_modules` |
 
@@ -69,7 +69,7 @@ facturacion y costes) no es un modulo: sus reglas estan en `R-TAR`.
 |---|---|---|---|---|
 | R-MOD-13 | Un endpoint de modulo responde 403 si la empresa activa no tiene el modulo vigente; el PA actuando pasa | Cerrado | 3.2 n.8, R-ACC-24 | `backend/routers/deps.py:require_module`, `deps.authorize` (`module=`); pendiente de implementar (issue de seguimiento): hoy cuenta tambien el modulo del usuario (R-MOD-17) |
 | R-MOD-14 | `worker_daily_report` se exige en el backend en los endpoints del parte diario | Cerrado | P17, R-ACC-78 | `backend/routers/companies.py` (`require_company(..., module="worker_daily_report")`) |
-| R-MOD-15 | `reports` se exige en el backend en los datos del modulo Informes | Cerrado | P17 | pendiente de implementar (#103): hoy solo oculta el menu en `frontend/src/app/(app)/layout.tsx` |
+| R-MOD-15 | `reports` se exige en el backend en los datos del modulo Informes | Cerrado | P17 | `backend/routers/work_logs.py:get_work_logs_report` (`deps.authorize(..., module="reports")`) |
 | R-MOD-16 | Los modulos efectivos de una sesion son los de la empresa activa del token; si la empresa esta suspendida, no hay ninguno (R-ACC-19) | Cerrado | R-ACC-19, P10 | `backend/routers/modules.py:get_my_modules`; pendiente de implementar (issue de seguimiento): hoy suma los modulos del usuario y, sin empresa en contexto, el PA recibe todos los activos |
 
 ### Retiradas

@@ -227,3 +227,69 @@ def test_upgrade_aborts_when_foreign_view_depends_on_default_company_id(scratch)
     assert _name_max_length(url) is None
     assert _view_columns(url, "Usuarios")[-2] == "default_company_name"
     assert _view_exists(url, "Ficha Usuario")
+
+
+def test_b7e1a0d10015_catalog_cleanup_upgrade_downgrade_and_views(scratch):
+    url, _, _ = scratch
+    _alembic(url, "upgrade", "b7e1a0d10014")
+
+    # Insertar una suscripcion de usuario y una de billing antes de migrar
+    company_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    user_sub_id = str(uuid.uuid4())
+    company_sub_id = str(uuid.uuid4())
+    billing_sub_id = str(uuid.uuid4())
+    _execute(
+        url,
+        f"INSERT INTO companies (id, name) VALUES ('{company_id}', 'Escuela Nieve')",
+        f"INSERT INTO users (id, email, hashed_password) VALUES ('{user_id}', 'user.mig@vesotel.com', 'hash')",
+        (
+            "INSERT INTO module_subscriptions (id, module_id, user_id, scope, status) "
+            f"SELECT '{user_sub_id}', id, '{user_id}', 'user', 'active' FROM app_modules WHERE code_name = 'reports'"
+        ),
+        (
+            "INSERT INTO module_subscriptions (id, module_id, company_id, scope, status) "
+            f"SELECT '{company_sub_id}', id, '{company_id}', 'company', 'active' "
+            "FROM app_modules WHERE code_name = 'worker_daily_report'"
+        ),
+        (
+            "INSERT INTO module_subscriptions (id, module_id, company_id, scope, status) "
+            f"SELECT '{billing_sub_id}', id, '{company_id}', 'company', 'active' "
+            "FROM app_modules WHERE code_name = 'billing'"
+        ),
+    )
+
+    # Vista manual dependiente de module_subscriptions.scope debe abortar el upgrade
+    _execute(url, 'CREATE VIEW "Sub Scope" AS SELECT id, scope FROM module_subscriptions')
+    blocked = _alembic(url, "upgrade", "head", check=False)
+    assert blocked.returncode != 0
+    assert "Sub Scope" in blocked.stderr
+    assert _version(url) == "b7e1a0d10014"
+
+    _execute(url, 'DROP VIEW "Sub Scope"')
+    _alembic(url, "upgrade", "head")
+
+    assert _version(url) == "b7e1a0d10015"
+    assert not _has_column(url, "app_modules", "target_scope")
+    assert not _has_column(url, "app_modules", "price_monthly")
+    assert not _has_column(url, "module_subscriptions", "user_id")
+    assert not _has_column(url, "module_subscriptions", "scope")
+    assert _scalar(url, "SELECT is_nullable FROM information_schema.columns WHERE table_name = 'module_subscriptions' AND column_name = 'company_id'") == "NO"
+    assert _scalar(url, "SELECT name FROM app_modules WHERE code_name = 'worker_daily_report'") == "Cuadrante compartido"
+    assert _scalar(url, "SELECT is_active FROM app_modules WHERE code_name = 'push_notifications'") is False
+    assert _scalar(url, "SELECT count(*) FROM app_modules WHERE code_name = 'billing'") == 0
+    assert _scalar(url, f"SELECT count(*) FROM module_subscriptions WHERE id = '{user_sub_id}'") == 0
+    assert _scalar(url, f"SELECT count(*) FROM module_subscriptions WHERE id = '{billing_sub_id}'") == 0
+    assert _scalar(url, f"SELECT count(*) FROM module_subscriptions WHERE id = '{company_sub_id}'") == 1
+
+    # Downgrade reversible
+    _alembic(url, "downgrade", "b7e1a0d10014")
+    assert _version(url) == "b7e1a0d10014"
+    assert _has_column(url, "app_modules", "target_scope")
+    assert _has_column(url, "app_modules", "price_monthly")
+    assert _has_column(url, "module_subscriptions", "user_id")
+    assert _has_column(url, "module_subscriptions", "scope")
+    assert _scalar(url, "SELECT is_nullable FROM information_schema.columns WHERE table_name = 'module_subscriptions' AND column_name = 'company_id'") == "YES"
+    assert _scalar(url, "SELECT count(*) FROM app_modules WHERE code_name = 'billing'") == 1
+    assert _scalar(url, "SELECT count(*) FROM app_modules WHERE code_name = 'push_notifications'") == 0
+    assert _scalar(url, "SELECT name FROM app_modules WHERE code_name = 'worker_daily_report'") == "Parte Diario para Trabajadores"

@@ -28,6 +28,14 @@ type PendingChange = {
     value: boolean;
 };
 
+function formatCompanyTaxesSummary(taxConfig?: Record<string, number> | null): string {
+    const entries = Object.entries(taxConfig ?? {}).filter(
+        ([name, rate]) => name.trim().length > 0 && typeof rate === "number" && Number.isFinite(rate),
+    );
+    if (entries.length === 0) return "Sin retenciones";
+    return entries.map(([name, rate]) => `${name}: ${formatPercentage(rate)}`).join(" · ");
+}
+
 function describePendingChange(change: PendingChange) {
     if (change.field === "isActive") {
         return change.value
@@ -62,7 +70,7 @@ export default function AdminCompaniesPage() {
     };
 
     const { data: companies = [], isLoading } = useQuery({
-        queryFn: getCompaniesDetailed,
+        queryFn: () => getCompaniesDetailed({ asAdmin: true }),
         queryKey: ["companiesDetailed"],
     });
 
@@ -172,7 +180,7 @@ export default function AdminCompaniesPage() {
                     {filteredCompanies.map((company) => {
                         const activeWorkers = (company.members || []).filter((m) => m.isActive && m.role !== 'manager').length;
                         const activeManagers = (company.members || []).filter((m) => m.isActive && m.role === 'manager').length;
-                        const ss = formatPercentage(company.taxConfig?.social_security);
+                        const taxesSummary = formatCompanyTaxesSummary(company.taxConfig);
                         const isManaged = Boolean(company.isManaged);
                         const isActive = company.isActive !== false;
 
@@ -229,11 +237,11 @@ export default function AdminCompaniesPage() {
                                             </div>
                                         </div>
                                         <div className="h-8 w-[1px] bg-slate-200" />
-                                        <div className="text-right">
-                                            <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">SS (%)</p>
+                                        <div className="text-right max-w-[55%]">
+                                            <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Impuestos</p>
                                             <div className="flex items-center justify-end gap-1 text-slate-800">
-                                                <Wallet className="h-4 w-4 text-slate-500" />
-                                                <span className="text-sm font-bold">{ss}</span>
+                                                <Wallet className="h-4 w-4 text-slate-500 shrink-0" />
+                                                <span className="text-xs font-bold truncate" title={taxesSummary}>{taxesSummary}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -279,7 +287,7 @@ export default function AdminCompaniesPage() {
                                     <th className="py-3.5 px-4">Estado Operativo</th>
                                     <th className="py-3.5 px-4">Modo de Gestión</th>
                                     <th className="py-3.5 px-4">Miembros</th>
-                                    <th className="py-3.5 px-4 text-center">SS (%)</th>
+                                    <th className="py-3.5 px-4 text-center">Impuestos</th>
                                     <th className="py-3.5 px-4 text-right">Acciones</th>
                                 </tr>
                             </thead>
@@ -287,7 +295,7 @@ export default function AdminCompaniesPage() {
                                 {filteredCompanies.map((company) => {
                                     const activeWorkers = (company.members || []).filter((m) => m.isActive && m.role !== 'manager').length;
                                     const activeManagers = (company.members || []).filter((m) => m.isActive && m.role === 'manager').length;
-                                    const ss = formatPercentage(company.taxConfig?.social_security);
+                                    const taxesSummary = formatCompanyTaxesSummary(company.taxConfig);
                                     const isManaged = Boolean(company.isManaged);
                                     const isActive = company.isActive !== false;
 
@@ -359,7 +367,7 @@ export default function AdminCompaniesPage() {
                                                 </div>
                                             </td>
                                             <td className="py-3.5 px-4 text-center">
-                                                <span className="font-semibold text-slate-700">{ss}</span>
+                                                <span className="text-xs font-semibold text-slate-700" title={taxesSummary}>{taxesSummary}</span>
                                             </td>
                                             <td className="py-3.5 px-4 text-right">
                                                 <div className="inline-flex items-center gap-1 text-xs font-semibold text-slate-900 hover:text-slate-700">

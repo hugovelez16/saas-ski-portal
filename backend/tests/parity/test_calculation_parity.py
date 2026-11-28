@@ -10,10 +10,8 @@ La rejilla combina:
   empresa, distinto de la empresa y solo en el miembro, combinados con extras fijos y por unidad, con la
   opcion activada y desactivada en extra_data["opciones"]. Los overrides "igual" y "distinto" se omiten
   con 0 impuestos de empresa porque no aportan nada.
-- Importe manual (`amount` / `net_amount`): crud devuelve bruto = neto = importe, duracion 0 y no aplica
-  impuestos (tax_applied = {}).
 
-Entradas: 6 formas x 2 is_gross x (4 + 7 + 7) modificadores = 216 de rejilla, mas 4 manuales = 220.
+Entradas: 6 formas x 2 is_gross x (4 + 7 + 7) modificadores = 216 de rejilla.
 
 Tolerancia: abs 0.01 en net_amount, gross_amount y duration. tax_applied se compara por clave y como float.
 La tolerancia no se relaja: las entradas que no cumplen quedan fallando y se reportan.
@@ -28,12 +26,10 @@ Divergencias de redondeo entre ambos motores (documentadas, no ocultadas):
 - WorkDuration.calculate (src) redondea la duracion en horas a 2 decimales; crud no. Las horas de la rejilla
   son exactas en 2 decimales (minutos 00, 15, 30 o 45). Un intervalo como 10:00-10:20 (0.333 h) divergeria
   en el importe; no se incluye en la rejilla.
-- Importe manual 12.345: crud devuelve 12.345 y src 12.35 (ROUND_HALF_UP). Diferencia 0.005, dentro de
-  la tolerancia.
 """
 
 import copy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date, time, timedelta
 from decimal import Decimal
 from typing import Any, Optional
@@ -107,18 +103,6 @@ class Case:
     user_rate: dict[str, Any]
     company_tax_config: dict[str, float]
 
-    @property
-    def manual(self) -> bool:
-        return _importe_manual(self.log_data) is not None
-
-
-def _importe_manual(log_data: dict[str, Any]) -> Optional[float]:
-    """Mismo criterio que crud: `amount` tiene prioridad sobre `net_amount`."""
-    valor = log_data.get("amount")
-    if valor is None:
-        valor = log_data.get("net_amount")
-    return valor
-
 
 def _override(kind: str, empresa: dict[str, float]) -> Optional[dict[str, Any]]:
     if kind == "null":
@@ -176,29 +160,7 @@ def _rejilla() -> list[Case]:
     return casos
 
 
-def _manuales() -> list[Case]:
-    # Importe manual: el resto de la configuracion se fija para comprobar que no se aplica ningun impuesto.
-    especificaciones = [
-        ("hours-cruce-medianoche", True, 3, "solo_miembro", "ambos_on", "amount", 250.0),
-        ("days-varios", False, 1, "null", "fijo_on", "net_amount", 99.99),
-        ("fixed", False, 0, "ausente", "sin_extras", "amount", 0.0),
-        # 12.345 se redondea a 12.35 en src (HALF_UP); diferencia 0.005, dentro de la tolerancia.
-        ("hours-duration_hours", True, 3, "igual", "ambos_on", "amount", 12.345),
-    ]
-    casos = []
-    for forma_id, is_gross, n_impuestos, override_kind, extras_kind, clave, importe in especificaciones:
-        base = _caso(forma_id, is_gross, n_impuestos, override_kind, extras_kind)
-        casos.append(
-            replace(
-                base,
-                id=f"manual|{forma_id}|{n_impuestos}imp|{clave}={importe}",
-                log_data={**base.log_data, clave: importe},
-            )
-        )
-    return casos
-
-
-GRID: list[Case] = _rejilla() + _manuales()
+GRID: list[Case] = _rejilla()
 GRID_IDS: list[str] = [caso.id for caso in GRID]
 
 
@@ -210,7 +172,6 @@ def run_crud(case: Case) -> dict[str, Any]:
         dict(case.user_rate),
         dict(case.company_tax_config),
     )
-    # El snapshot de un importe manual no incluye tax_applied: no se aplican impuestos.
     return {
         "net_amount": snap["net_amount"],
         "gross_amount": snap["gross_amount"],
@@ -238,13 +199,11 @@ def run_src(case: Case) -> dict[str, Any]:
         start_date=log.get("start_date"),
         end_date=log.get("end_date"),
     )
-    importe_manual = _importe_manual(log)
     snap = WorkLogCalculationService.calculate(
         duration=duration,
         rate_definition=rate,
         tax_configuration=tax_config,
         options=log.get("extra_data", {}).get("opciones", {}),
-        manual_net_amount=None if importe_manual is None else Decimal(str(importe_manual)),
     )
     tax_applied = getattr(snap, "tax_applied", None)
     return {
@@ -257,10 +216,6 @@ def run_src(case: Case) -> dict[str, Any]:
 
 def esperado(case: Case) -> dict[str, Any]:
     """Oraculo independiente: calcula los importes con Decimal exacto a partir de la especificacion del caso."""
-    if case.manual:
-        importe = float(_importe_manual(case.log_data))
-        return {"net_amount": importe, "gross_amount": importe, "duration": 0.0, "tax_applied": {}}
-
     duracion = Decimal(str(case.duracion))
     tarifa = Decimal(str(case.user_rate["base_rate"]))
     base = tarifa if case.unidad == "fixed" else duracion * tarifa

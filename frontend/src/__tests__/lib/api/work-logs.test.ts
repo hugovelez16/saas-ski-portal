@@ -17,7 +17,10 @@ import {
     getWorkLogsPage,
     getAllWorkLogs,
     getWorkLogSummary,
+    getWorkLogReport,
+    getAllWorkLogReport,
     createWorkLog,
+    previewWorkLogRecalculation,
     updateWorkLog,
     deleteWorkLog
 } from '@/lib/api/work-logs';
@@ -173,6 +176,60 @@ describe('Work Logs API Client', () => {
         });
     });
 
+    describe('getWorkLogReport & getAllWorkLogReport', () => {
+        const sampleSummary = {
+            startDate: '2026-01-01',
+            endDate: '2026-01-31',
+            totals: { logsCount: 2, totalHours: 4, totalNet: 80, totalGross: 100, uniqueDays: 1, activeUsers: 1 },
+            byType: [],
+            byDay: [],
+            byUser: [],
+        };
+
+        it('should GET /work-logs/reports with snake_case params', async () => {
+            (mockedApi.get as any).mockResolvedValue({
+                data: { items: rowsOf(0, 2), total: 2, summary: sampleSummary },
+            });
+
+            const result = await getWorkLogReport({
+                companyId: 'c-1',
+                userId: 'u-1',
+                startDate: '2026-01-01',
+                endDate: '2026-01-31',
+                includeLogs: false,
+            });
+
+            expect(mockedApi.get).toHaveBeenCalledWith('/work-logs/reports', {
+                params: {
+                    company_id: 'c-1',
+                    user_id: 'u-1',
+                    start_date: '2026-01-01',
+                    end_date: '2026-01-31',
+                    skip: undefined,
+                    limit: undefined,
+                    include_logs: false,
+                },
+            });
+            expect(result.summary).toEqual(sampleSummary);
+        });
+
+        it('should page /work-logs/reports in getAllWorkLogReport when total exceeds pageSize', async () => {
+            (mockedApi.get as any)
+                .mockResolvedValueOnce({ data: { items: rowsOf(0, 2), total: 3, summary: sampleSummary } })
+                .mockResolvedValueOnce({ data: { items: rowsOf(2, 1), total: 3, summary: sampleSummary } });
+
+            const result = await getAllWorkLogReport(
+                { companyId: 'c-1', startDate: '2026-01-01', endDate: '2026-01-31' },
+                { pageSize: 2 }
+            );
+
+            expect(mockedApi.get).toHaveBeenCalledTimes(2);
+            expect(result.items).toHaveLength(3);
+            expect(result.total).toBe(3);
+            expect(result.summary).toEqual(sampleSummary);
+        });
+    });
+
     describe('getWorkLogs', () => {
         it('should call /work-logs with no params when none provided', async () => {
             (mockedApi.get as any).mockResolvedValue({ data: [] });
@@ -273,27 +330,6 @@ describe('Work Logs API Client', () => {
             );
         });
 
-        it('should add keep_manual_amount=true when requested, also with apply_to_group', async () => {
-            const update: Partial<WorkLogCreate> = { description: 'Updated' };
-            (mockedApi.put as any).mockResolvedValue({ data: { id: 'wl-1' } });
-
-            await updateWorkLog('wl-1', update, true, { keepManualAmount: true });
-
-            expect(mockedApi.put).toHaveBeenCalledWith(
-                '/work-logs/wl-1?apply_to_group=true&keep_manual_amount=true',
-                update
-            );
-        });
-
-        it('should not add keep_manual_amount when the flag is false', async () => {
-            const update: Partial<WorkLogCreate> = { description: 'Updated' };
-            (mockedApi.put as any).mockResolvedValue({ data: { id: 'wl-1' } });
-
-            await updateWorkLog('wl-1', update, false, { keepManualAmount: false });
-
-            expect(mockedApi.put).toHaveBeenCalledWith('/work-logs/wl-1?apply_to_group=false', update);
-        });
-
         it('should not add recalculate_with_current_rates when the flag is false', async () => {
             const update: Partial<WorkLogCreate> = { description: 'Updated' };
             (mockedApi.put as any).mockResolvedValue({ data: { id: 'wl-1' } });
@@ -301,6 +337,36 @@ describe('Work Logs API Client', () => {
             await updateWorkLog('wl-1', update, false, { recalculateWithCurrentRates: false });
 
             expect(mockedApi.put).toHaveBeenCalledWith('/work-logs/wl-1?apply_to_group=false', update);
+        });
+    });
+
+    describe('previewWorkLogRecalculation', () => {
+        it('should POST to /work-logs/:id/recalculate-preview with query flags', async () => {
+            const previewResponse = {
+                workLogId: 'wl-1',
+                currentNetAmount: 40,
+                currentGrossAmount: 45,
+                currentDuration: 2,
+                newNetAmount: 60,
+                newGrossAmount: 68,
+                newDuration: 2,
+                applyToGroup: true,
+                groupCount: 2,
+            };
+            (mockedApi.post as any).mockResolvedValue({ data: previewResponse });
+
+            const result = await previewWorkLogRecalculation(
+                'wl-1',
+                { type: 'tutorial' },
+                true,
+                { recalculateWithCurrentRates: true }
+            );
+
+            expect(mockedApi.post).toHaveBeenCalledWith(
+                '/work-logs/wl-1/recalculate-preview?apply_to_group=true&recalculate_with_current_rates=true',
+                { type: 'tutorial' }
+            );
+            expect(result).toEqual(previewResponse);
         });
     });
 

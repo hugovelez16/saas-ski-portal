@@ -224,12 +224,12 @@ def require_active_member(db: Session, user_id: Any, company_id: Any) -> models.
             .first()
         )
     if member is None:
-        raise PolicyError(422, "El usuario no tiene una membresia activa en esta empresa")
+        raise PolicyError(403, "El usuario no tiene una membresia activa en esta empresa")
     return member
 
 
 def require_module(code_name: str):
-    """Dependencia que exige el modulo activo para el usuario o su empresa activa. El PA actuando pasa siempre."""
+    """Dependencia que exige el modulo activo para la empresa activa. El PA actuando pasa siempre."""
 
     def dependency(
         current_user: models.User = Depends(auth.get_verified_user),

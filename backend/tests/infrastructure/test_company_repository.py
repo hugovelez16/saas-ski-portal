@@ -282,7 +282,6 @@ async def test_count_dependencies_counts_members_work_logs_and_subscriptions(db)
         models.ModuleSubscription(
             module_id=module.id,
             company_id=company.id,
-            scope=models.SubscriptionScope.company,
             status=models.SubscriptionStatus.active,
         )
     )

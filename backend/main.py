@@ -11,7 +11,7 @@ import os
 from contextlib import asynccontextmanager
 
 from access_policy import PolicyError
-from contracts import MissingWorklogUnitError
+from contracts import MissingWorklogDatesError, MissingWorklogUnitError
 from database import SessionLocal
 from domain.exceptions.domain_exceptions import (
     ConflictException,
@@ -39,13 +39,13 @@ def perform_session_cleanup():
     """
     Síncrona: Borra de la base de datos las sesiones inactivas por más de 30 días.
     """
-    from datetime import datetime, timedelta
+    from datetime import UTC, datetime, timedelta
 
     import models
 
     db = SessionLocal()
     try:
-        limit_date = datetime.utcnow() - timedelta(days=30)
+        limit_date = datetime.now(UTC) - timedelta(days=30)
         deleted_count = (
             db.query(models.UserSession)
             .filter(models.UserSession.last_active < limit_date)
@@ -166,6 +166,11 @@ async def domain_exception_handler(request: Request, exc: DomainException):
 
 @app.exception_handler(MissingWorklogUnitError)
 async def missing_worklog_unit_error_handler(request: Request, exc: MissingWorklogUnitError):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(MissingWorklogDatesError)
+async def missing_worklog_dates_error_handler(request: Request, exc: MissingWorklogDatesError):
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 

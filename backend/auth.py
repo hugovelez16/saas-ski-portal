@@ -9,7 +9,7 @@ import hashlib
 import os
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import access_policy
 import crud
@@ -158,11 +158,17 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(
+    data: dict, expires_delta: timedelta | None = None, expires_at: datetime | None = None
+):
     """Creates a JWT access token with an expiration time."""
     to_encode = data.copy()
-    now = datetime.utcnow()
-    expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    now = datetime.now(UTC)
+    expire = (
+        expires_at
+        if expires_at is not None
+        else now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    )
     # Added jti for revocation support
     to_encode.update({"exp": expire, "iat": now, "type": "access", "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
@@ -171,7 +177,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 def create_refresh_token(data: dict):
     """Creates a long-lived JWT refresh token."""
     to_encode = data.copy()
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "iat": now, "type": "refresh", "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
@@ -183,7 +189,7 @@ _consumed_reset_jtis = set()
 def create_reset_token(email: str) -> str:
     """Creates a short-lived JWT reset token (valid for 30 minutes)."""
     to_encode = {"sub": email, "type": "reset"}
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     expire = now + timedelta(minutes=30)
     to_encode.update({"exp": expire, "iat": now, "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
@@ -330,6 +336,7 @@ def _attach_context(db: Session, user: models.User, token_data: schemas.TokenDat
     user.active_company_id = token_data.company_id
     user.token_scope = token_data.scope
     user.admin_user_id = token_data.admin_user_id
+    user.token_exp = token_data.exp
 
     user.view_as = None
     if user.is_platform_admin and token_data.company_id and view_as_claim in access_policy.VIEW_AS_ROLES:
@@ -337,6 +344,9 @@ def _attach_context(db: Session, user: models.User, token_data: schemas.TokenDat
     if request is not None:
         try:
             access_policy.assert_view_as_read_only(user.view_as, request.method, request.scope["path"])
+            access_policy.assert_impersonation_read_only(
+                token_data.scope, request.method, request.scope["path"]
+            )
         except access_policy.PolicyError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -381,6 +391,7 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
             company_id=payload.get("cid"),
             scope=payload.get("scope", "full"),
             admin_user_id=payload.get("admin_user_id"),
+            exp=payload.get("exp"),
         )
         view_as_claim = payload.get("view_as")
     except JWTError:
@@ -444,6 +455,7 @@ async def get_verified_user(
             company_id=payload.get("cid"),
             scope=payload.get("scope", "full"),
             admin_user_id=payload.get("admin_user_id"),
+            exp=payload.get("exp"),
         )
         view_as_claim = payload.get("view_as")
     except JWTError:
@@ -536,15 +548,15 @@ def hash_refresh_token(refresh_token: str) -> str:
 
 
 def _extract_refresh_expires_at(refresh_token: str) -> datetime:
-    """Extrae la caducidad UTC naive del JWT de refresh o usa el TTL por defecto."""
+    """Extrae la caducidad UTC del JWT de refresh o usa el TTL por defecto."""
     try:
         claims = jwt.get_unverified_claims(refresh_token)
         exp = claims.get("exp")
-        if isinstance(exp, (int, float)):
-            return datetime.utcfromtimestamp(exp)
+        if isinstance(exp, (int, float)) and not isinstance(exp, bool):
+            return datetime.fromtimestamp(exp, UTC)
     except JWTError:
         pass
-    return datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    return datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
 
 
 def create_session(
@@ -561,7 +573,7 @@ def create_session(
         expires_at=expires_at or _extract_refresh_expires_at(refresh_token),
         device_name=device_name,
         ip_address=ip_address,
-        last_active=datetime.utcnow(),
+        last_active=datetime.now(UTC),
     )
     db.add(session)
     db.commit()
@@ -569,7 +581,7 @@ def create_session(
 
 
 def get_session_by_token(db: Session, refresh_token: str):
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     token_hash = hash_refresh_token(refresh_token)
     return (
         db.query(models.UserSession)
@@ -595,7 +607,7 @@ def revoke_session(db: Session, refresh_token: str):
     )
     if session:
         session.is_active = False
-        session.revoked_at = datetime.utcnow()
+        session.revoked_at = datetime.now(UTC)
         db.commit()
     return session
 
@@ -609,7 +621,7 @@ def blacklist_token(token: str):
         jti = payload.get("jti")
         exp = payload.get("exp")
         if jti and exp:
-            now = datetime.utcnow().timestamp()
+            now = datetime.now(UTC).timestamp()
             ttl = int(exp - now)
             if ttl > 0:
                 redis_manager.set(f"bl_{jti}", "1", ex=ttl)

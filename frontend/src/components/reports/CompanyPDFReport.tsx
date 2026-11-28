@@ -235,16 +235,28 @@ interface CompanyPDFReportProps {
     endDate: Date;
 }
 
-export const CompanyPDFReport = ({ company, employeeStats, title, startDate, endDate }: CompanyPDFReportProps) => {
-    const normalizeTaxRate = (val: number | undefined | null) => {
-        if (!val || isNaN(val)) return 0;
-        const n = Number(val);
-        return n > 1 ? n / 100 : n;
-    };
+export function summarizeCompanyTaxes(taxConfig?: Record<string, number> | null): {
+    entries: Array<{ name: string; rate: number }>;
+    totalRate: number;
+    label: string;
+} {
+    const entries = Object.entries(taxConfig ?? {})
+        .filter(([name, val]) => name.trim().length > 0 && val !== null && val !== undefined && !isNaN(Number(val)))
+        .map(([name, val]) => {
+            const n = Number(val);
+            return { name, rate: n > 1 ? n / 100 : n };
+        });
+    const totalRate = entries.reduce((sum, entry) => sum + entry.rate, 0);
+    const label =
+        entries.length > 0
+            ? entries.map((entry) => `${entry.name}: ${(entry.rate * 100).toFixed(1)}%`).join(" | ")
+            : "Sin retenciones globales";
+    return { entries, totalRate, label };
+}
 
-    const ssRate = normalizeTaxRate(company?.taxConfig?.social_security);
-    const irpfRate = normalizeTaxRate(company?.taxConfig?.irpf_base);
-    const totalTaxRate = ssRate + irpfRate;
+export const CompanyPDFReport = ({ company, employeeStats, title, startDate, endDate }: CompanyPDFReportProps) => {
+    const taxSummary = useMemo(() => summarizeCompanyTaxes(company?.taxConfig), [company?.taxConfig]);
+    const totalTaxRate = taxSummary.totalRate;
 
     const totals = useMemo(() => {
         let hours = 0;
@@ -263,19 +275,16 @@ export const CompanyPDFReport = ({ company, employeeStats, title, startDate, end
             net += currNet;
         });
 
-        const ssDeduction = gross * ssRate;
-        const irpfDeduction = gross * irpfRate;
+        const totalDeductions = gross * totalTaxRate;
 
         return {
             hours,
             days,
             gross,
             net,
-            ssDeduction,
-            irpfDeduction,
-            totalDeductions: ssDeduction + irpfDeduction
+            totalDeductions,
         };
-    }, [employeeStats, ssRate, irpfRate, totalTaxRate]);
+    }, [employeeStats, totalTaxRate]);
 
     const sortedEmployees = [...employeeStats].sort((a, b) => {
         const grossB = b.totalGross ?? b.totalAmount;
@@ -322,7 +331,7 @@ export const CompanyPDFReport = ({ company, employeeStats, title, startDate, end
                     <View style={styles.card}>
                         <Text style={styles.cardTitle}>Retenciones Estimadas</Text>
                         <Text style={[styles.cardValue, { color: '#dc2626' }]}>-{formatCurrency(totals.totalDeductions)}</Text>
-                        <Text style={styles.cardSubValue}>IRPF: {(irpfRate * 100).toFixed(1)}% | SS: {(ssRate * 100).toFixed(1)}%</Text>
+                        <Text style={styles.cardSubValue}>{taxSummary.label}</Text>
                     </View>
                     <View style={styles.card}>
                         <Text style={styles.cardTitle}>Total Neto</Text>

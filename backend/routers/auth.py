@@ -1,10 +1,11 @@
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import access_policy
+import audit
 import auth
 import crud
 import dev_seed
@@ -14,6 +15,8 @@ from database import get_db
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+
+from routers import deps
 
 logger = logging.getLogger(__name__)
 
@@ -283,12 +286,18 @@ async def refresh_access_token(request: Request, response: Response, db: Session
         auth.revoke_session(db, refresh_token)
         raise HTTPException(status_code=401, detail="Una sesion impersonada no se puede renovar")
 
+    raw_cid = payload.get("cid")
+    raw_view_as = payload.get("view_as")
+    if user.role == models.UserRole.admin and raw_cid and not crud.get_company(db, raw_cid):
+        raw_cid = None
+        raw_view_as = None
+
     new_access_token, _ = auth.generate_user_tokens(
         db,
         user,
-        company_id=payload.get("cid"),
+        company_id=raw_cid,
         scope=payload.get("scope"),
-        view_as=payload.get("view_as"),
+        view_as=raw_view_as,
     )
 
     # Set as cookie
@@ -327,6 +336,33 @@ async def logout(request: Request, response: Response, db: Session = Depends(get
     return {"message": "Logged out successfully"}
 
 
+def _validate_member_switch(db: Session, current_user: models.User, data: schemas.SwitchScopeRequest) -> models.Company:
+    if data.view_as is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo el administrador de la plataforma puede usar 'ver como'",
+        )
+    if data.company_id is None:
+        raise HTTPException(status_code=400, detail="company_id is required")
+
+    company = crud.get_company(db, str(data.company_id))
+    membership = (
+        db.query(models.CompanyMember)
+        .filter(
+            models.CompanyMember.user_id == current_user.id,
+            models.CompanyMember.company_id == data.company_id,
+            models.CompanyMember.is_active == True,
+        )
+        .first()
+    )
+    # Anti-enumeracion: inexistente, ajena o sin membresia activa responden igual (P-5)
+    if company is None or membership is None:
+        raise HTTPException(status_code=403, detail=access_policy.MSG_NO_ACCESS)
+    if not company.is_active:
+        raise HTTPException(status_code=403, detail=access_policy.MSG_SUSPENDED)
+    return company
+
+
 @router.post("/auth/switch-scope", response_model=schemas.Token)
 async def switch_scope(
     data: schemas.SwitchScopeRequest,
@@ -339,18 +375,44 @@ async def switch_scope(
     SaaS: Switch active company (y modo "ver como" del PA). Emite NUEVOS tokens en cookies.
 
     El rol del usuario en la empresa sale de la membresia (BD); el cliente no puede enviarlo.
+    - Suplantacion (`scope=impersonated`): permite cambiar entre las empresas activas del usuario
+      suplantado manteniendo solo lectura (`scope="impersonated"`) y la caducidad restante de los
+      10 minutos originales (R-ACC-42).
     - PA: sin company_id -> contexto neutro; con company_id -> esa empresa (suspendida permitida);
       empresa inexistente -> 404; view_as requiere company_id (422).
     - Resto: view_as -> 403; company_id obligatorio (400); sin membresia activa o empresa inexistente
       -> 403 sin detalle; empresa suspendida -> 403.
     """
     token_scope = getattr(current_user, "token_scope", None)
+    access_cookie_max_age = auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60
 
-    # Una sesion impersonada no puede reemitirse: perderia el limite de 10 min y el admin_user_id
     if token_scope == "impersonated":
-        raise HTTPException(status_code=403, detail="No se puede cambiar de empresa durante una impersonacion")
+        _validate_member_switch(db, current_user, data)
+        original_exp = getattr(current_user, "token_exp", None)
+        admin_user_id = getattr(current_user, "admin_user_id", None)
+        if original_exp is None or not admin_user_id:
+            raise HTTPException(status_code=401, detail="Could not validate credentials")
 
-    if current_user.role == models.UserRole.admin:
+        remaining_seconds = max(int(original_exp - datetime.now(UTC).timestamp()), 1)
+        access_cookie_max_age = remaining_seconds
+        access_token = auth.create_access_token(
+            data={
+                "sub": str(current_user.id),
+                "cid": str(data.company_id),
+                "scope": "impersonated",
+                "admin_user_id": str(admin_user_id),
+            },
+            expires_at=datetime.fromtimestamp(original_exp, UTC),
+        )
+        refresh_token = auth.create_refresh_token(
+            data={
+                "sub": str(current_user.id),
+                "cid": str(data.company_id),
+                "scope": "impersonated",
+                "admin_user_id": str(admin_user_id),
+            }
+        )
+    elif current_user.role == models.UserRole.admin:
         if data.company_id is None:
             if data.view_as is not None:
                 raise HTTPException(status_code=422, detail="view_as requires company_id")
@@ -372,30 +434,7 @@ async def switch_scope(
                 view_as=data.view_as,
             )
     else:
-        if data.view_as is not None:
-            raise HTTPException(
-                status_code=403,
-                detail="Solo el administrador de la plataforma puede usar 'ver como'",
-            )
-        if data.company_id is None:
-            raise HTTPException(status_code=400, detail="company_id is required")
-
-        company = crud.get_company(db, str(data.company_id))
-        membership = (
-            db.query(models.CompanyMember)
-            .filter(
-                models.CompanyMember.user_id == current_user.id,
-                models.CompanyMember.company_id == data.company_id,
-                models.CompanyMember.is_active == True,
-            )
-            .first()
-        )
-        # Anti-enumeracion: inexistente, ajena o sin membresia activa responden igual (P-5)
-        if company is None or membership is None:
-            raise HTTPException(status_code=403, detail=access_policy.MSG_NO_ACCESS)
-        if not company.is_active:
-            raise HTTPException(status_code=403, detail=access_policy.MSG_SUSPENDED)
-
+        _validate_member_switch(db, current_user, data)
         access_token, refresh_token = auth.generate_user_tokens(
             db,
             current_user,
@@ -424,7 +463,7 @@ async def switch_scope(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        max_age=access_cookie_max_age,
     )
     response.set_cookie(
         key="refresh_token",
@@ -438,11 +477,54 @@ async def switch_scope(
     return {"access_token": "cookie", "token_type": "bearer", "requires_2fa": False}
 
 
+def _extract_impersonation_ids(request: Request) -> tuple[UUID, UUID] | None:
+    """Extrae (admin_user_id, target_user_id) de un token de suplantacion firmado por el servidor."""
+    candidates = [
+        auth.get_token_from_request(request),
+        request.cookies.get("refresh_token"),
+    ]
+    for token in candidates:
+        if not token:
+            continue
+        try:
+            payload = auth.jwt.decode(
+                token,
+                auth.PUBLIC_KEY,
+                algorithms=[auth.ALGORITHM],
+                options={"verify_exp": False},
+            )
+        except auth.JWTError:
+            continue
+        if payload.get("scope") != "impersonated":
+            continue
+        admin_raw = payload.get("admin_user_id")
+        target_raw = payload.get("sub")
+        if not admin_raw or not target_raw:
+            continue
+        try:
+            return UUID(str(admin_raw)), UUID(str(target_raw))
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
 @router.post("/admin/stop-impersonation")
-async def stop_impersonation(request: Request, response: Response):
+async def stop_impersonation(request: Request, response: Response, db: Session = Depends(get_db)):
     """
     SRE: Restore Admin session from backup cookies.
     """
+    impersonation_ids = _extract_impersonation_ids(request)
+    if impersonation_ids is not None:
+        admin_uuid, target_uuid = impersonation_ids
+        actor_uuid = admin_uuid if db.get(models.User, admin_uuid) is not None else None
+        audit.record_audit(
+            db,
+            action=audit.AuditAction.IMPERSONATION_ENDED,
+            actor_id=actor_uuid,
+            target_user_id=target_uuid,
+        )
+        db.commit()
+
     admin_access = request.cookies.get("admin_access_token")
     admin_refresh = request.cookies.get("admin_refresh_token")
 
@@ -477,22 +559,15 @@ async def stop_impersonation(request: Request, response: Response):
     return {"message": "Returned to admin session"}
 
 
-@router.post("/admin/impersonate/{user_id}", response_model=schemas.Token)
-async def impersonate_user(
+def execute_impersonate_user(
+    *,
     user_id: UUID,
     response: Response,
     request: Request,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_verified_user),
+    db: Session,
+    current_user: models.User,
 ):
-    """
-    Impersonation: Global admin can log in as any user.
-    """
-    if not getattr(current_user, "is_platform_admin", False):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Only global administrators can impersonate users"
-        )
-
+    """Inicia sesion suplantada de solo lectura para el usuario objetivo (10 minutos)."""
     target_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Target user not found")
@@ -510,7 +585,7 @@ async def impersonate_user(
         {
             "scope": "impersonated",
             "admin_user_id": str(current_user.id),
-            "exp": datetime.utcnow() + timedelta(minutes=10),
+            "exp": datetime.now(UTC) + timedelta(minutes=10),
         }
     )
     access_token = auth.jwt.encode(payload, auth.PRIVATE_KEY, algorithm=auth.ALGORITHM)
@@ -537,13 +612,21 @@ async def impersonate_user(
             max_age=auth.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         )
 
-    # Create Session for the target user (marked as impersonated in audit)
+    audit.record_audit(
+        db,
+        action=audit.AuditAction.IMPERSONATION_STARTED,
+        actor_id=current_user.id,
+        target_user_id=target_user.id,
+        extra={"target_email": target_user.email},
+    )
+
+    # Create Session for the target user (create_session hace commit de la transaccion)
     auth.create_session(
         db,
         user_id=str(target_user.id),
         refresh_token=refresh_token,
         device_name=f"IMPERSONATED by Admin ({current_user.email})",
-        ip_address=request.client.host,
+        ip_address=request.client.host if request.client else None,
     )
 
     # Set Cookies
@@ -565,6 +648,26 @@ async def impersonate_user(
     )
 
     return {"access_token": "cookie", "token_type": "bearer", "requires_2fa": False}
+
+
+@router.post("/admin/impersonate/{user_id}", response_model=schemas.Token)
+async def impersonate_user(
+    user_id: UUID,
+    response: Response,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.require_platform_admin),
+):
+    """
+    Impersonation: Global admin can log in as any user.
+    """
+    return execute_impersonate_user(
+        user_id=user_id,
+        response=response,
+        request=request,
+        db=db,
+        current_user=current_user,
+    )
 
 
 @router.post("/2fa/setup", response_model=schemas.TOTPSetupResponse)
@@ -622,11 +725,13 @@ async def disable_2fa(
 @router.get("/sessions", response_model=list[schemas.SessionResponse])
 async def list_sessions(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_verified_user)):
     """Lists all active sessions for the user."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     return [
         s
         for s in current_user.sessions
-        if s.is_active and s.revoked_at is None and (s.expires_at is None or s.expires_at > now)
+        if s.is_active
+        and s.revoked_at is None
+        and (s.expires_at is None or (s.expires_at.replace(tzinfo=UTC) if s.expires_at.tzinfo is None else s.expires_at) > now)
     ]
 
 
@@ -645,7 +750,7 @@ async def revoke_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     session.is_active = False
-    session.revoked_at = datetime.utcnow()
+    session.revoked_at = datetime.now(UTC)
     db.commit()
     return {"message": "Session revoked"}
 

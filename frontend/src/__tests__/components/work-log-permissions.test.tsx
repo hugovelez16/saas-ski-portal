@@ -4,7 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WorkLogDetailsDialog } from '@/components/work-log/details-dialog';
 import CalendarPage from '@/app/(app)/calendar/page';
-import { getMyCompanies } from '@/lib/api/companies';
+import { getCompany } from '@/lib/api/companies';
 import type { Company, WorkLog } from '@/lib/types';
 
 const authState = vi.hoisted(() => ({ user: null as any }));
@@ -14,11 +14,13 @@ vi.mock('@/context/AuthContext', () => ({
 }));
 
 vi.mock('@/lib/api/companies', () => ({
-    getMyCompanies: vi.fn(),
+    getCompany: vi.fn(),
 }));
 
 vi.mock('@/lib/api/work-logs', () => ({
     getWorkLogs: vi.fn().mockResolvedValue([]),
+    previewWorkLogRecalculation: vi.fn(),
+    updateWorkLog: vi.fn(),
 }));
 
 vi.mock('@/lib/api/settings', () => ({
@@ -37,7 +39,7 @@ vi.mock('@/components/work-log/user-dialog', () => ({
     UserCreateWorkLogDialog: () => null,
 }));
 
-const mockedGetMyCompanies = vi.mocked(getMyCompanies);
+const mockedGetCompany = vi.mocked(getCompany);
 
 const makeWrapper = () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -79,7 +81,7 @@ const baseUser = { id: 'u-self', email: 'x@x.com', role: 'user', isPlatformAdmin
 
 describe('Permisos de turnos en la UI', () => {
     beforeEach(() => {
-        mockedGetMyCompanies.mockReset();
+        mockedGetCompany.mockReset();
     });
 
     describe('WorkLogDetailsDialog: editar y borrar', () => {
@@ -113,6 +115,7 @@ describe('Permisos de turnos en la UI', () => {
 
             expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'Eliminar' })).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'Recalcular con tarifa vigente' })).toBeNull();
         });
 
         it('manager ve Editar y Eliminar en empresa gestionada', () => {
@@ -121,6 +124,7 @@ describe('Permisos de turnos en la UI', () => {
 
             expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'Eliminar' })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Recalcular con tarifa vigente' })).toBeInTheDocument();
         });
 
         it('PA en vista de solo lectura no ve Editar ni Eliminar', () => {
@@ -135,7 +139,7 @@ describe('Permisos de turnos en la UI', () => {
     describe('CalendarPage: alta de turnos', () => {
         it('worker en empresa gestionada no ve Add Work Log y ve el aviso del equipo gestor', async () => {
             authState.user = { ...baseUser, activeRole: 'worker' };
-            mockedGetMyCompanies.mockResolvedValue([company({ isManaged: true })]);
+            mockedGetCompany.mockResolvedValue(company({ isManaged: true }));
             render(<CalendarPage />, { wrapper: makeWrapper() });
 
             expect(
@@ -146,30 +150,30 @@ describe('Permisos de turnos en la UI', () => {
 
         it('worker en empresa autonoma ve Add Work Log', async () => {
             authState.user = { ...baseUser, activeRole: 'worker' };
-            mockedGetMyCompanies.mockResolvedValue([company({ isManaged: false })]);
+            mockedGetCompany.mockResolvedValue(company({ isManaged: false }));
             render(<CalendarPage />, { wrapper: makeWrapper() });
 
             expect(await screen.findByRole('button', { name: 'Add Work Log' })).toBeInTheDocument();
-            await waitFor(() => expect(mockedGetMyCompanies).toHaveBeenCalled());
+            await waitFor(() => expect(mockedGetCompany).toHaveBeenCalledWith(COMPANY_ID));
             expect(screen.getByRole('button', { name: 'Add Work Log' })).toBeInTheDocument();
         });
 
         it('manager ve Add Work Log en empresa gestionada', async () => {
             authState.user = { ...baseUser, activeRole: 'manager' };
-            mockedGetMyCompanies.mockResolvedValue([company({ isManaged: true })]);
+            mockedGetCompany.mockResolvedValue(company({ isManaged: true }));
             render(<CalendarPage />, { wrapper: makeWrapper() });
 
             expect(await screen.findByRole('button', { name: 'Add Work Log' })).toBeInTheDocument();
-            await waitFor(() => expect(mockedGetMyCompanies).toHaveBeenCalled());
+            await waitFor(() => expect(mockedGetCompany).toHaveBeenCalledWith(COMPANY_ID));
             expect(screen.getByRole('button', { name: 'Add Work Log' })).toBeInTheDocument();
         });
 
         it('PA en vista de solo lectura nunca ve Add Work Log', async () => {
             authState.user = { ...baseUser, role: 'admin', isPlatformAdmin: true, activeRole: null, isReadOnlyView: true };
-            mockedGetMyCompanies.mockResolvedValue([company({ isManaged: false })]);
+            mockedGetCompany.mockResolvedValue(company({ isManaged: false }));
             render(<CalendarPage />, { wrapper: makeWrapper() });
 
-            await waitFor(() => expect(mockedGetMyCompanies).toHaveBeenCalled());
+            await waitFor(() => expect(mockedGetCompany).toHaveBeenCalledWith(COMPANY_ID));
             expect(screen.queryByRole('button', { name: 'Add Work Log' })).toBeNull();
             expect(
                 screen.queryByText('En esta empresa los turnos los registra el equipo gestor'),

@@ -19,5 +19,6 @@ class AuditLogPort(ABC):
         old_value: Optional[dict] = None,
         new_value: Optional[dict] = None,
         reason: Optional[str] = None,
+        extra: Optional[dict] = None,
     ) -> None:
         pass

@@ -15,7 +15,6 @@ import { format } from "date-fns";
 import { useState, useMemo, useEffect } from "react";
 import { WorkLogsTable } from "@/components/work-log/work-logs-table";
 import { useToast } from "@/hooks/use-toast";
-import { JsonEditor } from "@/components/admin/json-editor";
 import { UserEditDialog } from "@/components/admin/user-edit-dialog";
 import { UserCreateWorkLogDialog } from "@/components/work-log/user-dialog";
 import {
@@ -43,7 +42,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { TaxOverridesFields, compactTaxOverrides } from "@/components/admin/tax-overrides-fields";
+import { TaxOverridesFields, compactTaxOverrides, exceedsMaxTaxSum } from "@/components/admin/tax-overrides-fields";
 
 const LOGS_PAGE_SIZE = 50;
 
@@ -128,7 +127,14 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
         },    });
 
     function onSubmit(values: MemberConfigValues) {
-        console.log("Submitting configuration:", values);
+        if (exceedsMaxTaxSum(company.taxConfig, values.taxOverrides)) {
+            toast({
+                title: "Error de validacion",
+                description: "La suma efectiva de impuestos no puede superar el 100%.",
+                variant: "destructive"
+            });
+            return;
+        }
         const newRatesConfig: Record<string, any> = {};
         const shiftKeys = Object.keys(worklogDefinitions);
 
@@ -288,6 +294,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                                     companyTaxConfig={company.taxConfig || {}}
                                                     value={field.value || {}}
                                                     onChange={field.onChange}
+                                                    isManaged={Boolean(company.isManaged)}
                                                 />
                                                 <FormMessage />
                                             </FormItem>

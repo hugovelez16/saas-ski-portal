@@ -9,9 +9,31 @@ import { Button } from "@/components/ui/button";
  * "Salir del modo" vuelve a la vista completa de la empresa activa.
  */
 export function ViewAsBanner() {
-    const { user, switchScope } = useAuth();
+    const { user, switchScope, stopImpersonation } = useAuth();
 
-    if (!user?.isReadOnlyView) return null;
+    if (!user?.isReadOnlyView && !user?.isImpersonated) return null;
+
+    if (user.isImpersonated) {
+        return (
+            <div
+                role="status"
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-300 bg-amber-100 px-4 py-2 text-sm text-amber-900"
+            >
+                <span className="flex items-center gap-2 font-medium">
+                    <Eye className="h-4 w-4 shrink-0" />
+                    Suplantando a {user.firstName || user.email} (solo lectura)
+                </span>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-amber-400 bg-white text-amber-900 hover:bg-amber-50"
+                    onClick={() => stopImpersonation?.()}
+                >
+                    Finalizar suplantación
+                </Button>
+            </div>
+        );
+    }
 
     return (
         <div

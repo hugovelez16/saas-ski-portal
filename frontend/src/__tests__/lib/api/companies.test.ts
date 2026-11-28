@@ -5,6 +5,9 @@ import {
     updateCompany,
     getCompanies,
     getCompany,
+    getCompanyManagerSettings,
+    updateCompanyManagerSettings,
+    getWorklogDefinitionsUsage,
     getCompaniesDetailed,
     getMyCompanies,
     updateMemberStatus,
@@ -34,10 +37,10 @@ const mockedApi = vi.mocked(api);
 
 const REDUCED_COMPANY_KEYS = [
     'id', 'name', 'isManaged', 'role', 'isActiveMember', 'ratesConfig',
-    'worklogDefinitions', 'taxConfig', 'settings'
+    'worklogDefinitions', 'taxConfig'
 ].sort();
 
-// Respuesta v2 (snake_case) de la vista reducida.
+// Respuesta v2 (snake_case) de la vista reducida (sin settings ni platform_settings).
 const reducedCompanyV2 = {
     id: 'c-1',
     name: 'Escuela 1',
@@ -47,12 +50,6 @@ const reducedCompanyV2 = {
     rates_config: {},
     worklog_definitions: {},
     tax_config: { iva: 21 },
-    settings: {
-        worker_experience: { input_mode: 'timer', allow_manual_amount: false },
-        ui_customization: { labels: {} },
-        modules: { reports: true },
-        business_logic: { price_type: 'net' },
-    },
 };
 
 const memberV2 = {
@@ -68,9 +65,9 @@ const memberV2 = {
     user: { id: 'u-1', email: 'ana@b.c', first_name: 'Ana', last_name: 'Lopez', is_active: true },
 };
 
-// Vista reducida (sin is_active) de una empresa donde el usuario es manager o worker.
-const reducedManagerV2 = { ...reducedCompanyV2, id: 'c-1', role: 'manager' };
-const reducedWorkerV2 = { ...reducedCompanyV2, id: 'c-2', name: 'Escuela 2', role: 'worker' };
+// Selector minimo (R-ACC-81) devuelto por GET /v2/me/companies.
+const myManagerItem = { id: 'c-1', name: 'Escuela 1', role: 'manager' };
+const myWorkerItem = { id: 'c-2', name: 'Escuela 2', role: 'worker' };
 
 // Responde a cada GET segun la URL; una URL no prevista falla el test.
 const mockGetRoutes = (routes: Record<string, unknown>) => {
@@ -83,7 +80,8 @@ const mockGetRoutes = (routes: Record<string, unknown>) => {
 // Empresa manager en la vista reducida; GET de miembros falla con `error`.
 const mockRejectMembers = (error: unknown) => {
     (mockedApi.get as any).mockImplementation(async (url: string) => {
-        if (url === '/v2/me/companies') return { data: [reducedManagerV2] };
+        if (url === '/v2/me/companies') return { data: [myManagerItem] };
+        if (url === '/v2/companies/c-1') return { data: { ...reducedCompanyV2, role: 'manager' } };
         if (url === '/v2/companies/c-1/members') throw error;
         throw new Error(`GET no esperado: ${url}`);
     });
@@ -148,23 +146,65 @@ describe('Companies API Client', () => {
         expect(result.isActive).toBe(true);
     });
 
-    it('getCompany should keep the reduced view shape without PA-only fields', async () => {
+    it('getCompany should keep the reduced view shape without PA-only fields or settings', async () => {
         (mockedApi.get as any).mockResolvedValue({ data: reducedCompanyV2 });
 
         const result: CompanyResponse = await getCompany('c-1');
         expect(Object.keys(result).sort()).toEqual(REDUCED_COMPANY_KEYS);
         expect(result).not.toHaveProperty('isActive');
+        expect(result).not.toHaveProperty('settings');
+        expect(result).not.toHaveProperty('platformSettings');
         expect(result).not.toHaveProperty('createdAt');
         expect(result).not.toHaveProperty('updatedAt');
-        expect(result.settings).not.toHaveProperty('allowed_rates');
     });
 
-    it('getCompaniesDetailed should GET /v2/companies with include=members for PA (full view) and map members to camelCase', async () => {
+    it('manager settings y usage endpoints mapean camelCase y usan rutas esperadas', async () => {
+        (mockedApi.get as any).mockResolvedValueOnce({
+            data: {
+                id: 'c-1',
+                name: 'Escuela 1',
+                tax_config: { ss: 0.06 },
+                worklog_definitions: { particular: { unit: 'hours', label: 'Particular', options: [], is_active: true } },
+                settings: { default_is_gross: true },
+            },
+        });
+        const settings = await getCompanyManagerSettings('c-1');
+        expect(mockedApi.get).toHaveBeenCalledWith('/v2/companies/c-1/settings');
+        expect(settings.settings).toEqual({ default_is_gross: true });
+
+        (mockedApi.put as any).mockResolvedValueOnce({
+            data: {
+                id: 'c-1',
+                name: 'Escuela 1',
+                tax_config: { ss: 0.07 },
+                worklog_definitions: {},
+                settings: { default_is_gross: false },
+            },
+        });
+        const updated = await updateCompanyManagerSettings('c-1', {
+            settings: { default_is_gross: false },
+            tax_config: { ss: 0.07 },
+        });
+        expect(mockedApi.put).toHaveBeenCalledWith('/v2/companies/c-1/settings', {
+            settings: { default_is_gross: false },
+            tax_config: { ss: 0.07 },
+        });
+        expect(updated.tax_config).toEqual({ ss: 0.07 });
+
+        (mockedApi.get as any).mockResolvedValueOnce({
+            data: { particular: { work_logs_count: 2, member_rates_count: 1 } },
+        });
+        const usage = await getWorklogDefinitionsUsage('c-1', { asAdmin: false });
+        expect(mockedApi.get).toHaveBeenCalledWith('/v2/companies/c-1/worklog-definitions/usage');
+        expect(usage.particular.work_logs_count).toBe(2);
+
+        (mockedApi.get as any).mockResolvedValueOnce({ data: {} });
+        await getWorklogDefinitionsUsage('c-1', { asAdmin: true });
+        expect(mockedApi.get).toHaveBeenCalledWith('/v2/admin/companies/c-1/worklog-definitions/usage');
+    });
+
+    it('getCompaniesDetailed({ asAdmin: true }) should GET /v2/companies with include=members for PA and map members to camelCase', async () => {
         mockGetRoutes({
-            '/v2/me/companies': [{
-                id: 'c-1', name: 'Escuela 1', is_active: true, is_managed: true,
-                tax_config: {}, worklog_definitions: {}, settings: {}, created_at: null, updated_at: null,
-            }],
             '/v2/companies': {
                 items: [{
                     id: 'c-1', name: 'Escuela 1', is_active: true, is_managed: true,
@@ -175,8 +215,8 @@ describe('Companies API Client', () => {
             },
         });
 
-        const result = await getCompaniesDetailed();
-        expect(mockedApi.get).toHaveBeenCalledWith('/v2/me/companies');
+        const result = await getCompaniesDetailed({ asAdmin: true });
+        expect(mockedApi.get).not.toHaveBeenCalledWith('/v2/me/companies');
         expect(mockedApi.get).toHaveBeenCalledWith('/v2/companies', { params: { include: 'members', limit: 2000 } });
         expect(mockedApi.get).not.toHaveBeenCalledWith('/v2/companies/c-1/members', expect.anything());
         expect(result).toHaveLength(1);
@@ -193,24 +233,25 @@ describe('Companies API Client', () => {
         expect(member).not.toHaveProperty('user_id');
     });
 
-    it('getCompaniesDetailed should return members as [] when the PA company has no members key', async () => {
+    it('getCompaniesDetailed({ asAdmin: true }) should return members as [] when the PA company has no members key', async () => {
         mockGetRoutes({
-            '/v2/me/companies': [{ id: 'c-2', name: 'Sin miembros', is_active: true }],
             '/v2/companies': { items: [{ id: 'c-2', name: 'Sin miembros', is_active: true }], total: 1 },
         });
 
-        const result = await getCompaniesDetailed();
+        const result = await getCompaniesDetailed({ asAdmin: true });
         expect(result[0].members).toEqual([]);
     });
 
-    it('getCompaniesDetailed should GET /v2/companies/:id/members for manager companies (reduced view) and map members to camelCase', async () => {
+    it('getCompaniesDetailed should GET /v2/companies/:id and /members for manager companies and map members to camelCase', async () => {
         mockGetRoutes({
-            '/v2/me/companies': [reducedManagerV2],
+            '/v2/me/companies': [myManagerItem],
+            '/v2/companies/c-1': { ...reducedCompanyV2, role: 'manager' },
             '/v2/companies/c-1/members': [memberV2],
         });
 
         const result = await getCompaniesDetailed();
-        expect(mockedApi.get).toHaveBeenCalledTimes(2);
+        expect(mockedApi.get).toHaveBeenCalledTimes(3);
+        expect(mockedApi.get).toHaveBeenCalledWith('/v2/companies/c-1', { meta: { silent: true } });
         expect(mockedApi.get).toHaveBeenCalledWith('/v2/companies/c-1/members', { params: undefined, meta: { silent: true } });
         expect(mockedApi.get).not.toHaveBeenCalledWith('/v2/companies', expect.anything());
         expect(result).toHaveLength(1);
@@ -224,7 +265,7 @@ describe('Companies API Client', () => {
 
     it('getCompaniesDetailed should return members as [] for worker companies without requesting members', async () => {
         mockGetRoutes({
-            '/v2/me/companies': [reducedWorkerV2],
+            '/v2/me/companies': [myWorkerItem],
         });
 
         const result = await getCompaniesDetailed();
@@ -234,9 +275,10 @@ describe('Companies API Client', () => {
         expect(result[0].members).toEqual([]);
     });
 
-    it('getCompaniesDetailed should request members only for manager companies in a mixed reduced list', async () => {
+    it('getCompaniesDetailed should request members only for manager companies in a mixed list', async () => {
         mockGetRoutes({
-            '/v2/me/companies': [reducedManagerV2, reducedWorkerV2],
+            '/v2/me/companies': [myManagerItem, myWorkerItem],
+            '/v2/companies/c-1': { ...reducedCompanyV2, role: 'manager' },
             '/v2/companies/c-1/members': [memberV2],
         });
 
@@ -248,9 +290,10 @@ describe('Companies API Client', () => {
         expect(result[1].members).toEqual([]);
     });
 
-    it('getCompaniesDetailed should load members for a reduced company with role admin', async () => {
+    it('getCompaniesDetailed should load members for a company with role admin', async () => {
         mockGetRoutes({
-            '/v2/me/companies': [{ ...reducedCompanyV2, id: 'c-3', role: 'admin' }],
+            '/v2/me/companies': [{ id: 'c-3', name: 'Escuela 3', role: 'admin' }],
+            '/v2/companies/c-3': { ...reducedCompanyV2, id: 'c-3', role: 'admin' },
             '/v2/companies/c-3/members': [memberV2],
         });
 
@@ -289,42 +332,13 @@ describe('Companies API Client', () => {
         expect(mockedApi.get).not.toHaveBeenCalledWith('/v2/companies', expect.anything());
     });
 
-    it('getMyCompanies should GET /v2/me/companies', async () => {
-        (mockedApi.get as any).mockResolvedValue({ data: [{ id: 'c-1', name: 'Escuela 1', is_managed: false }] });
+    it('getMyCompanies should GET /v2/me/companies and return only id, name and role', async () => {
+        (mockedApi.get as any).mockResolvedValue({ data: [myWorkerItem] });
 
         const result = await getMyCompanies();
         expect(mockedApi.get).toHaveBeenCalledWith('/v2/me/companies');
-        expect(result).toHaveLength(1);
-        expect(result[0].isManaged).toBe(false);
-    });
-
-    it('getMyCompanies should keep the reduced view shape without PA-only fields', async () => {
-        (mockedApi.get as any).mockResolvedValue({ data: [reducedCompanyV2] });
-
-        const result: CompanyResponse[] = await getMyCompanies();
-        expect(result).toHaveLength(1);
-        expect(Object.keys(result[0]).sort()).toEqual(REDUCED_COMPANY_KEYS);
-        expect(result[0]).not.toHaveProperty('isActive');
-        expect(result[0]).not.toHaveProperty('createdAt');
-        expect(result[0]).not.toHaveProperty('updatedAt');
-        expect(result[0].settings).not.toHaveProperty('allowed_rates');
-    });
-
-    it('getMyCompanies should add role admin and isActiveMember true to the full view', async () => {
-        (mockedApi.get as any).mockResolvedValue({
-            data: [{
-                id: 'c-1', name: 'Escuela 1', is_active: true, is_managed: true,
-                tax_config: {}, worklog_definitions: {}, settings: {}, created_at: null, updated_at: null,
-            }],
-        });
-
-        const result = await getMyCompanies();
-        expect(result).toHaveLength(1);
-        expect(result[0].role).toBe('admin');
-        expect(result[0].isActiveMember).toBe(true);
-        expect(result[0].isActive).toBe(true);
-        expect(result[0].isManaged).toBe(true);
-        expect(result[0]).not.toHaveProperty('is_active');
+        expect(result).toEqual([myWorkerItem]);
+        expect(Object.keys(result[0]).sort()).toEqual(['id', 'name', 'role']);
     });
 
     it('updateMemberStatus should PUT /v2/companies/:id/members/:userId/status with { is_active: true }', async () => {

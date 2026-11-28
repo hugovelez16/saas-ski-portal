@@ -1,4 +1,4 @@
-"""Caso de uso: edicion de empresa (solo PA; la autorizacion la decide el router)."""
+"""Caso de uso: edicion de empresa y ajustes (autorizacion decidida por el router)."""
 
 import copy
 from typing import Any, Dict, Optional
@@ -6,13 +6,33 @@ from typing import Any, Dict, Optional
 from application.use_cases.company.common import (
     COMPANY_EVENT_ACTIONS,
     MSG_COMPANY_NOT_FOUND,
-    MSG_NO_CHANGES,
     company_event,
 )
+from contracts import CompanySettings, PlatformSettings
 from domain.entities.company import Company
-from domain.exceptions.domain_exceptions import EntityNotFoundException, ValidationDomainException
+from domain.exceptions.domain_exceptions import ConflictException, EntityNotFoundException
 from domain.ports.audit_port import AuditLogPort
 from domain.ports.repositories.company_repository_port import CompanyRepositoryPort
+
+
+def _normalize_for_diff(field_name: str, value: Any) -> Any:
+    """Normaliza defaults de campos JSON para detectar guardados sin cambios reales (R-EMP-16)."""
+    if field_name == "settings":
+        return CompanySettings.from_db(value).model_dump(mode="json")
+    if field_name == "platform_settings":
+        return PlatformSettings.from_db(value).model_dump(mode="json")
+    if field_name == "worklog_definitions" and isinstance(value, dict):
+        normalized: Dict[str, Any] = {}
+        for key, raw_def in value.items():
+            if not isinstance(raw_def, dict):
+                normalized[key] = raw_def
+                continue
+            item = dict(raw_def)
+            item.setdefault("options", [])
+            item.setdefault("is_active", True)
+            normalized[key] = item
+        return normalized
+    return value
 
 
 class UpdateCompanyUseCase:
@@ -28,7 +48,13 @@ class UpdateCompanyUseCase:
         changes: Dict[str, Any],
         reason: Optional[str] = None,
     ) -> Company:
-        """`changes` contiene solo los campos enviados (JSON plano). Un evento de auditoria por campo que cambia."""
+        """`changes` contiene solo los campos enviados (JSON plano).
+
+        - Sin cambios reales (incluido `{}` o mismos valores): devuelve la empresa sin modificar nada ni auditar (R-EMP-16).
+        - Las claves de `worklog_definitions` son inmutables (R-EMP-40): sustituir una clave por otra
+          se procesa como baja de la clave anterior mas alta de la nueva. Si la clave eliminada tiene
+          turnos en BD se rechaza con 409; si tiene 0 turnos, limpia sus tarifas asociadas en `rates_config` (R-EMP-41).
+        """
         company = await self.company_repo.get_by_id(company_id)
         if company is None:
             raise EntityNotFoundException(MSG_COMPANY_NOT_FOUND)
@@ -39,10 +65,26 @@ class UpdateCompanyUseCase:
                 continue
             old_value = getattr(company, field_name)
             new_value = changes[field_name]
-            if old_value != new_value:
+            if _normalize_for_diff(field_name, old_value) != _normalize_for_diff(field_name, new_value):
                 diffs.append((field_name, old_value, new_value))
         if not diffs:
-            raise ValidationDomainException(MSG_NO_CHANGES)
+            return company
+
+        removed_types: list[str] = []
+        for field_name, old_value, new_value in diffs:
+            if field_name == "worklog_definitions":
+                old_defs = old_value if isinstance(old_value, dict) else {}
+                new_defs = new_value if isinstance(new_value, dict) else {}
+                removed_types = [key for key in old_defs if key not in new_defs]
+                if removed_types:
+                    counts = await self.company_repo.count_work_logs_by_types(company_id, removed_types)
+                    blocked = [(shift_type, count) for shift_type, count in counts.items() if count > 0]
+                    if blocked:
+                        shift_type, count = blocked[0]
+                        raise ConflictException(
+                            f"No se puede borrar el tipo de turno '{shift_type}' porque tiene {count} turnos "
+                            "registrados; puedes desactivarlo"
+                        )
 
         for field_name, old_value, new_value in diffs:
             await self.audit_log.record(
@@ -55,4 +97,7 @@ class UpdateCompanyUseCase:
             )
         for field_name, _old_value, new_value in diffs:
             setattr(company, field_name, copy.deepcopy(new_value))
-        return await self.company_repo.save(company)
+        saved = await self.company_repo.save(company)
+        if removed_types:
+            await self.company_repo.remove_shift_types_from_rates(company_id, removed_types)
+        return saved

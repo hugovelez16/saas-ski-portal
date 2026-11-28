@@ -19,7 +19,8 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     Ghost,
-    Building2
+    Building2,
+    Scale
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -234,6 +235,15 @@ export function Sidebar({ navGroups }: { navGroups: NavGroup[] }) {
                                     </div>
                                 </button>
 
+                                <Link
+                                    href="/aviso-legal"
+                                    onClick={() => setMobileOpen(false)}
+                                    className="flex items-center space-x-3 text-xs text-slate-400 hover:text-slate-200 w-full px-3 py-2 hover:bg-slate-800/50 rounded-md transition-colors mb-1"
+                                >
+                                    <Scale size={18} className="flex-shrink-0" />
+                                    <span>Información legal</span>
+                                </Link>
+
                                 <button onClick={logout} className="flex items-center space-x-3 text-red-400 w-full px-3 py-2 hover:bg-slate-800/50 rounded-md transition-colors">
                                     <LogOut size={20} />
                                     <span>Log Out (Salir)</span>
@@ -355,7 +365,7 @@ export function Sidebar({ navGroups }: { navGroups: NavGroup[] }) {
                         </button>
                     )}
 
-                    <Link href="/profile" className="flex items-center space-x-3 mb-4 px-3 hover:bg-slate-800 rounded-md py-2 transition-colors cursor-pointer block">
+                    <Link href="/profile" className="flex items-center space-x-3 mb-2 px-3 hover:bg-slate-800 rounded-md py-2 transition-colors cursor-pointer block">
                         {!expanded ? (
                             <div className="w-8 h-8 rounded-full bg-slate-700 mx-auto flex items-center justify-center font-bold">
                                 {user?.firstName?.[0]}
@@ -371,6 +381,19 @@ export function Sidebar({ navGroups }: { navGroups: NavGroup[] }) {
                                 </div>
                             </>
                         )}
+                    </Link>
+
+                    <Link
+                        href="/aviso-legal"
+                        aria-label="Información legal"
+                        title="Información legal"
+                        className={cn(
+                            "flex items-center space-x-3 px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 w-full transition-colors whitespace-nowrap rounded-md hover:bg-slate-800/50 mb-1",
+                            !expanded && "justify-center px-0"
+                        )}
+                    >
+                        <Scale size={18} className="flex-shrink-0" />
+                        {expanded && <span>Información legal</span>}
                     </Link>
 
                     <button

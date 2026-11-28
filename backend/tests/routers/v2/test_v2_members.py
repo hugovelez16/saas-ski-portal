@@ -56,8 +56,8 @@ MEMBER_KEYS = {
 }
 MEMBER_USER_KEYS = {"id", "email", "first_name", "last_name", "is_active"}
 
-PA_ONLY_ENDPOINTS = ["add", "status", "role", "delete"]
-ALL_MEMBER_ENDPOINTS = PA_ONLY_ENDPOINTS + ["rates", "settings", "order"]
+PA_ONLY_ENDPOINTS = ["add", "role"]
+ALL_MEMBER_ENDPOINTS = PA_ONLY_ENDPOINTS + ["status", "delete", "rates", "settings", "order"]
 # Respuesta 201 solo cuando el alta crea una membresia nueva (el resto de casos responde 200).
 PA_EXPECTED_STATUS = {"add": 201}
 
@@ -300,7 +300,8 @@ def test_add_new_user_returns_201_creates_active_worker_and_emits_member_added(c
     _assert_trace(rows[0], s.pa, s.company, s.outsider)
 
 
-def test_add_reactivates_inactive_manager_as_worker_and_emits_reactivated(client, db):
+def test_add_reactivates_inactive_manager_keeping_role_and_emits_reactivated(client, db):
+    """R-MEM-12: reactivar por add_member conserva el rol previo (manager o worker)."""
     s = _scenario(db)
     former = make_user(db)
     make_member(db, former, s.company, role="manager", is_active=False)
@@ -309,13 +310,14 @@ def test_add_reactivates_inactive_manager_as_worker_and_emits_reactivated(client
     resp = client.post(_members_url(s.company), json={"email": former.email})
 
     assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == "manager"
     membership = _membership(db, former, s.company)
     assert membership.is_active is True
-    assert membership.role == models.CompanyRole.worker  # M6: la reactivacion fuerza worker
+    assert membership.role == models.CompanyRole.manager
     rows = _audit_rows(db, "member.reactivated")
     assert len(rows) == 1
     assert rows[0].old_value == {"is_active": False, "role": "manager"}
-    assert rows[0].new_value == {"is_active": True, "role": "worker"}
+    assert rows[0].new_value == {"is_active": True, "role": "manager"}
     _assert_trace(rows[0], s.pa, s.company, former)
 
 
@@ -377,6 +379,29 @@ def test_pa_only_endpoints_do_not_reveal_company_existence_to_manager(client, db
     assert foreign.status_code == 403, foreign.text
     assert unknown.status_code == 403, unknown.text
     assert foreign.json()["detail"] == unknown.json()["detail"] == MSG_FORBIDDEN
+
+
+def test_add_member_rejects_platform_admin_with_4xx(client, db):
+    """R-ACC-26: el PA no puede tener membresias; anadirlo como miembro devuelve error 4xx."""
+    s = _scenario(db)
+    as_user(client, s.pa, s.company)
+
+    resp = client.post(_members_url(s.company), json={"email": s.pa.email})
+
+    assert 400 <= resp.status_code < 500, resp.text
+    assert db.query(models.CompanyMember).filter_by(user_id=s.pa.id).count() == 0
+
+
+def test_crud_join_company_rejects_platform_admin_with_422(db):
+    """R-ACC-26: crud.join_company tambien rechaza a un PA con PolicyError 422."""
+    import crud
+    from access_policy import PolicyError
+
+    s = _scenario(db)
+    with pytest.raises(PolicyError) as exc_info:
+        crud.join_company(db, str(s.pa.id), str(s.company.id))
+    assert exc_info.value.status_code == 422
+    assert db.query(models.CompanyMember).filter_by(user_id=s.pa.id).count() == 0
 
 
 # --- status: PUT .../members/{user_id}/status con cuerpo {is_active} ---
@@ -450,18 +475,92 @@ def test_deactivating_membership_does_not_reassign_other_memberships(client, db)
     assert other.role == models.CompanyRole.manager
 
 
-def test_reactivating_member_forces_worker_role(client, db):
+@pytest.mark.parametrize("previous_role", ["manager", "worker"])
+def test_reactivating_member_preserves_previous_role(client, db, previous_role):
+    """R-MEM-12: reactivar una membresia por status conserva su rol anterior."""
     s = _scenario(db)
     former = make_user(db)
-    make_member(db, former, s.company, role="manager", is_active=False)
+    make_member(db, former, s.company, role=previous_role, is_active=False)
     as_user(client, s.pa, s.company)
 
     resp = client.put(f"{BASE}/{s.company.id}/members/{former.id}/status", json={"is_active": True})
 
     assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == previous_role
     membership = _membership(db, former, s.company)
     assert membership.is_active is True
-    assert membership.role == models.CompanyRole.worker  # M6
+    assert membership.role == models.CompanyRole(previous_role)
+
+
+def test_manager_can_deactivate_and_reactivate_worker_keeping_role(client, db):
+    """R-MEM-10, R-MEM-11, R-MEM-12: el manager desactiva y reactiva workers de su empresa activa."""
+    s = _scenario(db)
+    as_user(client, s.manager, s.company)
+
+    off = client.put(f"{BASE}/{s.company.id}/members/{s.worker.id}/status", json={"is_active": False})
+    assert off.status_code == 200, off.text
+    assert off.json()["is_active"] is False
+    assert _membership(db, s.worker, s.company).is_active is False
+
+    on = client.put(f"{BASE}/{s.company.id}/members/{s.worker.id}/status", json={"is_active": True})
+    assert on.status_code == 200, on.text
+    assert on.json()["is_active"] is True
+    assert on.json()["role"] == "worker"
+    assert _membership(db, s.worker, s.company).is_active is True
+
+
+def test_manager_gets_403_deactivating_or_reactivating_a_manager(client, db):
+    """R-MEM-10, R-MEM-11: un manager recibe 403 si intenta desactivar o reactivar a otro manager."""
+    s = _scenario(db)
+    other_manager = make_user(db)
+    make_member(db, other_manager, s.company, role="manager", is_active=True)
+    inactive_manager = make_user(db)
+    make_member(db, inactive_manager, s.company, role="manager", is_active=False)
+    as_user(client, s.manager, s.company)
+
+    off_resp = client.put(f"{BASE}/{s.company.id}/members/{other_manager.id}/status", json={"is_active": False})
+    on_resp = client.put(f"{BASE}/{s.company.id}/members/{inactive_manager.id}/status", json={"is_active": True})
+
+    assert off_resp.status_code == 403, off_resp.text
+    assert off_resp.json()["detail"] == MSG_FORBIDDEN
+    assert on_resp.status_code == 403, on_resp.text
+    assert on_resp.json()["detail"] == MSG_FORBIDDEN
+    assert _membership(db, other_manager, s.company).is_active is True
+    assert _membership(db, inactive_manager, s.company).is_active is False
+
+
+def test_manager_can_remove_worker_and_gets_403_on_manager(client, db):
+    """R-MEM-10: el manager elimina/desactiva workers de su empresa activa y recibe 403 sobre un manager."""
+    s = _scenario(db)
+    other_manager = make_user(db)
+    make_member(db, other_manager, s.company, role="manager", is_active=True)
+    as_user(client, s.manager, s.company)
+
+    forbidden = client.delete(f"{BASE}/{s.company.id}/members/{other_manager.id}")
+    assert forbidden.status_code == 403, forbidden.text
+    assert forbidden.json()["detail"] == MSG_FORBIDDEN
+
+    allowed = client.delete(f"{BASE}/{s.company.id}/members/{s.worker.id}")
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["deleted"] is True
+
+
+def test_manager_cannot_change_status_in_another_company_with_wrong_token(client, db):
+    """Aislamiento por empresa activa (R-ACC-33, R-ACC-41) en status de miembro."""
+    company_a = make_company(db)
+    company_b = make_company(db)
+    manager = make_user(db)
+    worker = make_user(db)
+    make_member(db, manager, company_a, role="manager")
+    make_member(db, manager, company_b, role="manager")
+    make_member(db, worker, company_a, role="worker")
+    as_user(client, manager, company_b)
+
+    resp = client.put(f"{BASE}/{company_a.id}/members/{worker.id}/status", json={"is_active": False})
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == MSG_SWITCH_COMPANY
+    assert _membership(db, worker, company_a).is_active is True
 
 
 # --- role: PUT .../members/{user_id}/role ---
@@ -984,7 +1083,7 @@ def test_rates_with_invalid_tax_overrides_are_rejected_and_keep_previous(client,
 
 @pytest.mark.parametrize(
     "overrides",
-    [None, {}, {"IRPF": 0.2}, {"IRPF": None}, {"IRPF": 0, "Mutua": 1}],
+    [None, {}, {"IRPF": 0.2}, {"IRPF": None}, {"IRPF": 0, "Mutua": 0.9}],
     ids=["null", "empty", "value", "none_value", "bounds"],
 )
 def test_rates_with_valid_tax_overrides_are_accepted_and_stored(client, db, overrides):
@@ -998,6 +1097,89 @@ def test_rates_with_valid_tax_overrides_are_accepted_and_stored(client, db, over
 
     assert resp.status_code == 200, resp.text
     assert _membership(db, s.worker, s.company).rates_config["particular"]["tax_overrides"] == overrides
+
+
+def test_rates_reject_effective_tax_sum_over_one_with_422(client, db):
+    company = make_company(db, is_managed=False, tax_config={"IRPF": 0.6})
+    worker = make_user(db)
+    make_member(db, worker, company, role="worker")
+    as_user(client, worker, company)
+
+    # 0.6 (empresa) + 0.5 (propio) = 1.1 > 1 -> 422
+    resp = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 20, "is_gross": True, "tax_overrides": {"Mutua": 0.5}}}},
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
+def test_rates_managed_company_rejects_unknown_tax_override_with_422(client, db):
+    company = make_company(db, is_managed=True, tax_config={"IRPF": 0.15})
+    manager = make_user(db)
+    make_member(db, manager, company, role="manager")
+    worker = make_user(db)
+    make_member(db, worker, company, role="worker")
+    as_user(client, manager, company)
+
+    resp = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 20, "is_gross": True, "tax_overrides": {"Mutua": 0.05}}}},
+    )
+
+    assert resp.status_code == 422, resp.text
+
+
+def test_rates_autonomous_allows_custom_tax_and_managed_transition_conserves_it(client, db):
+    company = make_company(db, is_managed=False, tax_config={"IRPF": 0.15})
+    manager = make_user(db)
+    make_member(db, manager, company, role="manager")
+    worker = make_user(db)
+    make_member(db, worker, company, role="worker")
+
+    # 1. En empresa autonoma el trabajador crea un impuesto propio
+    as_user(client, worker, company)
+    create_resp = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 20, "is_gross": True, "tax_overrides": {"Mutua": 0.05}}}},
+    )
+    assert create_resp.status_code == 200, create_resp.text
+
+    # 2. La empresa pasa a gestionada
+    company.is_managed = True
+    db.commit()
+
+    # El trabajador ya no puede editar sus tarifas (403)
+    as_user(client, worker, company)
+    worker_edit = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 25, "is_gross": True, "tax_overrides": {"Mutua": 0.05}}}},
+    )
+    assert worker_edit.status_code == 403, worker_edit.text
+
+    # El manager conserva el impuesto propio sin editarlo al actualizar base_rate (200)
+    as_user(client, manager, company)
+    keep_resp = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 25, "is_gross": True, "tax_overrides": {"Mutua": 0.05}}}},
+    )
+    assert keep_resp.status_code == 200, keep_resp.text
+    assert _membership(db, worker, company).rates_config["particular"]["tax_overrides"] == {"Mutua": 0.05}
+
+    # Intentar modificar el porcentaje del impuesto propio en empresa gestionada falla con 422
+    edit_custom = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 25, "is_gross": True, "tax_overrides": {"Mutua": 0.08}}}},
+    )
+    assert edit_custom.status_code == 422, edit_custom.text
+
+    # El manager si puede retirarlo (omitiendolo)
+    remove_custom = client.put(
+        f"{BASE}/{company.id}/members/{worker.id}/rates",
+        json={"rates_config": {"particular": {"base_rate": 25, "is_gross": True, "tax_overrides": {}}}},
+    )
+    assert remove_custom.status_code == 200, remove_custom.text
+    assert _membership(db, worker, company).rates_config["particular"]["tax_overrides"] == {}
 
 
 def test_rates_without_tax_overrides_key_are_accepted(client, db):
@@ -1220,3 +1402,89 @@ def test_2fa_pending_token_rejected_on_company_endpoints(client, db, method, pat
 
     assert resp.status_code == 403, resp.text
     assert resp.json().get("detail") == "2FA Verification Required"
+
+
+def test_plan_limits_block_add_member_reactivate_role_promotion_and_join_company(client, db):
+    """R-MOD-22: superar max_monitors o max_managers bloquea alta, reactivacion, promocion y join_company."""
+    import crud
+    from access_policy import PolicyError
+
+    company = make_company(
+        db,
+        settings={"_platform": {"plan": "personalizado", "limits": {"max_monitors": 1, "max_managers": 1}}},
+    )
+    pa = make_user(db, role="admin")
+    manager = make_user(db)
+    worker = make_user(db)
+    inactive_worker = make_user(db)
+    outsider = make_user(db)
+    make_member(db, manager, company, role="manager", is_active=True)
+    make_member(db, worker, company, role="worker", is_active=True)
+    make_member(db, inactive_worker, company, role="worker", is_active=False)
+
+    as_user(client, pa)
+
+    # 1. Alta directa via /v2/admin/companies/{id}/members bloqueada (409)
+    add_resp = client.post(f"/v2/admin/companies/{company.id}/members", json={"email": outsider.email})
+    assert add_resp.status_code == 409, add_resp.text
+
+    # 2. Reactivacion via /v2/admin/companies/{id}/members/{uid}/status bloqueada (409)
+    react_resp = client.put(
+        f"/v2/admin/companies/{company.id}/members/{inactive_worker.id}/status",
+        json={"is_active": True},
+    )
+    assert react_resp.status_code == 409, react_resp.text
+
+    # 3. Promocion de worker a manager bloqueada por max_managers = 1 (409)
+    promo_resp = client.put(
+        f"/v2/admin/companies/{company.id}/members/{worker.id}/role",
+        json={"role": "manager"},
+    )
+    assert promo_resp.status_code == 409, promo_resp.text
+
+    # 4. crud.join_company y POST /v2/admin/users con company_id bloqueados (409)
+    with pytest.raises(PolicyError) as exc_info:
+        crud.join_company(db, str(outsider.id), str(company.id))
+    assert exc_info.value.status_code == 409
+
+    user_create_resp = client.post(
+        "/v2/admin/users",
+        json={
+            "email": "nuevo.monitor@sierra.es",
+            "firstName": "Nuevo",
+            "lastName": "Monitor",
+            "companyId": str(company.id),
+            "sendEmail": False,
+        },
+    )
+    assert user_create_resp.status_code == 409, user_create_resp.text
+    assert crud.get_user_by_email(db, "nuevo.monitor@sierra.es") is None
+
+
+def test_pista_verde_preset_enforces_ten_monitors_and_one_manager(client, db):
+    """R-MOD-22: asignar plan pista_verde aplica sus topes (10 monitores, 1 responsable) en altas e invitaciones."""
+    company = make_company(db, settings={"_platform": {"plan": "pista_verde"}})
+    pa = make_user(db, role="admin")
+    manager = make_user(db)
+    make_member(db, manager, company, role="manager", is_active=True)
+    for _ in range(10):
+        w = make_user(db)
+        make_member(db, w, company, role="worker", is_active=True)
+
+    candidate = make_user(db)
+    as_user(client, pa)
+
+    add_worker_resp = client.post(f"/v2/admin/companies/{company.id}/members", json={"email": candidate.email})
+    assert add_worker_resp.status_code == 409, add_worker_resp.text
+
+    # Promover un worker existente a manager falla porque pista_verde solo incluye 1 responsable
+    existing_worker = (
+        db.query(models.CompanyMember)
+        .filter_by(company_id=company.id, role=models.CompanyRole.worker, is_active=True)
+        .first()
+    )
+    promo_resp = client.put(
+        f"/v2/admin/companies/{company.id}/members/{existing_worker.user_id}/role",
+        json={"role": "manager"},
+    )
+    assert promo_resp.status_code == 409, promo_resp.text

@@ -154,4 +154,17 @@ describe("AdminCompaniesPage (CompaniesPageClient)", () => {
         expect(screen.queryAllByRole("switch")).toHaveLength(0);
         expect(screen.queryByText(/CIF\/NIF/)).toBeNull();
     });
+
+    it("muestra impuestos dinamicos de taxConfig sin asumir social_security y estado vacio sin retenciones (R-EMP-37)", async () => {
+        getCompaniesDetailed.mockResolvedValue([
+            buildCompany({ id: "c-1", name: "Escuela Libre", taxConfig: { IRPF: 0.15, Mutua: 0.05 } }),
+            buildCompany({ id: "c-2", name: "Escuela Sin Impuestos", taxConfig: {} }),
+        ]);
+        renderPage();
+
+        await screen.findByText("Escuela Libre");
+        expect(screen.getByText("IRPF: 15% · Mutua: 5%")).toBeInTheDocument();
+        expect(screen.getByText("Sin retenciones")).toBeInTheDocument();
+        expect(screen.queryByText(/SS \(%\)/)).toBeNull();
+    });
 });

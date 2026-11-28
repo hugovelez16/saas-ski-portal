@@ -1,6 +1,6 @@
 # Tareas manuales de release (fuera del repositorio)
 
-Lista viva de lo que NO se despliega con el codigo y hay que hacer a mano antes o despues de llevar los PRs del plan de empresa a `develop`, `main` y produccion. Cada bloque que anada una tarea de este tipo la apunta aqui en el mismo PR. Las acciones sobre produccion de los bloques con migracion (backup y script de reparacion con `--apply`) estan detalladas en las secciones 9 y 10 de `plan-implementacion-empresa.md`; aqui solo se enlazan.
+Lista viva de lo que NO se despliega con el codigo y hay que hacer a mano antes o despues de llevar los PRs del plan de empresa a `develop`, `main` y produccion. Cada bloque que anada una tarea de este tipo la apunta aqui en el mismo PR. Las acciones sobre produccion de los bloques con migracion (backup y script de reparacion con `--apply`) estan detalladas en la seccion "Migraciones con paso previo" de `despliegue.md`; aqui solo se enlazan.
 
 Al terminar un despliegue, marcar la casilla con la fecha.
 

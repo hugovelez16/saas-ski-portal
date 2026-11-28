@@ -11,7 +11,6 @@ vi.mock("@/hooks/useModules", () => ({
     useModules: vi.fn((_companyId?: string) => ({
         hasModule: vi.fn((code: string) => {
             if (code === "worker_daily_report") return true;
-            if (code === "billing") return true;
             if (code === "export_pdf") return false;
             return false;
         }),

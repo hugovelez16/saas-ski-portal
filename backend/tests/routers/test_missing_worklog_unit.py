@@ -20,6 +20,9 @@ WORKER_CLAIMS = {"role": "worker"}
 MANAGER_CLAIMS = {"role": "manager"}
 
 
+WORKER_RATES = {"particular": {"base_rate": 20.0, "is_gross": False, "tax_overrides": {}}}
+
+
 def _body(user, company, **extra):
     body = {
         "type": "particular",
@@ -27,7 +30,6 @@ def _body(user, company, **extra):
         "endDate": "2026-01-10",
         "startTime": "09:00:00",
         "endTime": "11:00:00",
-        "netAmount": 40.0,
         "userId": str(user.id),
         "companyId": str(company.id),
     }
@@ -45,7 +47,7 @@ def _bulk_body(company, users):
 def test_create_work_log_without_unit_returns_422(client, db):
     company = make_company(db, worklog_definitions=DEFS_WITHOUT_UNIT)
     worker = make_user(db)
-    make_member(db, worker, company)
+    make_member(db, worker, company, rates_config=WORKER_RATES)
     as_user(client, worker, company, claims=WORKER_CLAIMS)
 
     resp = client.post("/work-logs", json=_body(worker, company))
@@ -57,11 +59,11 @@ def test_create_work_log_without_unit_returns_422(client, db):
 def test_update_work_log_without_unit_returns_422(client, db):
     company = make_company(db, worklog_definitions=DEFS_WITHOUT_UNIT)
     worker = make_user(db)
-    make_member(db, worker, company)
+    make_member(db, worker, company, rates_config=WORKER_RATES)
     log = make_work_log(db, worker, company)
     as_user(client, worker, company, claims=WORKER_CLAIMS)
 
-    resp = client.put(f"/work-logs/{log.id}", json=_body(worker, company, netAmount=55.0))
+    resp = client.put(f"/work-logs/{log.id}", json=_body(worker, company, endTime="12:00:00"))
 
     assert resp.status_code == 422, resp.text
     assert resp.json() == {"detail": MSG_MISSING_UNIT}
@@ -72,7 +74,7 @@ def test_bulk_create_without_unit_returns_422(client, db):
     manager = make_user(db)
     make_member(db, manager, company, role="manager")
     worker = make_user(db)
-    make_member(db, worker, company)
+    make_member(db, worker, company, rates_config=WORKER_RATES)
     as_user(client, manager, company, claims=MANAGER_CLAIMS)
 
     resp = client.post("/work-logs/bulk", json=_bulk_body(company, [worker]))

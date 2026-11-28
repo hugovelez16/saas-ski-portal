@@ -41,6 +41,31 @@ export interface MemberDeleteOut {
     reason: string | null;
 }
 
+/** Elemento minimo del selector de empresas (`GET /v2/me/companies`, R-ACC-81). */
+export interface MyCompanyItem {
+    id: string;
+    name: string;
+    role: string;
+}
+
+/** Ajustes de empresa editables por manager y PA (`companies.settings`, R-EMP-45). */
+export interface CompanySettingsV2 {
+    default_is_gross: boolean;
+}
+
+/** Limites de plataforma de una empresa (solo PA, R-EMP-45). */
+export interface PlatformLimitsV2 {
+    max_monitors: number | null;
+    max_managers: number | null;
+}
+
+/** Ajustes de plataforma de una empresa (solo PA, R-EMP-45, R-EMP-49). */
+export interface PlatformSettingsV2 {
+    plan: string | null;
+    limits: PlatformLimitsV2;
+    modules: Record<string, boolean>;
+}
+
 /** Vista completa (solo PA actuando). */
 export interface CompanyFull {
     id: string;
@@ -49,7 +74,8 @@ export interface CompanyFull {
     is_managed: boolean;
     tax_config: Record<string, any>;
     worklog_definitions: Record<string, any>;
-    settings: Record<string, any>;
+    settings: CompanySettingsV2 & Record<string, any>;
+    platform_settings: PlatformSettingsV2;
     created_at: string | null;
     updated_at: string | null;
 }
@@ -66,7 +92,7 @@ export interface CompanyFullWithMembers extends CompanyFull {
     members?: CompanyMemberV2[];
 }
 
-/** Vista reducida (worker, manager y PA en "ver como"). */
+/** Vista reducida (worker, manager y PA en "ver como"): no expone settings ni platform_settings (R-ACC-55). */
 export interface CompanyReduced {
     id: string;
     name: string;
@@ -76,7 +102,23 @@ export interface CompanyReduced {
     rates_config: Record<string, any> | null;
     worklog_definitions: Record<string, any>;
     tax_config: Record<string, number>;
-    settings: Record<string, any>;
+}
+
+export interface CompanyManagerSettings {
+    tax_config: Record<string, number>;
+    worklog_definitions: Record<string, any>;
+    settings: CompanySettingsV2;
+}
+
+export interface CompanyManagerSettingsUpdate {
+    tax_config?: Record<string, number>;
+    worklog_definitions?: Record<string, any>;
+    settings?: Partial<CompanySettingsV2>;
+}
+
+export interface WorklogDefinitionUsage {
+    work_logs_count: number;
+    member_rates_count: number;
 }
 
 export interface CompanyCreateV2 {
@@ -85,7 +127,8 @@ export interface CompanyCreateV2 {
     worklog_definitions?: Record<string, any>;
     is_active?: boolean;
     is_managed?: boolean;
-    settings?: Record<string, any>;
+    settings?: Partial<CompanySettingsV2> & Record<string, any>;
+    platform_settings?: Partial<PlatformSettingsV2>;
 }
 
 export interface CompanyUpdateV2 {
@@ -94,7 +137,8 @@ export interface CompanyUpdateV2 {
     worklog_definitions?: Record<string, any>;
     is_active?: boolean;
     is_managed?: boolean;
-    settings?: Record<string, any>;
+    settings?: Partial<CompanySettingsV2> & Record<string, any>;
+    platform_settings?: Partial<PlatformSettingsV2>;
     /** Solo auditoria; no se persiste en la empresa. */
     reason?: string;
 }
@@ -105,4 +149,32 @@ export interface ListCompaniesParams {
     include?: 'members';
     skip?: number;
     limit?: number;
+}
+
+export type InvitationStatus = 'pending' | 'accepted' | 'cancelled' | 'expired';
+
+export interface InvitationOut {
+    id: string;
+    company_id: string;
+    email: string;
+    status: InvitationStatus;
+    invited_by_user_id: string;
+    invited_by_name: string | null;
+    expires_at: string;
+    accepted_at: string | null;
+    cancelled_at: string | null;
+    created_at: string | null;
+}
+
+export interface InvitationPreviewOut {
+    company_id: string;
+    company_name: string;
+    status: 'pending';
+    expires_at: string;
+}
+
+export interface InvitationAcceptOut {
+    company_id: string;
+    company_name: string;
+    membership: MemberOut;
 }

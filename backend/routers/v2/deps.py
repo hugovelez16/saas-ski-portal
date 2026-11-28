@@ -7,6 +7,9 @@ La autorizacion no vive aqui: los routers de v2 reutilizan `routers.deps.require
 from database import get_db
 from fastapi import Depends
 from infrastructure.persistence.sqlalchemy.repositories.audit_repository import SqlAlchemyAuditLog
+from infrastructure.persistence.sqlalchemy.repositories.company_invitation_repository import (
+    SqlAlchemyCompanyInvitationRepository,
+)
 from infrastructure.persistence.sqlalchemy.repositories.company_repository import (
     SqlAlchemyCompanyMemberRepository,
     SqlAlchemyCompanyRepository,
@@ -29,3 +32,7 @@ def get_user_repository(db: Session = Depends(get_db)) -> SqlAlchemyUserReposito
 
 def get_audit_log(db: Session = Depends(get_db)) -> SqlAlchemyAuditLog:
     return SqlAlchemyAuditLog(db)
+
+
+def get_invitation_repository(db: Session = Depends(get_db)) -> SqlAlchemyCompanyInvitationRepository:
+    return SqlAlchemyCompanyInvitationRepository(db)

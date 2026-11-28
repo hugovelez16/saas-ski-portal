@@ -141,7 +141,7 @@ export function CompanyDashboard({ companyId, companyName }: CompanyDashboardPro
         const totalGross = periodMetrics?.totalGross ?? 0;
         const totalNet = periodMetrics?.totalNet ?? 0;
 
-        const isSinglePrice = company?.settings?.business_logic?.price_type === 'net';
+        const isSinglePrice = false;
 
         return {
             totalHours: periodMetrics?.totalHours ?? 0,

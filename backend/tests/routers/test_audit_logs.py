@@ -18,7 +18,6 @@ def _log(db, *, action="company.updated", actor=None, company=None, target=None,
     row = models.AuditLog(
         action=action,
         actor_user_id=actor.id if actor else None,
-        admin_user_id=actor.id if actor else None,
         company_id=company.id if company else None,
         target_user_id=target.id if target else None,
         created_at=BASE + timedelta(minutes=minutes),
@@ -251,8 +250,7 @@ def test_audit_logs_includes_legacy_2fa_reset_with_actor(client, db):
     victim = make_user(db)
     row = models.AuditLog(
         action="2fa_reset",
-        impersonated_user_id=victim.id,
-        admin_user_id=pa.id,
+        target_user_id=victim.id,
         actor_user_id=pa.id,
         extra_data={"target_email": victim.email},
         created_at=BASE,
@@ -299,7 +297,102 @@ def test_audit_actions_catalog(client, db):
 
     assert resp.status_code == 200
     actions = resp.json()
-    assert {"company.updated", "member.added", "user.status_changed", "2fa_reset", "delete_work_log"} <= set(actions)
+    assert {
+        "company.updated",
+        "member.added",
+        "user.status_changed",
+        "user.platform_admin_granted",
+        "impersonation.started",
+        "impersonation.ended",
+        "audit.purged",
+        "2fa_reset",
+        "delete_work_log",
+    } <= set(actions)
     assert {"create_work_log", "create_work_log_bulk", "update_work_log"} <= set(actions)
     assert all(v in actions for k, v in vars(audit.AuditAction).items() if k.isupper() and isinstance(v, str))
     assert len(actions) == len(set(actions))
+
+
+# --- Purga manual (R-AUD-28) ---
+
+
+def test_audit_purge_endpoints_require_platform_admin(client, db):
+    company = make_company(db)
+    manager = make_user(db)
+    worker = make_user(db)
+    pa = make_user(db, role="admin")
+    make_member(db, manager, company, role="manager")
+    make_member(db, worker, company, role="worker")
+
+    client.cookies.clear()
+    assert client.get("/audit-logs/purge-preview", params={"before": BASE.isoformat()}).status_code == 401
+    assert client.post("/audit-logs/purge", json={"before": BASE.isoformat()}).status_code == 401
+
+    for user in (manager, worker):
+        as_user(client, user, company)
+        assert client.get("/audit-logs/purge-preview", params={"before": BASE.isoformat()}).status_code == 403
+        assert client.post("/audit-logs/purge", json={"before": BASE.isoformat()}).status_code == 403
+
+    as_user(client, pa, company, claims={"view_as": "manager"})
+    assert client.get("/audit-logs/purge-preview", params={"before": BASE.isoformat()}).status_code == 403
+    assert client.post("/audit-logs/purge", json={"before": BASE.isoformat()}).status_code == 403
+
+
+def test_audit_purge_validates_date(client, db):
+    from datetime import UTC
+
+    _pa(client, db)
+    future = (datetime.now(UTC) + timedelta(days=2)).isoformat()
+
+    assert client.get("/audit-logs/purge-preview").status_code == 422
+    assert client.get("/audit-logs/purge-preview", params={"before": "no-es-fecha"}).status_code == 422
+    assert client.get("/audit-logs/purge-preview", params={"before": future}).status_code == 422
+    assert client.post("/audit-logs/purge", json={"before": future}).status_code == 422
+
+
+def test_audit_purge_preview_and_execute_keep_audit_purged_record(client, db):
+    pa = _pa(client, db)
+    old_1 = _log(db, action="company.updated", actor=pa, minutes=-60)
+    old_2 = _log(db, action="member.added", actor=pa, minutes=-10)
+    exact_cutoff = _log(db, action="company.created", actor=pa, minutes=0)
+    newer = _log(db, action="member.removed", actor=pa, minutes=30)
+    old_1_id, old_2_id, exact_cutoff_id, newer_id = old_1.id, old_2.id, exact_cutoff.id, newer.id
+
+    cutoff = BASE.isoformat() + "Z"
+
+    preview_resp = client.get("/audit-logs/purge-preview", params={"before": cutoff})
+    assert preview_resp.status_code == 200, preview_resp.text
+    assert preview_resp.json()["count"] == 2
+
+    purge_resp = client.post("/audit-logs/purge", json={"before": cutoff, "reason": "Limpieza anual"})
+    assert purge_resp.status_code == 200, purge_resp.text
+    body = purge_resp.json()
+    assert body["deletedCount"] == 2
+    assert body["auditLogId"]
+
+    remaining_ids = {row.id for row in db.query(models.AuditLog).all()}
+    assert old_1_id not in remaining_ids
+    assert old_2_id not in remaining_ids
+    assert exact_cutoff_id in remaining_ids
+    assert newer_id in remaining_ids
+
+    purge_row = db.query(models.AuditLog).filter(models.AuditLog.action == "audit.purged").one()
+    assert str(purge_row.id) == body["auditLogId"]
+    assert purge_row.actor_user_id == pa.id
+    assert purge_row.reason == "Limpieza anual"
+    assert purge_row.new_value["deleted_count"] == 2
+
+    # Una purga posterior (hasta ahora) no borra ni cuenta los apuntes audit.purged anteriores
+    from datetime import UTC
+
+    later = datetime.now(UTC).isoformat()
+    second_preview = client.get("/audit-logs/purge-preview", params={"before": later})
+    assert second_preview.status_code == 200
+    assert second_preview.json()["count"] == 2  # exact_cutoff + newer, sin contar purge_row
+
+    second_purge = client.post("/audit-logs/purge", json={"before": later})
+    assert second_purge.status_code == 200
+    assert second_purge.json()["deletedCount"] == 2
+
+    all_purged = db.query(models.AuditLog).filter(models.AuditLog.action == "audit.purged").all()
+    assert len(all_purged) == 2

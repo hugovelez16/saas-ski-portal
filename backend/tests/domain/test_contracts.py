@@ -48,36 +48,13 @@ def _rate(payload):
 def test_company_settings_defaults_match_contract():
     dumped = contracts.CompanySettings().model_dump()
 
-    assert dumped["business_logic"]["price_type"] == "net"
-    assert "cost_markup" not in dumped["business_logic"]
-    assert dumped["worker_experience"]["input_mode"] == "manual_single"
-    assert dumped["worker_experience"]["allow_manual_amount"] is False
-    assert dumped["modules"] == {}
-    # `labels` es un objeto con `worklog` y `client` sin valor: no hay etiquetas personalizadas.
-    labels = dumped["ui_customization"]["labels"]
-    assert {key: value for key, value in labels.items() if value is not None} == {}
-
-
-def test_company_settings_allowed_rates_is_accepted():
-    settings = _settings({"allowed_rates": ["particular", "grupo"]})
-
-    assert settings.model_dump()["allowed_rates"] == ["particular", "grupo"]
+    assert dumped == {"default_is_gross": False}
 
 
 def test_company_settings_accepts_valid_full_document():
-    settings = _settings(
-        {
-            "business_logic": {"price_type": "gross"},
-            "worker_experience": {"input_mode": "timer", "allow_manual_amount": True},
-            "ui_customization": {"labels": {"worklog": "Turno", "client": "Cliente"}},
-            "modules": {"tutorials": True},
-            "allowed_rates": None,
-        }
-    )
+    settings = _settings({"default_is_gross": True})
 
-    assert settings.business_logic.price_type == "gross"
-    assert settings.worker_experience.input_mode == "timer"
-    assert settings.modules == {"tutorials": True}
+    assert settings.default_is_gross is True
 
 
 # --- CompanySettings: extra="forbid" y tipos ---
@@ -89,26 +66,19 @@ def test_company_settings_accepts_valid_full_document():
         pytest.param({"allow_tutorial": True}, id="allow_tutorial"),
         pytest.param({"allow_coordination": True}, id="allow_coordination"),
         pytest.param({"is_managed": True}, id="is_managed"),
-        pytest.param({"business_logic": {"cost_markup": 0}}, id="business_logic_cost_markup"),
-        pytest.param({"billing": {"cost_markup_percent": 32.0}}, id="billing_cost_markup_percent"),
+        pytest.param({"business_logic": {"price_type": "gross"}}, id="business_logic_retirada"),
+        pytest.param({"worker_experience": {"input_mode": "timer"}}, id="worker_experience_retirada"),
+        pytest.param({"ui_customization": {"labels": {"worklog": "Turno"}}}, id="ui_customization_retirada"),
+        pytest.param({"modules": {"tutorials": True}}, id="modules_fuera_de_settings"),
+        pytest.param({"allowed_rates": ["particular"]}, id="allowed_rates_retirada"),
+        pytest.param({"price_type": "net"}, id="price_type_retirada"),
         pytest.param({"clave_inventada": 1}, id="clave_desconocida"),
-        pytest.param({"business_logic": {"clave_inventada": 1}}, id="clave_desconocida_anidada"),
-        pytest.param({"business_logic": {"price_type": "bruto"}}, id="price_type_fuera_de_enum"),
-        pytest.param({"worker_experience": {"input_mode": "voz"}}, id="input_mode_fuera_de_enum"),
-        pytest.param({"worker_experience": {"allow_manual_amount": "si"}}, id="allow_manual_amount_no_bool"),
-        pytest.param({"modules": "tutorials"}, id="modules_no_es_objeto"),
-        pytest.param({"ui_customization": {"labels": {"worklog": "x" * 61}}}, id="label_de_61_caracteres"),
+        pytest.param({"default_is_gross": "si"}, id="default_is_gross_no_booleano"),
     ],
 )
 def test_company_settings_forbids_retired_unknown_and_wrong_typed_keys(payload):
     with pytest.raises(ValidationError):
         _settings(payload)
-
-
-def test_business_logic_forbids_cost_markup_even_with_zero_value():
-    # El campo se elimina del contrato: cualquier valor, incluido 0, se rechaza.
-    with pytest.raises(ValidationError):
-        _settings({"business_logic": {"price_type": "net", "cost_markup": 0}})
 
 
 # --- CompanySettings.from_db: lectura tolerante ---
@@ -126,50 +96,98 @@ def test_from_db_empty_dict_returns_defaults():
     assert settings.model_dump() == contracts.CompanySettings().model_dump()
 
 
-def test_from_db_ignores_unknown_keys_and_logs_warning(caplog):
+def test_from_db_ignores_unknown_and_retired_keys_and_logs_warning(caplog):
     raw = {
         "allow_tutorial": True,
-        "features": {"tutorials": True},
         "business_logic": {"price_type": "gross"},
+        "modules": {"tutorials": True},
+        "default_is_gross": True,
+        "_platform": {"plan": "pro"},
     }
 
     with caplog.at_level(logging.WARNING):
         settings = contracts.CompanySettings.from_db(raw)
 
     dumped = settings.model_dump()
-    assert dumped["business_logic"]["price_type"] == "gross"
-    assert "allow_tutorial" not in dumped
-    assert "features" not in dumped
+    assert dumped == {"default_is_gross": True}
     assert any(record.levelno == logging.WARNING for record in caplog.records)
-
-
-def test_from_db_fills_defaults_for_missing_sections():
-    settings = contracts.CompanySettings.from_db({"modules": {"tutorials": False}})
-
-    dumped = settings.model_dump()
-    assert dumped["modules"] == {"tutorials": False}
-    assert dumped["business_logic"]["price_type"] == "net"
-    assert dumped["worker_experience"]["input_mode"] == "manual_single"
 
 
 def test_from_db_without_unknown_keys_does_not_warn(caplog):
     with caplog.at_level(logging.WARNING):
-        contracts.CompanySettings.from_db({"business_logic": {"price_type": "net"}})
+        contracts.CompanySettings.from_db({"default_is_gross": True, "_platform": {"plan": "free"}})
 
     assert not [record for record in caplog.records if record.levelno == logging.WARNING]
 
 
-def test_from_db_modules_descarta_solo_la_entrada_invalida(caplog):
-    raw = {"modules": {"tutorials": True, "night_shifts": "si", "reports": False, "extra": 1}}
+# --- PlatformSettings ---
+
+
+def test_platform_settings_defaults_and_full_document():
+    assert contracts.PlatformSettings().model_dump() == {
+        "plan": None,
+        "limits": {"max_monitors": None, "max_managers": None},
+        "modules": {},
+    }
+
+    full = contracts.PlatformSettings.model_validate(
+        {
+            "plan": "pro",
+            "limits": {"max_monitors": 15, "max_managers": 3},
+            "modules": {"daily_report": True},
+        }
+    )
+    assert full.plan == "pro"
+    assert full.limits.max_monitors == 15
+    assert full.limits.max_managers == 3
+    assert full.modules == {"daily_report": True}
+
+
+def test_platform_settings_forbids_unknown_and_invalid_values():
+    with pytest.raises(ValidationError):
+        contracts.PlatformSettings.model_validate({"default_is_gross": True})
+    with pytest.raises(ValidationError):
+        contracts.PlatformSettings.model_validate({"limits": {"max_monitors": -1}})
+
+
+def test_platform_settings_from_db_filters_invalid_modules_with_warning(caplog):
+    raw = {"plan": "basic", "modules": {"tutorials": True, "bad": "si"}, "legacy": 1}
 
     with caplog.at_level(logging.WARNING):
-        settings = contracts.CompanySettings.from_db(raw)
+        ps = contracts.PlatformSettings.from_db(raw)
 
-    assert settings.model_dump()["modules"] == {"tutorials": True, "reports": False}
-    warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
-    assert any("night_shifts" in message for message in warnings)
-    assert any("extra" in message for message in warnings)
-    assert not any("tutorials" in message or "reports" in message for message in warnings)
+    assert ps.model_dump() == {
+        "plan": "basic",
+        "limits": {"max_monitors": None, "max_managers": None},
+        "modules": {"tutorials": True},
+    }
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "plan, expected_monitors, expected_managers",
+    [
+        ("pista_verde", 10, 1),
+        ("pista_azul", 25, 2),
+        ("pista_roja", 50, None),
+    ],
+)
+def test_platform_settings_applies_commercial_plan_presets(plan, expected_monitors, expected_managers):
+    ps = contracts.PlatformSettings.model_validate({"plan": plan})
+    assert ps.limits.max_monitors == expected_monitors
+    assert ps.limits.max_managers == expected_managers
+
+    from_db = contracts.PlatformSettings.from_db({"plan": plan})
+    assert from_db.limits.max_monitors == expected_monitors
+    assert from_db.limits.max_managers == expected_managers
+
+
+def test_platform_settings_personalizado_keeps_custom_limits():
+    ps = contracts.PlatformSettings.model_validate(
+        {"plan": "personalizado", "limits": {"max_monitors": 35, "max_managers": 4}}
+    )
+    assert ps.limits.max_monitors == 35
+    assert ps.limits.max_managers == 4
 
 
 # --- WorklogDefinition ---
@@ -180,7 +198,8 @@ def test_worklog_definition_accepts_contract_units(unit):
     definition = _definition({"unit": unit, "label": "Turno"})
 
     assert definition.unit == unit
-    assert definition.fields == []
+    assert definition.options == []
+    assert definition.is_active is True
 
 
 @pytest.mark.parametrize(
@@ -193,7 +212,9 @@ def test_worklog_definition_accepts_contract_units(unit):
         pytest.param({"unit": "hours", "label": ""}, id="label_vacio"),
         pytest.param({"unit": "hours", "label": "x" * (LABEL_MAX + 1)}, id="label_de_61_caracteres"),
         pytest.param({"unit": "hours"}, id="label_ausente"),
-        pytest.param({"unit": "hours", "label": "Turno", "fields": "no-lista"}, id="fields_no_lista"),
+        pytest.param({"unit": "hours", "label": "Turno", "fields": []}, id="fields_retirado"),
+        pytest.param({"unit": "hours", "label": "Turno", "options": "no-lista"}, id="options_no_lista"),
+        pytest.param({"unit": "hours", "label": "Turno", "is_active": "si"}, id="is_active_no_booleano"),
     ],
 )
 def test_worklog_definition_rejects_invalid_definitions(payload):
@@ -201,10 +222,14 @@ def test_worklog_definition_rejects_invalid_definitions(payload):
         _definition(payload)
 
 
-def test_worklog_definition_accepts_label_of_exactly_60_characters():
-    definition = _definition({"unit": "hours", "label": "x" * LABEL_MAX})
+def test_worklog_definition_accepts_options_and_is_active_false():
+    definition = _definition(
+        {"unit": "hours", "label": "x" * LABEL_MAX, "options": ["coordinacion", "extra"], "is_active": False}
+    )
 
     assert len(definition.label) == LABEL_MAX
+    assert definition.options == ["coordinacion", "extra"]
+    assert definition.is_active is False
 
 
 # --- WorklogDefinitions (mapa de tipos) ---

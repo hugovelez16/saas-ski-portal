@@ -33,7 +33,6 @@ def _subscribe(db, company):
         models.ModuleSubscription(
             module_id=_ensure_module(db).id,
             company_id=company.id,
-            scope=models.SubscriptionScope.company,
             status=models.SubscriptionStatus.active,
         )
     )

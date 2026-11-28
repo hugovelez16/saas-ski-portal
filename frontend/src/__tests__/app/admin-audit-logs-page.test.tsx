@@ -3,9 +3,19 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-const { getAuditLogs, getAuditActions, getCompaniesDetailed, replace, auth } = vi.hoisted(() => ({
+const {
+    getAuditLogs,
+    getAuditActions,
+    getAuditPurgePreview,
+    purgeAuditLogs,
+    getCompaniesDetailed,
+    replace,
+    auth,
+} = vi.hoisted(() => ({
     getAuditLogs: vi.fn(),
     getAuditActions: vi.fn(),
+    getAuditPurgePreview: vi.fn(),
+    purgeAuditLogs: vi.fn(),
     getCompaniesDetailed: vi.fn(),
     replace: vi.fn(),
     auth: { user: null as any, loading: false },
@@ -14,6 +24,8 @@ const { getAuditLogs, getAuditActions, getCompaniesDetailed, replace, auth } = v
 vi.mock("@/lib/api/audit-logs", () => ({
     getAuditLogs,
     getAuditActions,
+    getAuditPurgePreview,
+    purgeAuditLogs,
 }));
 
 vi.mock("@/lib/api/companies", () => ({
@@ -74,6 +86,8 @@ describe("AuditLogsPage (admin/audit-logs)", () => {
         getCompaniesDetailed.mockResolvedValue([{ id: "c-1", name: "Escuela Sierra" }]);
         getAuditActions.mockResolvedValue(["company.update"]);
         getAuditLogs.mockResolvedValue({ total: 1, items: [buildItem()] });
+        getAuditPurgePreview.mockResolvedValue({ before: "2026-01-01T00:00:00Z", count: 3 });
+        purgeAuditLogs.mockResolvedValue({ before: "2026-01-01T00:00:00Z", deletedCount: 3, auditLogId: "log-p" });
     });
 
     it("renderiza los registros con el nombre de la empresa y la accion", async () => {
@@ -123,5 +137,28 @@ describe("AuditLogsPage (admin/audit-logs)", () => {
 
         await waitFor(() => expect(replace).toHaveBeenCalledWith("/dashboard"));
         expect(getAuditLogs).not.toHaveBeenCalled();
+    });
+
+    it("permite previsualizar el recuento, confirmar la purga y refresca la tabla", async () => {
+        renderPage();
+        await screen.findByText("admin@vesotel.com");
+
+        fireEvent.click(screen.getByRole("button", { name: /purgar registros/i }));
+        const dateInput = screen.getByLabelText(/eliminar registros anteriores a/i);
+        fireEvent.change(dateInput, { target: { value: "2026-01-15" } });
+
+        fireEvent.click(screen.getByRole("button", { name: /consultar recuento/i }));
+        expect(await screen.findByText(/se eliminarán 3 registros anteriores al 15\/01\/2026/i)).toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText(/motivo \(opcional\)/i), { target: { value: "Limpieza" } });
+        fireEvent.click(screen.getByRole("button", { name: /confirmar purga/i }));
+
+        await waitFor(() =>
+            expect(purgeAuditLogs).toHaveBeenCalledWith({
+                before: new Date("2026-01-15T00:00:00").toISOString(),
+                reason: "Limpieza",
+            })
+        );
+        await waitFor(() => expect(getAuditLogs).toHaveBeenCalledTimes(2));
     });
 });

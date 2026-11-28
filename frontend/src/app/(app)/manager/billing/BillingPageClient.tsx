@@ -72,6 +72,7 @@ export default function ManagerBillingPage() {
                     userId: item.userId,
                     userName: `${item.firstName || ''} ${item.lastName || ''}`.trim() || item.email,
                     userEmail: item.email,
+                    isActive: item.isActive ?? true,
                     byType: {},
                     totalNet: 0,
                     totalGross: 0,
@@ -98,7 +99,12 @@ export default function ManagerBillingPage() {
                     grossAmount: item.totalGross,
                 };
 
-                row.totalNet += item.totalNet;
+                // Si el servidor devuelve userTotalNet (R-TAR-27 / R-TAR-30), usar el total neto agrupado exacto.
+                if (item.userTotalNet !== undefined && item.userTotalNet !== null) {
+                    row.totalNet = item.userTotalNet;
+                } else {
+                    row.totalNet += item.totalNet;
+                }
                 row.totalGross += item.totalGross;
                 row.logsCount += item.logsCount;
             }

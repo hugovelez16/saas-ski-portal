@@ -86,3 +86,54 @@ def read_audit_actions(
     current_user: models.User = Depends(deps.require_platform_admin),
 ):
     return KNOWN_ACTIONS
+
+
+def _validate_purge_before(before: datetime) -> datetime:
+    before_utc = _to_naive_utc(before)
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    if before_utc is None or before_utc > now_utc:
+        raise HTTPException(status_code=422, detail="La fecha limite no puede ser futura")
+    return before_utc
+
+
+@router.get("/purge-preview", response_model=schemas.AuditLogPurgePreview)
+def preview_audit_purge(
+    before: datetime = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.require_platform_admin),
+):
+    before_utc = _validate_purge_before(before)
+    count = crud.count_purgeable_audit_logs(
+        db, before=before_utc, excluded_action=audit.AuditAction.AUDIT_PURGED
+    )
+    return schemas.AuditLogPurgePreview(before=before_utc.replace(tzinfo=timezone.utc), count=count)
+
+
+@router.post("/purge", response_model=schemas.AuditLogPurgeResponse)
+def purge_audit_logs(
+    body: schemas.AuditLogPurgeRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.require_platform_admin),
+):
+    before_utc = _validate_purge_before(body.before)
+    before_aware = before_utc.replace(tzinfo=timezone.utc)
+    cutoff_iso = before_aware.isoformat()
+
+    deleted_count = crud.purge_audit_logs(
+        db, before=before_utc, excluded_action=audit.AuditAction.AUDIT_PURGED
+    )
+    audit_row = audit.record_audit(
+        db,
+        action=audit.AuditAction.AUDIT_PURGED,
+        actor_id=current_user.id,
+        reason=body.reason,
+        new_value={"before": cutoff_iso, "deleted_count": deleted_count},
+        extra={"before": cutoff_iso, "deleted_count": deleted_count},
+    )
+    db.commit()
+    db.refresh(audit_row)
+    return schemas.AuditLogPurgeResponse(
+        before=before_aware,
+        deleted_count=deleted_count,
+        audit_log_id=audit_row.id,
+    )

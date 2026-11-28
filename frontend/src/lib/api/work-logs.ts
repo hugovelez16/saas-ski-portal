@@ -1,5 +1,12 @@
 import api from '../api';
-import { WorkLog, WorkLogCreate, BillingSummaryItem, WorkLogSummary } from '@/lib/types';
+import {
+    WorkLog,
+    WorkLogCreate,
+    BillingSummaryItem,
+    WorkLogSummary,
+    WorkLogReportResponse,
+    WorkLogRecalculatePreview,
+} from '@/lib/types';
 
 export interface WorkLogsPageParams {
     companyId?: string;
@@ -103,6 +110,74 @@ export const getWorkLogSummary = async (params: {
     return response.data;
 };
 
+export interface WorkLogReportParams {
+    companyId?: string;
+    userId?: string;
+    startDate: string;
+    endDate: string;
+    skip?: number;
+    limit?: number;
+    includeLogs?: boolean;
+}
+
+/**
+ * Una pagina de datos de informe (resumen + filas) desde GET /work-logs/reports.
+ * Exige modulo 'reports' en backend (salvo PA actuando).
+ */
+export const getWorkLogReport = async (params: WorkLogReportParams): Promise<WorkLogReportResponse> => {
+    const apiParams = {
+        company_id: params.companyId,
+        user_id: params.userId,
+        start_date: params.startDate,
+        end_date: params.endDate,
+        skip: params.skip,
+        limit: params.limit,
+        include_logs: params.includeLogs,
+    };
+    const response = await api.get<WorkLogReportResponse>('/work-logs/reports', { params: apiParams });
+    return response.data;
+};
+
+/**
+ * Descarga el informe completo (summary + todas las filas paginadas) desde GET /work-logs/reports.
+ * Si includeLogs es false solo hace una peticion y devuelve items vacio junto al summary.
+ */
+export const getAllWorkLogReport = async (
+    params: Omit<WorkLogReportParams, 'skip' | 'limit'>,
+    opts?: { pageSize?: number; maxRows?: number }
+): Promise<WorkLogReportResponse> => {
+    if (params.includeLogs === false) {
+        return getWorkLogReport({ ...params, includeLogs: false });
+    }
+
+    const pageSize = opts?.pageSize ?? DEFAULT_PAGE_SIZE;
+    const maxRows = opts?.maxRows ?? DEFAULT_MAX_ROWS;
+    const items: WorkLog[] = [];
+    let skip = 0;
+
+    const firstPage = await getWorkLogReport({ ...params, limit: pageSize, skip: 0, includeLogs: true });
+    if (firstPage.total > maxRows) {
+        throw new Error(
+            `Demasiados registros para descargarlos completos: ${firstPage.total} (maximo ${maxRows}). Reduce el rango de fechas.`
+        );
+    }
+    items.push(...firstPage.items);
+    skip += firstPage.items.length;
+
+    while (firstPage.items.length >= pageSize && items.length < firstPage.total) {
+        const page = await getWorkLogReport({ ...params, limit: pageSize, skip, includeLogs: true });
+        if (page.items.length === 0) break;
+        items.push(...page.items);
+        skip += page.items.length;
+    }
+
+    return {
+        items,
+        total: firstPage.total,
+        summary: firstPage.summary,
+    };
+};
+
 export const getBillingSummary = async (params: {
     companyId: string;
     startDate?: string;
@@ -126,9 +201,21 @@ export const createWorkLog = async (data: WorkLogCreate): Promise<WorkLog> => {
 export interface UpdateWorkLogOptions {
     /** Recalcula el importe con las tarifas actuales (solo manager y platform admin). */
     recalculateWithCurrentRates?: boolean;
-    /** Cada turno manual conserva su propio importe (cualquier rol, tambien en apply_to_group). */
-    keepManualAmount?: boolean;
 }
+
+export const previewWorkLogRecalculation = async (
+    id: string,
+    data: Partial<WorkLogCreate> = {},
+    applyToGroup: boolean = false,
+    options?: UpdateWorkLogOptions
+): Promise<WorkLogRecalculatePreview> => {
+    const recalculate = options?.recalculateWithCurrentRates ?? true;
+    const response = await api.post<WorkLogRecalculatePreview>(
+        `/work-logs/${id}/recalculate-preview?apply_to_group=${applyToGroup}&recalculate_with_current_rates=${recalculate}`,
+        data
+    );
+    return response.data;
+};
 
 export const updateWorkLog = async (
     id: string,
@@ -137,8 +224,7 @@ export const updateWorkLog = async (
     options?: UpdateWorkLogOptions
 ): Promise<WorkLog> => {
     const rateQuery = options?.recalculateWithCurrentRates ? '&recalculate_with_current_rates=true' : '';
-    const manualQuery = options?.keepManualAmount ? '&keep_manual_amount=true' : '';
-    const response = await api.put(`/work-logs/${id}?apply_to_group=${applyToGroup}${rateQuery}${manualQuery}`, data);
+    const response = await api.put(`/work-logs/${id}?apply_to_group=${applyToGroup}${rateQuery}`, data);
     return response.data;
 };
 

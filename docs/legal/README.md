@@ -13,6 +13,13 @@ Páginas públicas de la aplicación (sin sesión), en `frontend/src/app/(legal)
 - `/cookies`: política de cookies.
 - `/terminos`: términos de uso del servicio.
 
+## Ubicación y criterio normativo de los enlaces legales
+
+El artículo 10.1 de la Ley 34/2002 (LSSI) exige que la información general del prestador sea accesible por medios electrónicos de forma «permanente, fácil, directa y gratuita»; los artículos 12 y 13 del RGPD y la Guía sobre el uso de las cookies de la AEPD (art. 22.2 LSSI) exigen además transparencia y facilidad de acceso tanto en los puntos de recogida de datos como para su consulta posterior:
+
+- **Vistas públicas y de acceso**: el componente `LegalFooter` (`frontend/src/components/legal-footer.tsx`), con enlaces directos a `/aviso-legal`, `/privacidad`, `/cookies` y `/terminos`, se muestra completo en la landing (`/`), inicio de sesión (`/login`), recuperación y restablecimiento de contraseña (`/forgot-password`, `/reset-password`) y en el layout común de las páginas legales (`(legal)/layout.tsx`).
+- **Aplicación autenticada**: el layout operativo (`(app)/layout.tsx`) prescinde de `LegalFooter` en su pie inferior (donde solo permanece `AppVersion`) para no ocupar espacio vertical en cada pantalla de trabajo. El acceso permanente, fácil y directo exigido por el art. 10.1 LSSI se garantiza mediante el enlace «Información legal» (`/aviso-legal`, desde cuyo pie se enlaza también al resto de textos legales) fijo en la zona inferior de la barra lateral (`Sidebar`), complementado con `LegalFooter` completo al final de la página de perfil y ajustes del usuario (`/profile`).
+
 ## Configuración de los datos del titular y contacto
 
 Los datos del titular de las páginas web están en un único fichero, `frontend/src/lib/legal-config.ts`, tomados del aviso legal y la política de privacidad de https://vesotel.com. Solo se muestra el mínimo del art. 10 LSSI en `/aviso-legal`, con un enlace a vesotel.com para ampliar información; las demás páginas nombran al titular y remiten al aviso legal. Los proveedores (alojamiento y correo) se indican por categoría, sin nombre.

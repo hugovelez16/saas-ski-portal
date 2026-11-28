@@ -3,17 +3,35 @@ export const dynamic = "force-dynamic";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ChevronDown, ChevronUp, ScrollText } from "lucide-react";
+import { ChevronDown, ChevronUp, ScrollText, Trash2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import { getCompaniesDetailed } from "@/lib/api/companies";
-import { AuditLogParams, getAuditActions, getAuditLogs, AuditLogItem } from "@/lib/api/audit-logs";
+import {
+    AuditLogItem,
+    AuditLogParams,
+    AuditLogPurgePreview,
+    AuditLogPurgeRequest,
+    getAuditActions,
+    getAuditLogs,
+    getAuditPurgePreview,
+    purgeAuditLogs,
+} from "@/lib/api/audit-logs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const PAGE_SIZE = 50;
@@ -74,6 +92,8 @@ function JsonBlock({ label, value }: { label: string; value: Record<string, unkn
 
 export default function AuditLogsPage() {
     const router = useRouter();
+    const queryClient = useQueryClient();
+    const { toast } = useToast();
     const { user, loading } = useAuth();
 
     const isPlatformAdmin = Boolean(user?.role === "admin" || user?.isPlatformAdmin);
@@ -83,9 +103,46 @@ export default function AuditLogsPage() {
     const [offset, setOffset] = useState(0);
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
+    const [purgeOpen, setPurgeOpen] = useState(false);
+    const [purgeDate, setPurgeDate] = useState("");
+    const [purgeReason, setPurgeReason] = useState("");
+    const [purgePreview, setPurgePreview] = useState<AuditLogPurgePreview | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [previewError, setPreviewError] = useState<string | null>(null);
+    const [purgeError, setPurgeError] = useState<string | null>(null);
+
+    const todayDate = format(new Date(), "yyyy-MM-dd");
+
+    const resetPurgeState = () => {
+        setPurgeDate("");
+        setPurgeReason("");
+        setPurgePreview(null);
+        setPreviewLoading(false);
+        setPreviewError(null);
+        setPurgeError(null);
+    };
+
+    const purgeMutation = useMutation({
+        mutationFn: (data: AuditLogPurgeRequest) => purgeAuditLogs(data),
+        onSuccess: (result) => {
+            setOffset(0);
+            setExpandedId(null);
+            queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
+            toast({
+                title: "Purga completada",
+                description: `Se eliminaron ${result.deletedCount} registros de auditoría.`,
+            });
+            setPurgeOpen(false);
+            resetPurgeState();
+        },
+        onError: () => {
+            setPurgeError("No se pudo completar la purga de registros.");
+        },
+    });
+
     const { data: companies = [] } = useQuery({
         queryKey: ["companiesDetailed"],
-        queryFn: getCompaniesDetailed,
+        queryFn: () => getCompaniesDetailed({ asAdmin: true }),
         enabled: isPlatformAdmin,
     });
 
@@ -138,14 +195,52 @@ export default function AuditLogsPage() {
         setExpandedId(null);
     };
 
+    const purgeDateFuture = Boolean(purgeDate && purgeDate > todayDate);
+
+    const handleOpenPurge = () => {
+        resetPurgeState();
+        setPurgeOpen(true);
+    };
+
+    const handlePreviewPurge = async () => {
+        if (!purgeDate || purgeDateFuture) return;
+        setPreviewLoading(true);
+        setPreviewError(null);
+        setPurgeError(null);
+        try {
+            const preview = await getAuditPurgePreview(startOfDayIso(purgeDate));
+            setPurgePreview(preview);
+        } catch {
+            setPurgePreview(null);
+            setPreviewError("No se pudo consultar el recuento de registros.");
+        } finally {
+            setPreviewLoading(false);
+        }
+    };
+
+    const handleConfirmPurge = () => {
+        if (!purgeDate || purgeDateFuture || !purgePreview || purgePreview.count === 0) return;
+        setPurgeError(null);
+        purgeMutation.mutate({
+            before: startOfDayIso(purgeDate),
+            reason: purgeReason.trim() || undefined,
+        });
+    };
+
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="flex items-center gap-2 text-2xl font-bold">
-                    <ScrollText className="h-6 w-6" />
-                    Auditoría
-                </h1>
-                <p className="text-sm text-muted-foreground">Registro de acciones sensibles de la plataforma.</p>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h1 className="flex items-center gap-2 text-2xl font-bold">
+                        <ScrollText className="h-6 w-6" />
+                        Auditoría
+                    </h1>
+                    <p className="text-sm text-muted-foreground">Registro de acciones sensibles de la plataforma.</p>
+                </div>
+                <Button variant="outline" onClick={handleOpenPurge}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Purgar registros
+                </Button>
             </div>
 
             <Card>
@@ -332,6 +427,102 @@ export default function AuditLogsPage() {
                     )}
                 </CardContent>
             </Card>
+
+            <Dialog
+                open={purgeOpen}
+                onOpenChange={(open) => {
+                    setPurgeOpen(open);
+                    if (!open) resetPurgeState();
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Purgar registros de auditoría</DialogTitle>
+                        <DialogDescription>
+                            Elige una fecha límite para consultar cuántos registros anteriores existen y confirmar su eliminación. La propia purga quedará auditada y no se borrará.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-1">
+                            <Label htmlFor="audit-purge-before">Eliminar registros anteriores a</Label>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    id="audit-purge-before"
+                                    type="date"
+                                    max={todayDate}
+                                    value={purgeDate}
+                                    onChange={(e) => {
+                                        setPurgeDate(e.target.value);
+                                        setPurgePreview(null);
+                                        setPreviewError(null);
+                                        setPurgeError(null);
+                                    }}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={handlePreviewPurge}
+                                    disabled={!purgeDate || purgeDateFuture || previewLoading}
+                                >
+                                    {previewLoading ? "Consultando..." : "Consultar recuento"}
+                                </Button>
+                            </div>
+                            {purgeDateFuture && (
+                                <p className="text-sm text-red-600">La fecha límite no puede ser futura.</p>
+                            )}
+                            {previewError && (
+                                <p className="text-sm text-red-600">{previewError}</p>
+                            )}
+                        </div>
+
+                        {purgePreview !== null && (
+                            <div className="space-y-3 rounded-md border bg-slate-50 p-3 text-sm">
+                                <p>
+                                    {purgePreview.count === 0
+                                        ? `No hay registros anteriores al ${format(new Date(`${purgeDate}T00:00:00`), "dd/MM/yyyy")} para purgar.`
+                                        : `Se eliminarán ${purgePreview.count} registros anteriores al ${format(new Date(`${purgeDate}T00:00:00`), "dd/MM/yyyy")}. Los apuntes de purga previos se conservan.`}
+                                </p>
+                                {purgePreview.count > 0 && (
+                                    <div className="space-y-1">
+                                        <Label htmlFor="audit-purge-reason">Motivo (opcional)</Label>
+                                        <Input
+                                            id="audit-purge-reason"
+                                            maxLength={500}
+                                            value={purgeReason}
+                                            onChange={(e) => setPurgeReason(e.target.value)}
+                                            placeholder="Motivo de la purga manual"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {purgeError && <p className="text-sm text-red-600">{purgeError}</p>}
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                                setPurgeOpen(false);
+                                resetPurgeState();
+                            }}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={handleConfirmPurge}
+                            disabled={purgePreview === null || purgePreview.count === 0 || purgeMutation.isPending}
+                        >
+                            {purgeMutation.isPending ? "Purgando..." : "Confirmar purga"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

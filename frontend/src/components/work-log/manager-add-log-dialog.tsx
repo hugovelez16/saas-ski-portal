@@ -15,18 +15,18 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Loader2 } from "lucide-react";
+import { PlusCircle, Loader2, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { WorkLog, WorkLogCreate, WorkLogBulkCreate } from "@/lib/types";
+import type { WorkLog, WorkLogCreate, WorkLogBulkCreate, WorkLogRecalculatePreview } from "@/lib/types";
 import { notifyWorkLogWarnings } from "@/lib/work-log-warnings";
+import { previewWorkLogRecalculation, updateWorkLog } from "@/lib/api/work-logs";
 import { WorkLogForm } from "./work-log-form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/ui/input";
-import { getManualAmountChoice } from "@/lib/manual-amount-choice";
-import { ManualAmountChoiceDialog } from "./manual-amount-choice-dialog";
+import { RecalculateConfirmDialog } from "./recalculate-confirm-dialog";
 
 interface ManagerAddWorkLogDialogProps {
     companyId: string;
@@ -74,9 +74,14 @@ export function ManagerAddWorkLogDialog({
 
     const { toast } = useToast();
 
-    // Edicion con importe manual pendiente de decision (409 manual_amount_choice).
-    // Este dialogo es siempre de manager: puede recalcular por tarifa.
-    const [manualChoice, setManualChoice] = useState<{ message: string; body: any } | null>(null);
+    // Confirmacion previa con comparativa de importes al cambiar de tipo o recalcular (R-TUR-20, R-TUR-21).
+    const [pendingConfirm, setPendingConfirm] = useState<{
+        mode: 'recalculate' | 'type_change';
+        preview: WorkLogRecalculatePreview;
+        body: any;
+        recalculateWithCurrentRates: boolean;
+    } | null>(null);
+    const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
     // Reset or Initialize when opening
     useEffect(() => {
@@ -127,13 +132,11 @@ export function ManagerAddWorkLogDialog({
         worklogDefinitions: worklogDefinitions || {}
     }], [companyId, companyName, worklogDefinitions]);
 
-    const handleSubmit = async () => {
+    const buildSharedData = (): any | null => {
         if (selectedUserIds.length === 0) {
             toast({ title: "Error", description: "Por favor, selecciona al menos un usuario.", variant: "destructive" });
-            return;
+            return null;
         }
-
-        setIsLoading(true);
 
         const currentDef = (worklogDefinitions || {})[logType] || null;
         const isRange = currentDef?.unit === "days";
@@ -142,19 +145,16 @@ export function ManagerAddWorkLogDialog({
         if (isRange) {
             if (!formData.startDate || !formData.endDate) {
                 toast({ title: "Error", description: "Fecha de inicio y fin son obligatorias.", variant: "destructive" });
-                setIsLoading(false);
-                return;
+                return null;
             }
         } else {
             if (!formData.date) {
                 toast({ title: "Error", description: "La fecha es obligatoria.", variant: "destructive" });
-                setIsLoading(false);
-                return;
+                return null;
             }
             if (!isFixed && (!formData.startTime || !formData.endTime)) {
                 toast({ title: "Error", description: "Las horas de inicio y fin son obligatorias.", variant: "destructive" });
-                setIsLoading(false);
-                return;
+                return null;
             }
         }
 
@@ -164,21 +164,16 @@ export function ManagerAddWorkLogDialog({
             type: logType,
         };
 
-        // SaaS Logic: Ensure startDate/endDate are present for all types
-        // In non-range mode, they should match 'date'
         if (!isRange) {
             sharedData.startDate = sharedData.date;
             sharedData.endDate = sharedData.date;
         }
 
-        // Clean empty times to avoid Pydantic 422 errors
         if (sharedData.startTime === "") sharedData.startTime = null;
         if (sharedData.endTime === "") sharedData.endTime = null;
 
-        // Remove redundant frontend-only fields
         delete sharedData.date;
 
-        // Clean calculated fields during edits to force backend recalculation
         if (initialData?.id) {
             delete sharedData.amount;
             delete sharedData.rateApplied;
@@ -187,12 +182,84 @@ export function ManagerAddWorkLogDialog({
             delete sharedData.netAmount;
         }
 
+        return sharedData;
+    };
+
+    const persistEdit = async (body: any, recalculateWithCurrentRates: boolean) => {
+        if (!initialData?.id) return;
+        setIsLoading(true);
         try {
-            if (initialData?.id) {
-                const response = await api.put(`/work-logs/${initialData.id}`, { ...sharedData, userId: selectedUserIds[0] });
-                toast({ title: "Éxito", description: "Registro actualizado correctamente." });
-                notifyWorkLogWarnings(toast, response?.data);
-            } else if (selectedUserIds.length === 1) {
+            const updated = await updateWorkLog(initialData.id, body, false, {
+                recalculateWithCurrentRates,
+            });
+            toast({ title: "Éxito", description: "Registro actualizado correctamente." });
+            notifyWorkLogWarnings(toast, updated);
+            setPendingConfirm(null);
+            setOpen(false);
+            onSuccess?.();
+        } catch (error: any) {
+            showSaveError(error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleRequestRecalculate = async () => {
+        if (!initialData?.id) return;
+        const sharedData = buildSharedData();
+        if (!sharedData) return;
+
+        const body = { ...sharedData, userId: selectedUserIds[0] };
+        setIsPreviewLoading(true);
+        try {
+            const preview = await previewWorkLogRecalculation(initialData.id, body, false, {
+                recalculateWithCurrentRates: true,
+            });
+            setPendingConfirm({
+                mode: 'recalculate',
+                preview,
+                body,
+                recalculateWithCurrentRates: true,
+            });
+        } catch (error: any) {
+            showSaveError(error);
+        } finally {
+            setIsPreviewLoading(false);
+        }
+    };
+
+    const handleSubmit = async () => {
+        const sharedData = buildSharedData();
+        if (!sharedData) return;
+
+        if (initialData?.id) {
+            const body = { ...sharedData, userId: selectedUserIds[0] };
+            if (initialData.type && logType !== initialData.type) {
+                setIsPreviewLoading(true);
+                try {
+                    const preview = await previewWorkLogRecalculation(initialData.id, body, false, {
+                        recalculateWithCurrentRates: false,
+                    });
+                    setPendingConfirm({
+                        mode: 'type_change',
+                        preview,
+                        body,
+                        recalculateWithCurrentRates: false,
+                    });
+                } catch (error: any) {
+                    showSaveError(error);
+                } finally {
+                    setIsPreviewLoading(false);
+                }
+                return;
+            }
+            await persistEdit(body, false);
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            if (selectedUserIds.length === 1) {
                 const response = await api.post("/work-logs", { ...sharedData, userId: selectedUserIds[0] });
                 toast({ title: "Éxito", description: "Registro añadido correctamente." });
                 notifyWorkLogWarnings(toast, response?.data);
@@ -210,12 +277,6 @@ export function ManagerAddWorkLogDialog({
             onSuccess?.();
 
         } catch (error: any) {
-            const manualChoiceError = initialData?.id ? getManualAmountChoice(error) : null;
-            if (manualChoiceError) {
-                // Sin toast: el usuario decide como resolver el importe manual
-                setManualChoice({ message: manualChoiceError.message, body: { ...sharedData, userId: selectedUserIds[0] } });
-                return;
-            }
             showSaveError(error);
         } finally {
             setIsLoading(false);
@@ -246,27 +307,6 @@ export function ManagerAddWorkLogDialog({
         }
 
         toast({ title: "Error al guardar", description: msg, variant: "destructive" });
-    };
-
-    // Reenvia el mismo PUT resolviendo el importe manual: conservar (keep_manual_amount) o recalcular por tarifa
-    const resolveManualChoice = async (mode: 'keep' | 'recalculate') => {
-        const pending = manualChoice;
-        if (!pending || !initialData?.id) return;
-
-        setManualChoice(null);
-        setIsLoading(true);
-        try {
-            const flag = mode === 'keep' ? 'keep_manual_amount=true' : 'recalculate_with_current_rates=true';
-            const response = await api.put(`/work-logs/${initialData.id}?${flag}`, pending.body);
-            toast({ title: "Éxito", description: "Registro actualizado correctamente." });
-            notifyWorkLogWarnings(toast, response?.data);
-            setOpen(false);
-            onSuccess?.();
-        } catch (error: any) {
-            showSaveError(error);
-        } finally {
-            setIsLoading(false);
-        }
     };
 
 
@@ -372,27 +412,46 @@ export function ManagerAddWorkLogDialog({
                         setLogType={setLogType as any}
                         companies={companies}
                         hideCompanySelector={true}
+                        editingType={initialData?.id ? initialData.type : undefined}
                     />
                 </div>
 
-                <DialogFooter>
+                <DialogFooter className="gap-2 sm:gap-2">
+                    {initialData?.id && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="sm:mr-auto"
+                            disabled={isLoading || isPreviewLoading}
+                            onClick={handleRequestRecalculate}
+                        >
+                            {isPreviewLoading ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            Recalcular con tarifa vigente
+                        </Button>
+                    )}
                     <DialogClose asChild>
                         <Button variant="ghost">Cancelar</Button>
                     </DialogClose>
-                    <Button type="submit" disabled={isLoading} onClick={handleSubmit}>
-                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    <Button type="submit" disabled={isLoading || isPreviewLoading} onClick={handleSubmit}>
+                        {(isLoading || isPreviewLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Guardar
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-        <ManualAmountChoiceDialog
-            open={manualChoice !== null}
-            message={manualChoice?.message ?? ""}
-            canRecalculate={true}
-            onKeep={() => resolveManualChoice('keep')}
-            onRecalculate={() => resolveManualChoice('recalculate')}
-            onCancel={() => setManualChoice(null)}
+        <RecalculateConfirmDialog
+            open={pendingConfirm !== null}
+            preview={pendingConfirm?.preview ?? null}
+            mode={pendingConfirm?.mode ?? 'recalculate'}
+            isSubmitting={isLoading}
+            onConfirm={() =>
+                pendingConfirm && persistEdit(pendingConfirm.body, pendingConfirm.recalculateWithCurrentRates)
+            }
+            onCancel={() => setPendingConfirm(null)}
         />
         </>
     )
