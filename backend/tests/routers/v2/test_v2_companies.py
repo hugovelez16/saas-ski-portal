@@ -950,16 +950,14 @@ def test_every_v2_company_response_is_snake_case(client, world):
 # --- 8. Mi lista de empresas: /v2/me/companies ---
 
 
-def test_me_companies_pa_acting_returns_all_companies_as_full_view(client, db, world):
+def test_me_companies_pa_acting_returns_empty_list(client, db, world):
+    """R-ACC-26 / R-ACC-81: el PA no tiene membresias; lista todas desde /v2/admin/companies."""
     as_user(client, world.pa, world.company)
 
     resp = client.get(ME_COMPANIES)
 
     assert resp.status_code == 200, resp.text
-    assert isinstance(resp.json(), list)
-    assert _ids(resp.json()) == {str(company.id) for company in db.query(models.Company).all()}
-    for item in resp.json():
-        _assert_full(item)
+    assert resp.json() == []
 
 
 def test_me_companies_worker_lists_only_own_active_memberships(client, db, world):
@@ -972,33 +970,26 @@ def test_me_companies_worker_lists_only_own_active_memberships(client, db, world
 
     assert resp.status_code == 200, resp.text
     assert isinstance(resp.json(), list)
-    assert _ids(resp.json()) == {str(world.company.id)}
+    assert resp.json() == [{"id": str(world.company.id), "name": world.company.name, "role": "worker"}]
     assert str(stranger.id) not in _ids(resp.json())
     assert str(world.suspended.id) not in _ids(resp.json())
-    for item in resp.json():
-        _assert_reduced(item, role="worker")
-        assert item["is_active_member"] is True
 
 
-def test_me_companies_manager_lists_own_company_with_manager_role(client, world):
+def test_me_companies_manager_lists_own_company_with_manager_role(client, db, world):
+    second = make_company(db, name="Escuela Secundaria")
+    make_member(db, world.manager, second, role="worker")
     as_user(client, world.manager, world.company)
 
     resp = client.get(ME_COMPANIES)
 
     assert resp.status_code == 200, resp.text
-    assert _ids(resp.json()) == {str(world.company.id)}
-    _assert_reduced(resp.json()[0], role="manager")
-
-
-def test_me_companies_pa_view_as_with_membership_returns_reduced_list(client, db, world):
-    make_member(db, world.pa, world.company, role="manager")
-    as_user(client, world.pa, world.company, claims=VIEW_AS_WORKER)
-
-    resp = client.get(ME_COMPANIES)
-
-    assert resp.status_code == 200, resp.text
-    assert len(resp.json()) == 1
-    _assert_reduced(resp.json()[0], role="manager")
+    by_id = {item["id"]: item for item in resp.json()}
+    assert by_id == {
+        str(world.company.id): {"id": str(world.company.id), "name": world.company.name, "role": "manager"},
+        str(second.id): {"id": str(second.id), "name": second.name, "role": "worker"},
+    }
+    for item in resp.json():
+        assert set(item) == {"id", "name", "role"}
 
 
 def test_me_companies_pa_view_as_without_membership_returns_empty_list(client, world):
@@ -1205,21 +1196,20 @@ def test_suspension_blocks_manager_with_token_still_valid(client, db, world):
     assert resp.status_code == 403, resp.text
 
 
-def test_me_companies_pa_acting_reports_is_active_and_is_managed(client, db, world):
+def test_admin_companies_pa_acting_reports_is_active_and_is_managed(client, db, world):
     flagged = make_company(db, name="Suspendida y gestionada", is_active=False, is_managed=True)
-    make_member(db, world.pa, flagged, role="manager")
     as_user(client, world.pa)
 
-    resp = client.get(ME_COMPANIES)
+    resp = client.get("/v2/admin/companies")
 
     assert resp.status_code == 200, resp.text
-    entries = {item["id"]: item for item in resp.json()}
+    entries = {item["id"]: item for item in resp.json()["items"]}
     assert entries[str(flagged.id)]["is_active"] is False
     assert entries[str(flagged.id)]["is_managed"] is True
 
 
 def test_member_settings_only_expose_whitelisted_keys(client, db, world):
-    """Solo pasan la whitelist de settings del miembro: ui_preferences si; business_logic y allowed_rates no."""
+    """Solo pasan la whitelist de settings del miembro en /v2/companies/{id}; /v2/me/companies no expone settings."""
     member = db.query(models.CompanyMember).filter_by(user_id=world.worker.id, company_id=world.company.id).one()
     member.settings = {
         "ui_preferences": {"theme": "dark"},
@@ -1233,12 +1223,13 @@ def test_member_settings_only_expose_whitelisted_keys(client, db, world):
     detail = client.get(f"{BASE}/{world.company.id}")
 
     assert listed.status_code == 200, listed.text
+    assert set(listed.json()[0]) == {"id", "name", "role"}
     assert detail.status_code == 200, detail.text
-    for body in (listed.json()[0], detail.json()):
-        assert body["settings"]["ui_preferences"] == {"theme": "dark"}
-        # Valor por defecto de la empresa (price_type "net"); el del miembro ("gross") no se expone.
-        assert body["settings"]["business_logic"] == {"price_type": "net"}
-        assert "allowed_rates" not in body["settings"]
+    body = detail.json()
+    assert body["settings"]["ui_preferences"] == {"theme": "dark"}
+    # Valor por defecto de la empresa (price_type "net"); el del miembro ("gross") no se expone.
+    assert body["settings"]["business_logic"] == {"price_type": "net"}
+    assert "allowed_rates" not in body["settings"]
 
 
 def test_user_companies_manager_with_token_where_only_worker_is_403(client, db, world):

@@ -379,6 +379,17 @@ def test_pa_only_endpoints_do_not_reveal_company_existence_to_manager(client, db
     assert foreign.json()["detail"] == unknown.json()["detail"] == MSG_FORBIDDEN
 
 
+def test_add_member_rejects_platform_admin_with_4xx(client, db):
+    """R-ACC-26: el PA no puede tener membresias; anadirlo como miembro devuelve error 4xx."""
+    s = _scenario(db)
+    as_user(client, s.pa, s.company)
+
+    resp = client.post(_members_url(s.company), json={"email": s.pa.email})
+
+    assert 400 <= resp.status_code < 500, resp.text
+    assert db.query(models.CompanyMember).filter_by(user_id=s.pa.id).count() == 0
+
+
 # --- status: PUT .../members/{user_id}/status con cuerpo {is_active} ---
 
 
