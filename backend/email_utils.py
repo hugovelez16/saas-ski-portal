@@ -1,3 +1,4 @@
+import html
 import os
 
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
@@ -102,5 +103,39 @@ async def send_password_reset_email(email: EmailStr, token: str):
     message = MessageSchema(
         subject="Reset Your Vesotel Password", recipients=[email], body=html_content, subtype=MessageType.html
     )
+    fm = FastMail(conf)
+    await fm.send_message(message)
+
+
+async def send_company_invitation_email(
+    email: EmailStr,
+    *,
+    company_name: str,
+    inviter_name: str,
+    token: str,
+) -> None:
+    """Envia correo con enlace de un solo uso para aceptar una invitacion de empresa (R-MEM-07)."""
+    frontend_url = os.getenv("FRONTEND_URL", "https://clases.vesotel.com").rstrip("/")
+    invite_link = f"{frontend_url}/invitations/accept?token={token}"
+    safe_company = html.escape(company_name)
+    safe_inviter = html.escape(inviter_name)
+    safe_link = html.escape(invite_link, quote=True)
+    subject = f"{inviter_name} te ha invitado a unirte a {company_name}"
+    html_content = get_html_template(
+        "Invitacion a empresa",
+        f"""
+        <p>Hola,</p>
+        <p><strong>{safe_inviter}</strong> te ha invitado a unirte a <strong>{safe_company}</strong> en Vesotel.</p>
+        <p>Pulsa el siguiente boton para revisar y aceptar la invitacion con este mismo correo:</p>
+        <div style="text-align: center; margin-top: 25px; margin-bottom: 25px;">
+            <a href="{safe_link}" class="button" style="color: white; padding: 12px 24px; background-color: #D32F2F; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">Aceptar invitacion</a>
+        </div>
+        <p>O copia y pega este enlace de un solo uso en tu navegador:</p>
+        <p style="word-break: break-all; font-size: 0.9em; color: #666;"><a href="{safe_link}">{safe_link}</a></p>
+        <p>Este enlace caduca en 7 dias.</p>
+        """,
+    )
+
+    message = MessageSchema(subject=subject, recipients=[email], body=html_content, subtype=MessageType.html)
     fm = FastMail(conf)
     await fm.send_message(message)

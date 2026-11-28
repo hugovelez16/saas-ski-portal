@@ -5,6 +5,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from application.use_cases.company.common import CompanyView, CompanyWithMembers, MemberDetail
+from application.use_cases.company.invitations import AcceptInvitationResult, InvitationView, PreviewInvitationResult
 from contracts import (
     MEMBER_SETTINGS_ALLOWED_KEYS,
     CompanySettings,
@@ -177,6 +178,45 @@ class MemberOrderIn(V2Model):
     user_ids: list[UUID] = Field(..., max_length=500)
 
 
+class InvitationCreateIn(V2Model):
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email_domain(cls, value: EmailStr) -> str:
+        return validate_allowed_email_domain(str(value))
+
+
+class InvitationAcceptIn(V2Model):
+    token: str = Field(..., min_length=1, max_length=512)
+
+
+class InvitationOut(V2Model):
+    id: UUID
+    company_id: UUID
+    email: str
+    status: Literal["pending", "accepted", "cancelled", "expired"]
+    invited_by_user_id: UUID
+    invited_by_name: str | None = None
+    expires_at: datetime
+    accepted_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class InvitationPreviewOut(V2Model):
+    company_id: UUID
+    company_name: str
+    status: Literal["pending"]
+    expires_at: datetime
+
+
+class InvitationAcceptOut(V2Model):
+    company_id: UUID
+    company_name: str
+    membership: MemberOut
+
+
 class CompanyReduced(V2Model):
     """Vista reducida: no expone is_active, allowed_rates ni cost_markup."""
 
@@ -299,3 +339,36 @@ def member_out(detail: MemberDetail) -> MemberOut:
 
 def company_full_with_members(item: CompanyWithMembers) -> CompanyFullWithMembers:
     return CompanyFullWithMembers(**_full_fields(item.company), members=[_member_v2(m) for m in item.members])
+
+
+def invitation_out(view: InvitationView) -> InvitationOut:
+    inv = view.invitation
+    return InvitationOut(
+        id=inv.id,
+        company_id=inv.company_id,
+        email=inv.email,
+        status=inv.status_at(),
+        invited_by_user_id=inv.invited_by_user_id,
+        invited_by_name=view.invited_by_name,
+        expires_at=inv.expires_at,
+        accepted_at=inv.accepted_at,
+        cancelled_at=inv.cancelled_at,
+        created_at=inv.created_at,
+    )
+
+
+def invitation_preview_out(preview: PreviewInvitationResult) -> InvitationPreviewOut:
+    return InvitationPreviewOut(
+        company_id=preview.company.id,
+        company_name=preview.company.name,
+        status="pending",
+        expires_at=preview.invitation.expires_at,
+    )
+
+
+def invitation_accept_out(result: AcceptInvitationResult) -> InvitationAcceptOut:
+    return InvitationAcceptOut(
+        company_id=result.company.id,
+        company_name=result.company.name,
+        membership=member_out(result.detail),
+    )

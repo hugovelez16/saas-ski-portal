@@ -1,11 +1,12 @@
-"""Caso de uso: borrado de una membresia (solo PA; lo decide el router). No hay guardia de ultimo manager (E7)."""
+"""Caso de uso: borrado de una membresia (PA cualquiera; manager solo workers de su empresa activa, R-MEM-10)."""
 
 from dataclasses import dataclass
 from typing import Optional
 
+import access_policy
 from application.use_cases.company.common import MSG_MEMBER_NOT_FOUND, member_snapshot
 from audit import AuditAction
-from domain.exceptions.domain_exceptions import EntityNotFoundException
+from domain.exceptions.domain_exceptions import EntityNotFoundException, UnauthorizedDomainActionException
 from domain.ports.audit_port import AuditLogPort
 from domain.ports.repositories.company_repository_port import CompanyMemberRepositoryPort
 
@@ -24,13 +25,17 @@ class RemoveMemberUseCase:
         self.member_repo = member_repo
         self.audit_log = audit_log
 
-    async def execute(self, *, actor_id: str, company_id: str, user_id: str) -> RemoveMemberResult:
+    async def execute(
+        self, *, actor_id: str, company_id: str, user_id: str, actor_is_platform_admin: bool = True
+    ) -> RemoveMemberResult:
         """Sin turnos borra la membresia; con turnos la desactiva y conserva los turnos."""
         # Bloquea la fila antes de contar turnos (la carrera con la creacion de
         # turnos sigue anotada en el plan: work_logs no tiene FK a company_members).
         member = await self.member_repo.get_membership(user_id, company_id, for_update=True)
         if member is None:
             raise EntityNotFoundException(MSG_MEMBER_NOT_FOUND)
+        if member.is_manager and not actor_is_platform_admin:
+            raise UnauthorizedDomainActionException(access_policy.MSG_FORBIDDEN)
 
         before = member_snapshot(member)
         if await self.member_repo.count_work_logs(user_id, company_id) > 0:

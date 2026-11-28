@@ -2,12 +2,13 @@
 
 from fastapi import APIRouter
 
-from routers.v2 import admin, companies, members
+from routers.v2 import admin, companies, invitations, members
 
 router = APIRouter(prefix="/v2")
 router.include_router(admin.router)
 router.include_router(companies.router)
 router.include_router(members.router)
+router.include_router(invitations.router)
 
 
 @router.get("/ping", tags=["v2"])
