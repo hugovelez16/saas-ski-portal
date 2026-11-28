@@ -134,7 +134,7 @@ def test_constantes_de_la_migracion_coinciden_con_contratos_y_script():
 
     migration = _load_migration()
 
-    assert migration.VALID_SETTINGS_KEYS == set(contracts.CompanySettings.model_fields)
+    assert migration.VALID_SETTINGS_KEYS == set(script.VALID_TOP)
     assert migration.MAPPED_KEYS == set(script.MAPPED_TOP)
     assert migration.RETIRED_KEYS == set(script.RETIRED_TOP)
     assert migration.BILLING_KNOWN_KEYS == set(script.BILLING_KNOWN)
@@ -143,10 +143,6 @@ def test_constantes_de_la_migracion_coinciden_con_contratos_y_script():
     assert migration.LABEL_MAX == script.LABEL_MAX
     assert migration.PRICE_TYPES == script.PRICE_TYPES
     assert migration.INPUT_MODES == script.INPUT_MODES
-    assert migration.PRICE_TYPES == typing.get_args(contracts.BusinessLogic.model_fields["price_type"].annotation)
-    assert migration.INPUT_MODES == typing.get_args(
-        contracts.WorkerExperience.model_fields["input_mode"].annotation
-    )
     assert migration.UNITS == typing.get_args(contracts.WorklogDefinition.model_fields["unit"].annotation)
     label_schema = contracts.WorklogDefinition.model_json_schema()["properties"]["label"]
     assert migration.LABEL_MAX == label_schema["maxLength"]

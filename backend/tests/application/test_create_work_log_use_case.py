@@ -42,6 +42,15 @@ class InMemoryCompanyRepo(CompanyRepositoryPort):
     async def count_dependencies(self, company_id: str):
         return {"members": 0, "work_logs": 0, "subscriptions": 0}
 
+    async def count_work_logs_by_types(self, company_id: str, shift_types: set[str]):
+        return {t: 0 for t in shift_types}
+
+    async def count_member_rates_by_types(self, company_id: str, shift_types: set[str]):
+        return {t: 0 for t in shift_types}
+
+    async def remove_shift_types_from_rates(self, company_id: str, shift_types: set[str]):
+        return 0
+
 
 class InMemoryCompanyMemberRepo(CompanyMemberRepositoryPort):
     def __init__(self):

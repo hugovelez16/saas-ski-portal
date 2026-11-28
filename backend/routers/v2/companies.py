@@ -9,6 +9,7 @@ from access_policy import PolicyError
 from application.use_cases.company.create_company import CreateCompanyUseCase
 from application.use_cases.company.delete_company import DeleteCompanyUseCase
 from application.use_cases.company.get_company import GetCompanyUseCase
+from application.use_cases.company.get_worklog_definition_usage import GetWorklogDefinitionUsageUseCase
 from application.use_cases.company.list_companies import ListCompaniesUseCase
 from application.use_cases.company.list_my_companies import ListMyCompaniesUseCase
 from application.use_cases.company.list_user_companies import ListUserCompaniesUseCase
@@ -59,6 +60,7 @@ async def create_company(
         tax_config=body.tax_config.as_dict(),
         worklog_definitions=body.worklog_definitions.model_dump(mode="json"),
         settings=body.settings.model_dump(mode="json") if body.settings is not None else None,
+        platform_settings=body.platform_settings.model_dump(mode="json") if body.platform_settings is not None else None,
         is_active=body.is_active,
         is_managed=body.is_managed,
     )
@@ -126,6 +128,50 @@ async def update_company(
         actor_id=str(actor.id), company_id=str(company_id), changes=changes, reason=body.reason
     )
     return schemas.company_full(company)
+
+
+@router.get("/companies/{company_id}/settings", response_model=schemas.CompanyManagerSettingsOut)
+async def read_company_manager_settings(
+    company_id: UUID,
+    ctx: deps.AccessContext = Depends(deps.require_company(access_policy.ROLE_MANAGER)),
+    company_repo=Depends(v2_deps.get_company_repository),
+    member_repo=Depends(v2_deps.get_member_repository),
+):
+    """Ajustes de empresa visibles para el manager de su empresa activa (R-EMP-08, R-ACC-72)."""
+    view = await GetCompanyUseCase(company_repo, member_repo).execute(
+        company_id=str(company_id), user_id=str(ctx.user.id), role=ctx.role
+    )
+    return schemas.company_manager_settings_out(view.company)
+
+
+@router.put("/companies/{company_id}/settings", response_model=schemas.CompanyManagerSettingsOut)
+async def update_company_manager_settings(
+    company_id: UUID,
+    body: schemas.CompanyManagerUpdateV2,
+    ctx: deps.AccessContext = Depends(deps.require_company(access_policy.ROLE_MANAGER)),
+    company_repo=Depends(v2_deps.get_company_repository),
+    audit_log=Depends(v2_deps.get_audit_log),
+):
+    """Edicion de `tax_config`, `worklog_definitions` y `settings` por el manager (R-EMP-08, R-ACC-72, R-ACC-73)."""
+    changes = body.model_dump(exclude_unset=True, mode="json")
+    company = await UpdateCompanyUseCase(company_repo, audit_log).execute(
+        actor_id=str(ctx.user.id), company_id=str(company_id), changes=changes
+    )
+    return schemas.company_manager_settings_out(company)
+
+
+@router.get(
+    "/companies/{company_id}/worklog-definitions/usage",
+    response_model=dict[str, schemas.WorklogDefinitionUsageOut],
+)
+async def read_worklog_definition_usage(
+    company_id: UUID,
+    ctx: deps.AccessContext = Depends(deps.require_company(access_policy.ROLE_MANAGER)),
+    company_repo=Depends(v2_deps.get_company_repository),
+):
+    """Uso de cada tipo de turno (turnos y tarifas) para habilitar borrado seguro o desactivacion (R-EMP-41)."""
+    usage = await GetWorklogDefinitionUsageUseCase(company_repo).execute(company_id=str(company_id))
+    return {k: schemas.WorklogDefinitionUsageOut(**v) for k, v in usage.items()}
 
 
 @router.delete("/companies/{company_id}", status_code=204)

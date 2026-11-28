@@ -105,10 +105,10 @@ def seed_initial_data(db: Session = None) -> bool:
                 name=company_name,
                 tax_config={"social_security": 0.0648},
                 worklog_definitions={
-                    "particular": {"unit": "hours", "label": "Clase Particular", "fields": []},
-                    "colectiva": {"unit": "hours", "label": "Clase Colectiva", "fields": []},
+                    "particular": {"unit": "hours", "label": "Clase Particular", "options": [], "is_active": True},
+                    "colectiva": {"unit": "hours", "label": "Clase Colectiva", "options": [], "is_active": True},
                 },
-                settings={"modules": {"worker_daily_report": True}},
+                settings={},
             )
             db.add(company)
             db.commit()
