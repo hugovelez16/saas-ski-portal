@@ -11,9 +11,9 @@ import posthog from 'posthog-js';
 interface AuthContextType {
     user: UserProfile | null;
     loading: boolean;
-    login: (email: string, password: string) => Promise<{ requires2FA: boolean }>;
+    login: (email: string, password: string, redirectTo?: string) => Promise<{ requires2FA: boolean }>;
     devLogin: () => Promise<{ requires2FA: boolean }>;
-    verify2FA: (code: string, companyId?: string) => Promise<void>;
+    verify2FA: (code: string, companyId?: string, redirectTo?: string) => Promise<void>;
     logout: () => void;
     stopImpersonation: () => Promise<void>;
     switchScope: (companyId: string | null, viewAs?: 'manager' | 'worker') => Promise<void>;
@@ -61,8 +61,13 @@ export function homePathFor(u: UserProfile | null | undefined): string {
 }
 
 // Rutas que un visitante sin sesion puede abrir: un 401 en ellas no cierra sesion ni redirige a /login.
-const VISITOR_PATHS: string[] = ['/', ...LEGAL_LINKS.map((link) => link.href)];
+const VISITOR_PATHS: string[] = ['/', '/invitations/accept', ...LEGAL_LINKS.map((link) => link.href)];
 const PUBLIC_PATHS: string[] = [...VISITOR_PATHS, '/login', '/forgot-password', '/reset-password'];
+
+function safeInternalPath(path?: string): string | null {
+    if (!path || !path.startsWith('/') || path.startsWith('//')) return null;
+    return path;
+}
 
 // Un PA o una sesion suplantada no guardan empresa recordada.
 function rememberActiveCompany(u: UserProfile | null | undefined) {
@@ -137,7 +142,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     };
 
-    const login = async (email: string, password: string) => {
+    const login = async (email: string, password: string, redirectTo?: string) => {
         const formData = new URLSearchParams();
         formData.append('username', email);
         formData.append('password', password);
@@ -186,11 +191,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         const userData = await fetchUser();
 
-        router.push(homePathFor(userData));
+        router.push(safeInternalPath(redirectTo) ?? homePathFor(userData));
         return { requires2FA: false };
     };
 
-    const verify2FA = async (code: string, companyId?: string) => {
+    const verify2FA = async (code: string, companyId?: string, redirectTo?: string) => {
         const body: { code: string; companyId?: string } = { code };
         if (companyId) {
             body.companyId = companyId;
@@ -203,7 +208,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         const userData = await fetchUser();
 
-        if (userData?.role === 'admin') {
+        const safeNext = safeInternalPath(redirectTo);
+        if (safeNext) {
+            router.push(safeNext);
+        } else if (userData?.role === 'admin') {
             router.push('/admin/companies');
         } else if (userData?.isManager) {
             router.push('/manager/daily-reports');

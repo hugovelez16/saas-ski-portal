@@ -56,8 +56,8 @@ MEMBER_KEYS = {
 }
 MEMBER_USER_KEYS = {"id", "email", "first_name", "last_name", "is_active"}
 
-PA_ONLY_ENDPOINTS = ["add", "status", "role", "delete"]
-ALL_MEMBER_ENDPOINTS = PA_ONLY_ENDPOINTS + ["rates", "settings", "order"]
+PA_ONLY_ENDPOINTS = ["add", "role"]
+ALL_MEMBER_ENDPOINTS = PA_ONLY_ENDPOINTS + ["status", "delete", "rates", "settings", "order"]
 # Respuesta 201 solo cuando el alta crea una membresia nueva (el resto de casos responde 200).
 PA_EXPECTED_STATUS = {"add": 201}
 
@@ -300,7 +300,8 @@ def test_add_new_user_returns_201_creates_active_worker_and_emits_member_added(c
     _assert_trace(rows[0], s.pa, s.company, s.outsider)
 
 
-def test_add_reactivates_inactive_manager_as_worker_and_emits_reactivated(client, db):
+def test_add_reactivates_inactive_manager_keeping_role_and_emits_reactivated(client, db):
+    """R-MEM-12: reactivar por add_member conserva el rol previo (manager o worker)."""
     s = _scenario(db)
     former = make_user(db)
     make_member(db, former, s.company, role="manager", is_active=False)
@@ -309,13 +310,14 @@ def test_add_reactivates_inactive_manager_as_worker_and_emits_reactivated(client
     resp = client.post(_members_url(s.company), json={"email": former.email})
 
     assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == "manager"
     membership = _membership(db, former, s.company)
     assert membership.is_active is True
-    assert membership.role == models.CompanyRole.worker  # M6: la reactivacion fuerza worker
+    assert membership.role == models.CompanyRole.manager
     rows = _audit_rows(db, "member.reactivated")
     assert len(rows) == 1
     assert rows[0].old_value == {"is_active": False, "role": "manager"}
-    assert rows[0].new_value == {"is_active": True, "role": "worker"}
+    assert rows[0].new_value == {"is_active": True, "role": "manager"}
     _assert_trace(rows[0], s.pa, s.company, former)
 
 
@@ -390,6 +392,18 @@ def test_add_member_rejects_platform_admin_with_4xx(client, db):
     assert db.query(models.CompanyMember).filter_by(user_id=s.pa.id).count() == 0
 
 
+def test_crud_join_company_rejects_platform_admin_with_422(db):
+    """R-ACC-26: crud.join_company tambien rechaza a un PA con PolicyError 422."""
+    import crud
+    from access_policy import PolicyError
+
+    s = _scenario(db)
+    with pytest.raises(PolicyError) as exc_info:
+        crud.join_company(db, str(s.pa.id), str(s.company.id))
+    assert exc_info.value.status_code == 422
+    assert db.query(models.CompanyMember).filter_by(user_id=s.pa.id).count() == 0
+
+
 # --- status: PUT .../members/{user_id}/status con cuerpo {is_active} ---
 
 
@@ -461,18 +475,92 @@ def test_deactivating_membership_does_not_reassign_other_memberships(client, db)
     assert other.role == models.CompanyRole.manager
 
 
-def test_reactivating_member_forces_worker_role(client, db):
+@pytest.mark.parametrize("previous_role", ["manager", "worker"])
+def test_reactivating_member_preserves_previous_role(client, db, previous_role):
+    """R-MEM-12: reactivar una membresia por status conserva su rol anterior."""
     s = _scenario(db)
     former = make_user(db)
-    make_member(db, former, s.company, role="manager", is_active=False)
+    make_member(db, former, s.company, role=previous_role, is_active=False)
     as_user(client, s.pa, s.company)
 
     resp = client.put(f"{BASE}/{s.company.id}/members/{former.id}/status", json={"is_active": True})
 
     assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == previous_role
     membership = _membership(db, former, s.company)
     assert membership.is_active is True
-    assert membership.role == models.CompanyRole.worker  # M6
+    assert membership.role == models.CompanyRole(previous_role)
+
+
+def test_manager_can_deactivate_and_reactivate_worker_keeping_role(client, db):
+    """R-MEM-10, R-MEM-11, R-MEM-12: el manager desactiva y reactiva workers de su empresa activa."""
+    s = _scenario(db)
+    as_user(client, s.manager, s.company)
+
+    off = client.put(f"{BASE}/{s.company.id}/members/{s.worker.id}/status", json={"is_active": False})
+    assert off.status_code == 200, off.text
+    assert off.json()["is_active"] is False
+    assert _membership(db, s.worker, s.company).is_active is False
+
+    on = client.put(f"{BASE}/{s.company.id}/members/{s.worker.id}/status", json={"is_active": True})
+    assert on.status_code == 200, on.text
+    assert on.json()["is_active"] is True
+    assert on.json()["role"] == "worker"
+    assert _membership(db, s.worker, s.company).is_active is True
+
+
+def test_manager_gets_403_deactivating_or_reactivating_a_manager(client, db):
+    """R-MEM-10, R-MEM-11: un manager recibe 403 si intenta desactivar o reactivar a otro manager."""
+    s = _scenario(db)
+    other_manager = make_user(db)
+    make_member(db, other_manager, s.company, role="manager", is_active=True)
+    inactive_manager = make_user(db)
+    make_member(db, inactive_manager, s.company, role="manager", is_active=False)
+    as_user(client, s.manager, s.company)
+
+    off_resp = client.put(f"{BASE}/{s.company.id}/members/{other_manager.id}/status", json={"is_active": False})
+    on_resp = client.put(f"{BASE}/{s.company.id}/members/{inactive_manager.id}/status", json={"is_active": True})
+
+    assert off_resp.status_code == 403, off_resp.text
+    assert off_resp.json()["detail"] == MSG_FORBIDDEN
+    assert on_resp.status_code == 403, on_resp.text
+    assert on_resp.json()["detail"] == MSG_FORBIDDEN
+    assert _membership(db, other_manager, s.company).is_active is True
+    assert _membership(db, inactive_manager, s.company).is_active is False
+
+
+def test_manager_can_remove_worker_and_gets_403_on_manager(client, db):
+    """R-MEM-10: el manager elimina/desactiva workers de su empresa activa y recibe 403 sobre un manager."""
+    s = _scenario(db)
+    other_manager = make_user(db)
+    make_member(db, other_manager, s.company, role="manager", is_active=True)
+    as_user(client, s.manager, s.company)
+
+    forbidden = client.delete(f"{BASE}/{s.company.id}/members/{other_manager.id}")
+    assert forbidden.status_code == 403, forbidden.text
+    assert forbidden.json()["detail"] == MSG_FORBIDDEN
+
+    allowed = client.delete(f"{BASE}/{s.company.id}/members/{s.worker.id}")
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["deleted"] is True
+
+
+def test_manager_cannot_change_status_in_another_company_with_wrong_token(client, db):
+    """Aislamiento por empresa activa (R-ACC-33, R-ACC-41) en status de miembro."""
+    company_a = make_company(db)
+    company_b = make_company(db)
+    manager = make_user(db)
+    worker = make_user(db)
+    make_member(db, manager, company_a, role="manager")
+    make_member(db, manager, company_b, role="manager")
+    make_member(db, worker, company_a, role="worker")
+    as_user(client, manager, company_b)
+
+    resp = client.put(f"{BASE}/{company_a.id}/members/{worker.id}/status", json={"is_active": False})
+
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == MSG_SWITCH_COMPANY
+    assert _membership(db, worker, company_a).is_active is True
 
 
 # --- role: PUT .../members/{user_id}/role ---

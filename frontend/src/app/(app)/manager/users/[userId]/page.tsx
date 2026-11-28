@@ -60,7 +60,8 @@ type MemberConfigValues = z.infer<typeof memberConfigSchema>;
 
 function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, company: any, onUpdate: () => void }) {
     const { toast } = useToast();
-    const { canManageMembers } = usePermissions();
+    const { canToggleMemberStatus } = usePermissions();
+    const canToggleStatus = canToggleMemberStatus(company.role);
     const worklogDefinitionsStr = JSON.stringify(company.worklogDefinitions || {});
     const ratesConfigStr = JSON.stringify(company.ratesConfig || {});
 
@@ -115,7 +116,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
 
     const mutation = useMutation({
         mutationFn: async (data: { isActive?: boolean; ratesConfig: Record<string, any> }) => {
-            if (canManageMembers && data.isActive !== undefined && data.isActive !== (company.isActiveMember ?? true)) {
+            if (canToggleStatus && data.isActive !== undefined && data.isActive !== (company.isActiveMember ?? true)) {
                 await updateMemberStatus(company.id, user.id, data.isActive ? "active" : "inactive");
             }
             return updateMemberRates(company.id, user.id, data.ratesConfig);
@@ -194,7 +195,7 @@ function CompanyMemberConfigCard({ user, company, onUpdate }: { user: any, compa
                                         </Badge>
                                     </div>
                                 </div>
-                                {canManageMembers && (
+                                {canToggleStatus && (
                                     <FormField
                                         control={form.control}
                                         name="isActive"

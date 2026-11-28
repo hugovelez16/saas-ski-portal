@@ -532,12 +532,14 @@ def test_manager_of_a_and_b_with_token_a_can_write_company_a(client, db):
 
     assert client.post("/work-logs", json=_work_log_body(user, company_a)).status_code == 200
     assert client.put(f"/work-logs/{work_log.id}", json=_work_log_body(other, company_a)).status_code == 200
-    # PR-05: el estado de membresia es solo de plataforma (PA). Un manager recibe 403 y el estado no cambia.
+    # R-MEM-10/11 (#139): el manager desactiva workers de su empresa activa; no cambia roles (403) ni managers (403).
     status_resp = client.put(f"/v2/companies/{company_a.id}/members/{other.id}/status", json={"is_active": False})
-    assert status_resp.status_code == 403, status_resp.text
-    assert status_resp.json()["detail"] == MSG_FORBIDDEN
+    assert status_resp.status_code == 200, status_resp.text
     member = db.query(models.CompanyMember).filter_by(user_id=other.id, company_id=company_a.id).one()
-    assert member.is_active is True
+    assert member.is_active is False
+    role_resp = client.put(f"/v2/companies/{company_a.id}/members/{other.id}/role", json={"role": "manager"})
+    assert role_resp.status_code == 403, role_resp.text
+    assert role_resp.json()["detail"] == MSG_FORBIDDEN
     # Escritura de membresia que el manager si tiene: tarifas de un miembro de su empresa gestionada.
     rates_resp = client.put(
         f"/v2/companies/{company_a.id}/members/{other.id}/rates",

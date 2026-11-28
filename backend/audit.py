@@ -27,6 +27,8 @@ class AuditAction:
     COMPANY_PLATFORM_SETTINGS_CHANGED = "company.platform_settings_changed"
     COMPANY_DEFINITIONS_CHANGED = "company.worklog_definitions_changed"
     MEMBER_ADDED = "member.added"
+    MEMBER_INVITED = "member.invited"
+    MEMBER_INVITATION_CANCELLED = "member.invitation_cancelled"
     MEMBER_DEACTIVATED = "member.deactivated"
     MEMBER_REACTIVATED = "member.reactivated"
     MEMBER_REMOVED = "member.removed"

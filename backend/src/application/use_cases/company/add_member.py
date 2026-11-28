@@ -9,6 +9,7 @@ from application.use_cases.company.common import (
     MemberDetail,
     member_snapshot,
 )
+from application.use_cases.company.plan_limits import ensure_member_limit_allows_addition
 from audit import AuditAction
 from domain.entities.company_member import CompanyMember, CompanyRole
 from domain.exceptions.domain_exceptions import EntityNotFoundException, ValidationDomainException
@@ -37,8 +38,9 @@ class AddMemberUseCase:
         self.audit_log = audit_log
 
     async def execute(self, *, actor_id: str, company_id: str, email: str) -> AddMemberResult:
-        """Miembro nuevo: `worker` activo. Inactivo: se reactiva forzando `worker` (M6). Activo: sin cambios."""
-        if await self.company_repo.get_by_id(company_id) is None:
+        """Miembro nuevo: `worker` activo. Inactivo: se reactiva conservando su rol previo (R-MEM-12). Activo: sin cambios."""
+        company = await self.company_repo.get_by_id(company_id)
+        if company is None:
             raise EntityNotFoundException(MSG_COMPANY_NOT_FOUND)
         user = await self.user_repo.get_by_email(email)
         if user is None:
@@ -49,6 +51,9 @@ class AddMemberUseCase:
         member = await self.member_repo.get_membership(user.id, company_id)
         if member is not None and member.is_active:
             return AddMemberResult(MemberDetail(member=member, user=user), created=False)
+
+        target_role = member.role if member is not None else CompanyRole.WORKER
+        await ensure_member_limit_allows_addition(company, self.member_repo, target_role=target_role)
 
         if member is None:
             member = CompanyMember(
@@ -62,7 +67,6 @@ class AddMemberUseCase:
         else:
             before = member_snapshot(member)
             member.is_active = True
-            member.role = CompanyRole.WORKER
             action, created = AuditAction.MEMBER_REACTIVATED, False
 
         # La auditoria va antes de save: el commit del repositorio confirma ambas a la vez.

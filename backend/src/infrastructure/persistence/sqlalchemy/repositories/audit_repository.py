@@ -32,6 +32,7 @@ class SqlAlchemyAuditLog(AuditLogPort):
         old_value: Optional[dict] = None,
         new_value: Optional[dict] = None,
         reason: Optional[str] = None,
+        extra: Optional[dict] = None,
     ) -> None:
         audit.record_audit(
             self.db,
@@ -42,4 +43,5 @@ class SqlAlchemyAuditLog(AuditLogPort):
             old_value=old_value,
             new_value=new_value,
             reason=reason,
+            extra=extra,
         )
