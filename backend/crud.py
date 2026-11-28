@@ -18,7 +18,13 @@ import models
 import schemas
 import work_log_rules
 from access_policy import PolicyError
-from contracts import MissingWorklogDatesError, MissingWorklogUnitError, compute_grouped_net_total, resolve_taxes
+from contracts import (
+    MissingWorklogDatesError,
+    MissingWorklogUnitError,
+    PlatformSettings,
+    compute_grouped_net_total,
+    resolve_taxes,
+)
 from redis_config import logger, redis_manager
 from sqlalchemy import distinct, func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -1112,6 +1118,41 @@ def _finish_updated_work_log(db: Session, db_work_log: models.WorkLog, commit: b
 # --- Company Membership Logic ---
 
 
+def ensure_company_member_limit(
+    db: Session,
+    company_id: Any,
+    *,
+    target_role: models.CompanyRole = models.CompanyRole.worker,
+) -> None:
+    """Comprueba el limite de monitores/responsables de `platform_settings` sobre miembros activos (R-MOD-22)."""
+    company = get_company(db, company_id)
+    if company is None:
+        return
+    raw_platform = (company.settings or {}).get("_platform") if isinstance(company.settings, dict) else None
+    limits = PlatformSettings.from_db(raw_platform).limits
+    if limits.max_monitors is None and limits.max_managers is None:
+        return
+
+    active_members = (
+        db.query(models.CompanyMember.role)
+        .filter(
+            models.CompanyMember.company_id == company.id,
+            models.CompanyMember.is_active == True,  # noqa: E712
+        )
+        .all()
+    )
+    if target_role == models.CompanyRole.worker and limits.max_monitors is not None:
+        active_workers = sum(1 for (role,) in active_members if role == models.CompanyRole.worker)
+        if active_workers >= limits.max_monitors:
+            raise PolicyError(409, "La empresa ha alcanzado el limite de monitores de su plan")
+    elif target_role in (models.CompanyRole.manager, models.CompanyRole.admin) and limits.max_managers is not None:
+        active_managers = sum(
+            1 for (role,) in active_members if role in (models.CompanyRole.manager, models.CompanyRole.admin)
+        )
+        if active_managers >= limits.max_managers:
+            raise PolicyError(409, "La empresa ha alcanzado el limite de responsables de su plan")
+
+
 def join_company(db: Session, user_id: str, company_id: str):
     """
     Adds a user to a company or returns existing membership.
@@ -1124,6 +1165,7 @@ def join_company(db: Session, user_id: str, company_id: str):
 
     member = get_company_member(db, user_id, company_id)
     if not member:
+        ensure_company_member_limit(db, company_id, target_role=models.CompanyRole.worker)
         new_member = models.CompanyMember(
             user_id=user_id,
             company_id=company_id,
@@ -1299,42 +1341,36 @@ def update_module(db: Session, module_id: str, data: schemas.AppModuleUpdate):
 _LIVE_SUBSCRIPTION_STATUSES = ("active", "trial")
 
 
-def _ensure_no_live_duplicate(db: Session, module_id, company_id, user_id, exclude_id=None) -> None:
-    """409 si ya hay otra suscripcion active/trial del mismo modulo para la misma empresa o usuario."""
+def _ensure_no_live_duplicate(db: Session, module_id, company_id, exclude_id=None) -> None:
+    """409 si ya hay otra suscripcion active/trial del mismo modulo para la misma empresa."""
     query = db.query(models.ModuleSubscription.id).filter(
         models.ModuleSubscription.module_id == module_id,
+        models.ModuleSubscription.company_id == company_id,
         models.ModuleSubscription.status.in_([models.SubscriptionStatus(s) for s in _LIVE_SUBSCRIPTION_STATUSES]),
         or_(models.ModuleSubscription.expires_at.is_(None), models.ModuleSubscription.expires_at > _dt.now(UTC)),
     )
-    if company_id is not None:
-        query = query.filter(models.ModuleSubscription.company_id == company_id)
-    else:
-        query = query.filter(models.ModuleSubscription.user_id == user_id)
     if exclude_id is not None:
         query = query.filter(models.ModuleSubscription.id != exclude_id)
     if query.first() is not None:
-        subject = "La empresa" if company_id is not None else "El usuario"
-        raise PolicyError(409, f"{subject} ya tiene este modulo activo")
+        raise PolicyError(409, "La empresa ya tiene este modulo activo")
 
 
 def create_subscription(db: Session, data: schemas.ModuleSubscriptionCreate):
-    """Crea una suscripción. Valida que solo company_id O user_id esté presente."""
-    if data.company_id and data.user_id:
-        raise ValueError("Una suscripción no puede tener company_id y user_id a la vez.")
-    if not data.company_id and not data.user_id:
-        raise ValueError("Una suscripción debe tener company_id o user_id.")
-
+    """Crea una suscripcion de empresa a un modulo activo (R-MOD-05, R-MOD-17)."""
     module = get_module_by_id(db, str(data.module_id))
-    if module is not None and module.target_scope in ("company", "user") and module.target_scope != data.scope:
-        raise PolicyError(422, f"El módulo solo admite suscripciones con scope '{module.target_scope}'.")
+    if module is None:
+        raise PolicyError(404, "Módulo no encontrado.")
+    if not module.is_active:
+        raise PolicyError(400, "No se puede suscribir un módulo inactivo.")
+    if get_company(db, data.company_id) is None:
+        raise PolicyError(404, "Empresa no encontrada.")
+
     if data.status in _LIVE_SUBSCRIPTION_STATUSES:
-        _ensure_no_live_duplicate(db, data.module_id, data.company_id, data.user_id)
+        _ensure_no_live_duplicate(db, data.module_id, data.company_id)
 
     db_sub = models.ModuleSubscription(
         module_id=data.module_id,
         company_id=data.company_id,
-        user_id=data.user_id,
-        scope=models.SubscriptionScope(data.scope),
         status=models.SubscriptionStatus(data.status),
         expires_at=data.expires_at,
         notes=data.notes,
@@ -1351,8 +1387,12 @@ def update_subscription(db: Session, sub_id: str, data: schemas.ModuleSubscripti
         return None
     update_data = data.model_dump(exclude_unset=True, by_alias=False)
     new_status = update_data.get("status")
-    if new_status in _LIVE_SUBSCRIPTION_STATUSES and new_status != db_sub.status.value:
-        _ensure_no_live_duplicate(db, db_sub.module_id, db_sub.company_id, db_sub.user_id, exclude_id=db_sub.id)
+    if new_status in _LIVE_SUBSCRIPTION_STATUSES:
+        module = get_module_by_id(db, str(db_sub.module_id))
+        if module is None or not module.is_active:
+            raise PolicyError(400, "No se puede activar una suscripción de un módulo inactivo.")
+        if new_status != db_sub.status.value:
+            _ensure_no_live_duplicate(db, db_sub.module_id, db_sub.company_id, exclude_id=db_sub.id)
     for key, value in update_data.items():
         if key == "status" and value:
             setattr(db_sub, key, models.SubscriptionStatus(value))
@@ -1363,65 +1403,36 @@ def update_subscription(db: Session, sub_id: str, data: schemas.ModuleSubscripti
     return db_sub
 
 
-def delete_subscription(db: Session, sub_id: str):
-    db_sub = db.query(models.ModuleSubscription).filter(models.ModuleSubscription.id == sub_id).first()
-    if db_sub:
-        db.delete(db_sub)
-        db.commit()
-    return db_sub
-
-
 def user_has_module(db: Session, user_id: str, company_id: str | None, code_name: str) -> bool:
     """
-    Comprueba si un usuario tiene acceso a un módulo.
-    Prioridad:
-      1. ¿Tiene el usuario una suscripción activa (personal)?
-      2. ¿Tiene la empresa del usuario una suscripción activa?
-    Una suscripción está activa si status == "active" o "trial"
-    Y no ha expirado (expires_at is NULL o expires_at > now).
+    Comprueba si la empresa activa tiene una suscripcion vigente al modulo (R-MOD-05, R-MOD-11, R-MOD-17).
+    Una suscripcion es vigente si status == 'active' o 'trial' y no ha expirado.
     """
+    if not company_id:
+        return False
+
     now = _dt.now(UTC)
     active_statuses = [models.SubscriptionStatus.active, models.SubscriptionStatus.trial]
 
-    # Buscar el módulo
     module = get_module_by_code(db, code_name)
     if not module or not module.is_active:
         return False
 
-    # 1. Suscripción personal del usuario
-    user_sub = (
+    company = db.query(models.Company).filter(models.Company.id == company_id).first()
+    if company is None or not company.is_active:
+        return False
+
+    company_sub = (
         db.query(models.ModuleSubscription)
         .filter(
-            models.ModuleSubscription.user_id == user_id,
+            models.ModuleSubscription.company_id == company_id,
             models.ModuleSubscription.module_id == module.id,
             models.ModuleSubscription.status.in_(active_statuses),
             or_(models.ModuleSubscription.expires_at.is_(None), models.ModuleSubscription.expires_at > now),
         )
         .first()
     )
-
-    if user_sub:
-        return True
-
-    # 2. Suscripción de empresa (se ignora si la empresa esta suspendida)
-    if company_id:
-        company = db.query(models.Company).filter(models.Company.id == company_id).first()
-        if company is None or not company.is_active:
-            return False
-        company_sub = (
-            db.query(models.ModuleSubscription)
-            .filter(
-                models.ModuleSubscription.company_id == company_id,
-                models.ModuleSubscription.module_id == module.id,
-                models.ModuleSubscription.status.in_(active_statuses),
-                or_(models.ModuleSubscription.expires_at.is_(None), models.ModuleSubscription.expires_at > now),
-            )
-            .first()
-        )
-        if company_sub:
-            return True
-
-    return False
+    return company_sub is not None
 def invalidate_dashboard_summary(company_id: Any):
     """
     Invalidates cached dashboard summary keys for a company.

@@ -2,7 +2,7 @@
 Módulos y Suscripciones SaaS.
 
 Gestión del catálogo de módulos de la plataforma y las suscripciones
-de empresa o usuario a dichos módulos.
+de empresa a dichos módulos.
 """
 
 from datetime import UTC, datetime
@@ -17,6 +17,7 @@ from access_policy import PolicyError
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from routers import deps
@@ -73,13 +74,12 @@ def update_module(
 @router.get("/subscriptions", response_model=None)
 def list_subscriptions(
     company_id: str | None = None,
-    user_id: str | None = None,
     module_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_verified_user),
 ):
     """
-    Lista suscripciones.
+    Lista suscripciones de empresa.
     Platform Admin puede ver todas.
     Manager puede ver las de su empresa activa, con la empresa embebida reducida a `id` y `name`.
     """
@@ -91,18 +91,15 @@ def list_subscriptions(
             raise PolicyError(403, access_policy.MSG_FORBIDDEN)
         ctx = deps.authorize(db, current_user, active_cid, min_role=access_policy.ROLE_MANAGER)
         company_id = ctx.company_id
-        user_id = None  # Managers cannot filter by user_id
 
     subs = (
         db.query(models.ModuleSubscription)
         .options(
             joinedload(models.ModuleSubscription.module),
             joinedload(models.ModuleSubscription.company),
-            joinedload(models.ModuleSubscription.user),
         )
         .filter(
             (models.ModuleSubscription.company_id == company_id) if company_id else True,
-            (models.ModuleSubscription.user_id == user_id) if user_id else True,
             (models.ModuleSubscription.module_id == module_id) if module_id else True,
         )
         .order_by(models.ModuleSubscription.created_at.desc())
@@ -119,8 +116,7 @@ def create_subscription(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.require_platform_admin),
 ):
-    """Crea una suscripción a un módulo (Platform Admin)."""
-    # Verify module exists
+    """Crea una suscripción de empresa a un módulo activo (Platform Admin)."""
     module = crud.get_module_by_id(db, str(data.module_id))
     if not module:
         raise HTTPException(status_code=404, detail="Módulo no encontrado.")
@@ -130,7 +126,6 @@ def create_subscription(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Reload with module relation
     db.refresh(sub)
     return sub
 
@@ -149,17 +144,6 @@ def update_subscription(
     return updated
 
 
-@router.delete("/subscriptions/{sub_id}")
-def delete_subscription(
-    sub_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(deps.require_platform_admin)
-):
-    """Elimina una suscripción (Platform Admin)."""
-    deleted = crud.delete_subscription(db, sub_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Suscripción no encontrada.")
-    return {"ok": True}
-
-
 # ─── Módulos del Usuario Actual ──────────────────────────────────────────────
 
 
@@ -170,15 +154,14 @@ def get_my_modules(
     current_user: models.User = Depends(auth.get_verified_user),
 ):
     """
-    Devuelve la lista de módulos activos a los que el usuario actual tiene acceso
-    (bien por suscripción personal o por suscripción de su empresa activa/proveída).
-    Útil para que el frontend sepa qué funciones mostrar.
+    Devuelve la lista de módulos activos de la empresa activa (R-MOD-16, R-MOD-17).
+    Sin empresa en contexto, o si la empresa está suspendida, devuelve [].
     """
     is_admin = deps.acting_platform_admin(current_user)
 
     effective_company_id = None
     if company_id and not is_admin:
-        # Empresa explicita: exige acceso (membresia activa). Si esta suspendida, solo cuentan las suscripciones personales
+        # Empresa explicita: exige acceso (membresia activa). Si esta suspendida, devuelve []
         facts = deps.load_company_facts(db, current_user, company_id)
         if not (facts.exists and facts.membership_active and not facts.is_active):
             effective_company_id = deps.authorize(
@@ -187,55 +170,27 @@ def get_my_modules(
     else:
         raw_company_id = company_id or getattr(current_user, "active_company_id", None)
         if raw_company_id:
-            # Empresa del token: si esta suspendida o ya no hay membresia, solo cuentan las suscripciones personales
             facts = deps.load_company_facts(db, current_user, raw_company_id)
             has_access = facts.membership_active or is_admin
             if facts.exists and facts.is_active and has_access:
                 effective_company_id = facts.company_id
 
-    from sqlalchemy import or_
+    if not effective_company_id:
+        return []
 
     now = datetime.now(UTC)
     active_statuses = [models.SubscriptionStatus.active, models.SubscriptionStatus.trial]
-
-    if is_admin:
-        if not effective_company_id:
-            # Platform Admin sin contexto de empresa tiene acceso a todos los módulos activos
-            return crud.get_modules(db, include_inactive=False)
-
-        # Platform Admin con contexto de empresa: solo módulos suscritos por la empresa
-        subs = (
-            db.query(models.ModuleSubscription)
-            .options(joinedload(models.ModuleSubscription.module))
-            .filter(
-                models.ModuleSubscription.company_id == effective_company_id,
-                models.ModuleSubscription.status.in_(active_statuses),
-                or_(models.ModuleSubscription.expires_at.is_(None), models.ModuleSubscription.expires_at > now),
-            )
-            .all()
-        )
-    else:
-        user_id = str(current_user.id)
-        # Subs activas del usuario o de su empresa
-        filters = [
+    subs = (
+        db.query(models.ModuleSubscription)
+        .options(joinedload(models.ModuleSubscription.module))
+        .filter(
+            models.ModuleSubscription.company_id == effective_company_id,
             models.ModuleSubscription.status.in_(active_statuses),
             or_(models.ModuleSubscription.expires_at.is_(None), models.ModuleSubscription.expires_at > now),
-        ]
-
-        user_or_company_filters = [models.ModuleSubscription.user_id == user_id]
-        if effective_company_id:
-            user_or_company_filters.append(models.ModuleSubscription.company_id == effective_company_id)
-
-        filters.append(or_(*user_or_company_filters))
-
-        subs = (
-            db.query(models.ModuleSubscription)
-            .options(joinedload(models.ModuleSubscription.module))
-            .filter(*filters)
-            .all()
         )
+        .all()
+    )
 
-    # Devolver los módulos únicos (puede haber sub personal + sub empresa del mismo módulo)
     seen = set()
     result = []
     for sub in subs:

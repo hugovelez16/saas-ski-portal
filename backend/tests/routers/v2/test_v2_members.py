@@ -1402,3 +1402,89 @@ def test_2fa_pending_token_rejected_on_company_endpoints(client, db, method, pat
 
     assert resp.status_code == 403, resp.text
     assert resp.json().get("detail") == "2FA Verification Required"
+
+
+def test_plan_limits_block_add_member_reactivate_role_promotion_and_join_company(client, db):
+    """R-MOD-22: superar max_monitors o max_managers bloquea alta, reactivacion, promocion y join_company."""
+    import crud
+    from access_policy import PolicyError
+
+    company = make_company(
+        db,
+        settings={"_platform": {"plan": "personalizado", "limits": {"max_monitors": 1, "max_managers": 1}}},
+    )
+    pa = make_user(db, role="admin")
+    manager = make_user(db)
+    worker = make_user(db)
+    inactive_worker = make_user(db)
+    outsider = make_user(db)
+    make_member(db, manager, company, role="manager", is_active=True)
+    make_member(db, worker, company, role="worker", is_active=True)
+    make_member(db, inactive_worker, company, role="worker", is_active=False)
+
+    as_user(client, pa)
+
+    # 1. Alta directa via /v2/admin/companies/{id}/members bloqueada (409)
+    add_resp = client.post(f"/v2/admin/companies/{company.id}/members", json={"email": outsider.email})
+    assert add_resp.status_code == 409, add_resp.text
+
+    # 2. Reactivacion via /v2/admin/companies/{id}/members/{uid}/status bloqueada (409)
+    react_resp = client.put(
+        f"/v2/admin/companies/{company.id}/members/{inactive_worker.id}/status",
+        json={"is_active": True},
+    )
+    assert react_resp.status_code == 409, react_resp.text
+
+    # 3. Promocion de worker a manager bloqueada por max_managers = 1 (409)
+    promo_resp = client.put(
+        f"/v2/admin/companies/{company.id}/members/{worker.id}/role",
+        json={"role": "manager"},
+    )
+    assert promo_resp.status_code == 409, promo_resp.text
+
+    # 4. crud.join_company y POST /v2/admin/users con company_id bloqueados (409)
+    with pytest.raises(PolicyError) as exc_info:
+        crud.join_company(db, str(outsider.id), str(company.id))
+    assert exc_info.value.status_code == 409
+
+    user_create_resp = client.post(
+        "/v2/admin/users",
+        json={
+            "email": "nuevo.monitor@sierra.es",
+            "firstName": "Nuevo",
+            "lastName": "Monitor",
+            "companyId": str(company.id),
+            "sendEmail": False,
+        },
+    )
+    assert user_create_resp.status_code == 409, user_create_resp.text
+    assert crud.get_user_by_email(db, "nuevo.monitor@sierra.es") is None
+
+
+def test_pista_verde_preset_enforces_ten_monitors_and_one_manager(client, db):
+    """R-MOD-22: asignar plan pista_verde aplica sus topes (10 monitores, 1 responsable) en altas e invitaciones."""
+    company = make_company(db, settings={"_platform": {"plan": "pista_verde"}})
+    pa = make_user(db, role="admin")
+    manager = make_user(db)
+    make_member(db, manager, company, role="manager", is_active=True)
+    for _ in range(10):
+        w = make_user(db)
+        make_member(db, w, company, role="worker", is_active=True)
+
+    candidate = make_user(db)
+    as_user(client, pa)
+
+    add_worker_resp = client.post(f"/v2/admin/companies/{company.id}/members", json={"email": candidate.email})
+    assert add_worker_resp.status_code == 409, add_worker_resp.text
+
+    # Promover un worker existente a manager falla porque pista_verde solo incluye 1 responsable
+    existing_worker = (
+        db.query(models.CompanyMember)
+        .filter_by(company_id=company.id, role=models.CompanyRole.worker, is_active=True)
+        .first()
+    )
+    promo_resp = client.put(
+        f"/v2/admin/companies/{company.id}/members/{existing_worker.user_id}/role",
+        json={"role": "manager"},
+    )
+    assert promo_resp.status_code == 409, promo_resp.text

@@ -13,7 +13,7 @@ from collections.abc import Iterable
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, Strict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, Strict, ValidationError, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +283,13 @@ class CompanySettings(BaseModel):
         return _tolerant_build(cls, raw, "settings")
 
 
+PLAN_PRESETS: dict[str, tuple[int | None, int | None]] = {
+    "pista_verde": (10, 1),
+    "pista_azul": (25, 2),
+    "pista_roja": (50, None),
+}
+
+
 class PlatformLimits(BaseModel):
     """Limites de plan de una empresa gestionados solo por el PA (R-EMP-45)."""
 
@@ -300,6 +307,14 @@ class PlatformSettings(BaseModel):
     plan: str | None = Field(None, min_length=1, max_length=60)
     limits: PlatformLimits = Field(default_factory=PlatformLimits)
     modules: dict[str, bool] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _apply_plan_preset(self) -> "PlatformSettings":
+        """Aplica los topes de monitores y responsables de planes comerciales (R-MOD-22)."""
+        if self.plan in PLAN_PRESETS:
+            max_monitors, max_managers = PLAN_PRESETS[self.plan]
+            self.limits = PlatformLimits(max_monitors=max_monitors, max_managers=max_managers)
+        return self
 
     @classmethod
     def from_db(cls, raw: dict | None) -> "PlatformSettings":

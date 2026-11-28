@@ -115,12 +115,13 @@ async def set_member_role(
     user_id: UUID,
     body: schemas.MemberRoleIn,
     actor: models.User = Depends(deps.require_platform_admin),
+    company_repo=Depends(v2_deps.get_company_repository),
     member_repo=Depends(v2_deps.get_member_repository),
     user_repo=Depends(v2_deps.get_user_repository),
     audit_log=Depends(v2_deps.get_audit_log),
 ):
     """Solo PA. Sin guardia de ultimo manager (E7)."""
-    detail = await SetMemberRoleUseCase(member_repo, user_repo, audit_log).execute(
+    detail = await SetMemberRoleUseCase(member_repo, user_repo, audit_log, company_repo).execute(
         actor_id=str(actor.id), company_id=str(company_id), user_id=str(user_id), role=body.role
     )
     return schemas.member_out(detail)

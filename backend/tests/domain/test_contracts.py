@@ -164,6 +164,32 @@ def test_platform_settings_from_db_filters_invalid_modules_with_warning(caplog):
     assert any(record.levelno == logging.WARNING for record in caplog.records)
 
 
+@pytest.mark.parametrize(
+    "plan, expected_monitors, expected_managers",
+    [
+        ("pista_verde", 10, 1),
+        ("pista_azul", 25, 2),
+        ("pista_roja", 50, None),
+    ],
+)
+def test_platform_settings_applies_commercial_plan_presets(plan, expected_monitors, expected_managers):
+    ps = contracts.PlatformSettings.model_validate({"plan": plan})
+    assert ps.limits.max_monitors == expected_monitors
+    assert ps.limits.max_managers == expected_managers
+
+    from_db = contracts.PlatformSettings.from_db({"plan": plan})
+    assert from_db.limits.max_monitors == expected_monitors
+    assert from_db.limits.max_managers == expected_managers
+
+
+def test_platform_settings_personalizado_keeps_custom_limits():
+    ps = contracts.PlatformSettings.model_validate(
+        {"plan": "personalizado", "limits": {"max_monitors": 35, "max_managers": 4}}
+    )
+    assert ps.limits.max_monitors == 35
+    assert ps.limits.max_managers == 4
+
+
 # --- WorklogDefinition ---
 
 

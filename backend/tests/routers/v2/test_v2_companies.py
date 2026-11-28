@@ -680,8 +680,6 @@ def test_delete_company_with_subscription_lists_subscriptions(client, db, world)
         models.ModuleSubscription(
             module_id=module.id,
             company_id=subscribed.id,
-            user_id=None,
-            scope=models.SubscriptionScope.company,
             status=models.SubscriptionStatus.active,
         )
     )
@@ -705,8 +703,6 @@ def test_delete_company_lists_all_blockers_separated_by_comma(client, db, world)
         models.ModuleSubscription(
             module_id=module.id,
             company_id=cid,
-            user_id=None,
-            scope=models.SubscriptionScope.company,
             status=models.SubscriptionStatus.active,
         )
     )
@@ -1498,8 +1494,6 @@ def test_worker_with_daily_report_module_in_two_companies_cannot_list_companies(
             models.ModuleSubscription(
                 module_id=module.id,
                 company_id=company.id,
-                user_id=None,
-                scope=models.SubscriptionScope.company,
                 status=models.SubscriptionStatus.active,
             )
         )
@@ -1722,3 +1716,37 @@ def test_delete_shift_type_blocked_with_work_logs_and_cleans_rates_when_unused(c
     pa_usage = client.get(f"/v2/admin/companies/{cid}/worklog-definitions/usage")
     assert pa_usage.status_code == 200, pa_usage.text
     assert pa_usage.json() == {"particular": {"work_logs_count": 1, "member_rates_count": 2}}
+
+
+@pytest.mark.parametrize(
+    "plan, expected_limits",
+    [
+        ("pista_verde", {"max_monitors": 10, "max_managers": 1}),
+        ("pista_azul", {"max_monitors": 25, "max_managers": 2}),
+        ("pista_roja", {"max_monitors": 50, "max_managers": None}),
+    ],
+)
+def test_pa_assigns_commercial_plan_presets_with_auto_limits(client, world, plan, expected_limits):
+    as_user(client, world.pa)
+
+    resp = client.put(
+        f"/v2/admin/companies/{world.company.id}",
+        json={"platform_settings": {"plan": plan}},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["platform_settings"]["plan"] == plan
+    assert resp.json()["platform_settings"]["limits"] == expected_limits
+
+
+def test_pa_assigns_personalizado_plan_with_custom_limits(client, world):
+    as_user(client, world.pa)
+
+    resp = client.put(
+        f"/v2/admin/companies/{world.company.id}",
+        json={"platform_settings": {"plan": "personalizado", "limits": {"max_monitors": 18, "max_managers": 3}}},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["platform_settings"]["plan"] == "personalizado"
+    assert resp.json()["platform_settings"]["limits"] == {"max_monitors": 18, "max_managers": 3}
