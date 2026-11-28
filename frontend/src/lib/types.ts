@@ -64,6 +64,14 @@ export interface CompanyFull extends Company {
 
 export type CompanyResponse = Company;
 
+/** Selector minimo de empresa (`GET /v2/me/companies`, R-ACC-81). */
+export interface MyCompany {
+    id: string;
+    name: string;
+    role: string;
+    isActive?: boolean;
+}
+
 /**
  * Payload de PUT /companies/:id (solo platform admin).
  * Reutiliza los campos de Company. `reason` es opcional y solo se registra en auditoria.

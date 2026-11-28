@@ -65,20 +65,15 @@ async def create_company(
     return schemas.company_full(company)
 
 
-@router.get("/me/companies")
+@router.get("/me/companies", response_model=list[schemas.MyCompanyOut])
 async def read_my_companies(
     current_user: models.User = Depends(get_verified_user),
     company_repo=Depends(v2_deps.get_company_repository),
     member_repo=Depends(v2_deps.get_member_repository),
 ):
-    """PA actuando: todas las empresas (vista completa). Resto: sus membresias activas (vista reducida)."""
-    acting = deps.acting_platform_admin(current_user)
-    views = await ListMyCompaniesUseCase(company_repo, member_repo).execute(
-        user_id=str(current_user.id), as_platform_admin=acting
-    )
-    if acting:
-        return [schemas.company_full(view.company).model_dump(mode="json") for view in views]
-    return [schemas.company_reduced(view).model_dump(mode="json") for view in views]
+    """Selector de empresas: devuelve solo `id`, `name` y `role` de las membresias activas (R-ACC-81)."""
+    views = await ListMyCompaniesUseCase(company_repo, member_repo).execute(user_id=str(current_user.id))
+    return [schemas.my_company_out(view) for view in views]
 
 
 @router.get("/users/{user_id}/companies")

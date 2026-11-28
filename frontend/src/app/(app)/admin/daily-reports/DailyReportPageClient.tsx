@@ -28,7 +28,7 @@ export default function DailyReportPage() {
 
     // 1. Lista de empresas (selector y nombres)
     const { data: companies = [], isLoading: loadingCompanies } = useQuery({
-        queryFn: getCompaniesDetailed,
+        queryFn: () => getCompaniesDetailed({ asAdmin: true }),
         queryKey: ["companies-detailed-admin"],
     });
 

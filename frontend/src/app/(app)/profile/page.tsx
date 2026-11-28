@@ -36,7 +36,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { getUserRates, updateUserRates } from "@/lib/api/settings";
-import { getMyCompanies } from "@/lib/api/companies";
+import { getCompany } from "@/lib/api/companies";
 import { updateMe, changePassword } from "@/lib/api/users";
 import { useAuth } from "@/context/AuthContext";
 import { Company, CompanyMember } from "@/lib/types";
@@ -75,13 +75,12 @@ export default function ProfilePage() {
 
 
 
-  const { data: myCompanies = [] } = useQuery({
-    queryKey: ["myCompanies"],
-    queryFn: getMyCompanies,
-  });
-
   const activeCompanyId = user?.activeCompanyId;
-  const currentCompany = myCompanies.find((c: Company) => c.id === activeCompanyId);
+  const { data: currentCompany } = useQuery({
+    queryKey: ["company", activeCompanyId],
+    queryFn: () => getCompany(activeCompanyId as string),
+    enabled: Boolean(activeCompanyId),
+  });
   const worklogDefinitions = currentCompany?.worklogDefinitions || {};
 
   const isCompanyManaged = Boolean(currentCompany?.isManaged);

@@ -32,7 +32,7 @@ vi.mock("@/lib/api/settings", () => ({
 }));
 
 vi.mock("@/lib/api/companies", () => ({
-    getMyCompanies: vi.fn(async () => state.companies),
+    getCompany: vi.fn(async () => state.companies[0]),
 }));
 
 vi.mock("@/lib/api/users", () => ({

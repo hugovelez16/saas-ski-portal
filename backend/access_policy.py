@@ -14,6 +14,9 @@ ROLE_WORKER = "worker"
 VIEW_AS_ROLES = frozenset({ROLE_WORKER, ROLE_MANAGER})
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 VIEW_AS_WRITE_ALLOWLIST = frozenset({"/auth/switch-scope", "/logout", "/refresh-token"})
+IMPERSONATION_WRITE_ALLOWLIST = frozenset(
+    {"/auth/switch-scope", "/logout", "/admin/stop-impersonation", "/v2/admin/stop-impersonation"}
+)
 
 MSG_NO_ACCESS = "No tienes acceso a esta empresa"
 MSG_FORBIDDEN = "No tienes permisos para esta accion"
@@ -21,6 +24,7 @@ MSG_SUSPENDED = "Empresa inactiva o suspendida"
 MSG_SWITCH_COMPANY = "Cambia a esta empresa para gestionarla"
 MSG_MANAGED_READONLY = "En empresas gestionadas solo el equipo gestor puede modificar turnos y tarifas"
 MSG_VIEW_AS_READONLY = "Modo 'ver como' de solo lectura: sal del modo para modificar datos"
+MSG_IMPERSONATION_READONLY = "Modo suplantacion de solo lectura: sal de la suplantacion para modificar datos"
 
 _ROLE_RANK = {ROLE_WORKER: 1, ROLE_MANAGER: 2}
 
@@ -54,6 +58,14 @@ def normalize_member_role(role: str | None) -> str | None:
 def assert_view_as_read_only(view_as: str | None, method: str, path: str) -> None:
     if view_as and method.upper() not in SAFE_METHODS and path not in VIEW_AS_WRITE_ALLOWLIST:
         raise PolicyError(403, MSG_VIEW_AS_READONLY)
+
+
+def assert_impersonation_read_only(token_scope: str | None, method: str, path: str) -> None:
+    """En suplantacion solo se admiten metodos seguros o la lista blanca de salida/cambio de empresa (R-ACC-66)."""
+    if token_scope == "impersonated" and method.upper() not in SAFE_METHODS:
+        normalized_path = path.removeprefix("/api") if path.startswith("/api/") else path
+        if path not in IMPERSONATION_WRITE_ALLOWLIST and normalized_path not in IMPERSONATION_WRITE_ALLOWLIST:
+            raise PolicyError(403, MSG_IMPERSONATION_READONLY)
 
 
 def _rank(role: str | None) -> int:

@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation"
 import { format, subMonths, addMonths } from "date-fns"
 import { es } from "date-fns/locale"
 import api from "@/lib/api"
-import { getMyCompanies } from "@/lib/api/companies"
+import { getCompany } from "@/lib/api/companies"
 import { getUserRates } from "@/lib/api/settings"
 import { WorkLog } from "@/lib/types"
 import { getWorkLogs } from "@/lib/api/work-logs"
@@ -46,11 +46,12 @@ export default function DashboardPage() {
     enabled: !!user,
   });
 
-  const { data: myCompanies = [] } = useQuery({
-    queryKey: ["myCompanies"],
-    queryFn: getMyCompanies,
-    enabled: !!user,
+  const { data: activeCompany } = useQuery({
+    queryKey: ["company", user?.activeCompanyId],
+    queryFn: () => getCompany(user!.activeCompanyId!),
+    enabled: Boolean(user?.activeCompanyId),
   });
+  const activeCompanies = activeCompany ? [activeCompany] : [];
 
   const { data: userRates = [] } = useQuery({
     queryKey: ["userRates"],
@@ -113,7 +114,7 @@ export default function DashboardPage() {
         <TabsContent value="overview" className="space-y-4 animate-in fade-in-50 duration-300">
           <OverviewV3
             workLogs={workLogs}
-            companies={myCompanies}
+            companies={activeCompanies}
             activeCompanyId={user?.activeCompanyId}
             onAddRecord={() => { }}
             onNavigate={setActiveTab}
@@ -129,7 +130,7 @@ export default function DashboardPage() {
           <AnalyticsV3
             workLogs={workLogs}
             selectedDate={selectedDate}
-            companies={myCompanies}
+            companies={activeCompanies}
             activeCompanyId={user?.activeCompanyId}
           />
         </TabsContent>
@@ -156,7 +157,7 @@ export default function DashboardPage() {
         log={selectedLog}
         open={isDetailsOpen}
         onOpenChange={setIsDetailsOpen}
-        companies={myCompanies}
+        companies={activeCompanies}
         userSettings={
           selectedLog
             ? userRates.find(r => r.companyId === selectedLog.companyId) || null

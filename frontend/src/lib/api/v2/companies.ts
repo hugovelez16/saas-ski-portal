@@ -7,6 +7,7 @@ import {
     CompanyReduced,
     CompanyUpdateV2,
     ListCompaniesParams,
+    MyCompanyItem,
     Page,
 } from "@/lib/api/v2/types";
 
@@ -17,8 +18,13 @@ export const listCompanies = async (params?: ListCompaniesParams): Promise<Page<
 };
 
 /** GET /v2/companies/{companyId}. Devuelve vista completa o reducida segun el rol. */
-export const getCompany = async (companyId: string): Promise<CompanyFull | CompanyReduced> => {
-    const response = await api.get<CompanyFull | CompanyReduced>(`/v2/companies/${companyId}`);
+export const getCompany = async (
+    companyId: string,
+    config?: { meta?: { silent?: boolean } },
+): Promise<CompanyFull | CompanyReduced> => {
+    const response = config
+        ? await api.get<CompanyFull | CompanyReduced>(`/v2/companies/${companyId}`, config)
+        : await api.get<CompanyFull | CompanyReduced>(`/v2/companies/${companyId}`);
     return response.data;
 };
 
@@ -39,9 +45,9 @@ export const deleteCompany = async (companyId: string): Promise<void> => {
     await api.delete(`/v2/companies/${companyId}`);
 };
 
-/** GET /v2/me/companies. Empresas del usuario autenticado. */
-export const listMyCompanies = async (): Promise<(CompanyFull | CompanyReduced)[]> => {
-    const response = await api.get<(CompanyFull | CompanyReduced)[]>("/v2/me/companies");
+/** GET /v2/me/companies. Empresas activas del usuario autenticado (solo id, name y role). */
+export const listMyCompanies = async (): Promise<MyCompanyItem[]> => {
+    const response = await api.get<MyCompanyItem[]>("/v2/me/companies");
     return response.data;
 };
 

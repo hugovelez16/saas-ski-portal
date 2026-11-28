@@ -16,6 +16,7 @@ from contracts import (
     CompanySettings,
     TaxConfig,
     WorklogDefinitions,
+    validate_allowed_email_domain,
 )
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -180,6 +181,11 @@ class UserBase(CamelModel):
     first_name: str | None = None
     last_name: str | None = None
 
+    @field_validator("email")
+    @classmethod
+    def _validate_email_domain(cls, value: EmailStr) -> str:
+        return validate_allowed_email_domain(str(value))
+
 
 class UserCreate(UserBase):
     """Schema for creating a new user (registration)."""
@@ -217,6 +223,13 @@ class UserUpdate(CamelModel):
     email: EmailStr | None = None
     role: Literal["admin", "user"] | None = None
     is_active: bool | None = None
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email_domain(cls, value: EmailStr | None) -> str | None:
+        if value is None:
+            return None
+        return validate_allowed_email_domain(str(value))
 
 
 class UserSelfUpdate(CamelModel):
@@ -374,6 +387,7 @@ class TokenData(CamelModel):
     scope: str = "full"
     email: EmailStr | None = None
     admin_user_id: str | None = None
+    exp: float | int | None = None
 
 
 class SessionResponse(CamelModel):

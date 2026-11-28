@@ -55,7 +55,7 @@ def read_users_me(
     user_data.active_company_id = getattr(current_user, "active_company_id", None)
     user_data.active_role = getattr(current_user, "active_role", None)
     user_data.view_as = getattr(current_user, "view_as", None)
-    user_data.is_read_only_view = bool(user_data.view_as)
+    user_data.is_read_only_view = bool(user_data.view_as) or is_impersonated
 
     return user_data
 

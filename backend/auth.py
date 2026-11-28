@@ -158,11 +158,17 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(
+    data: dict, expires_delta: timedelta | None = None, expires_at: datetime | None = None
+):
     """Creates a JWT access token with an expiration time."""
     to_encode = data.copy()
     now = datetime.now(UTC)
-    expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = (
+        expires_at
+        if expires_at is not None
+        else now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    )
     # Added jti for revocation support
     to_encode.update({"exp": expire, "iat": now, "type": "access", "jti": secrets.token_hex(16)})
     return jwt.encode(to_encode, PRIVATE_KEY, algorithm=ALGORITHM)
@@ -330,6 +336,7 @@ def _attach_context(db: Session, user: models.User, token_data: schemas.TokenDat
     user.active_company_id = token_data.company_id
     user.token_scope = token_data.scope
     user.admin_user_id = token_data.admin_user_id
+    user.token_exp = token_data.exp
 
     user.view_as = None
     if user.is_platform_admin and token_data.company_id and view_as_claim in access_policy.VIEW_AS_ROLES:
@@ -337,6 +344,9 @@ def _attach_context(db: Session, user: models.User, token_data: schemas.TokenDat
     if request is not None:
         try:
             access_policy.assert_view_as_read_only(user.view_as, request.method, request.scope["path"])
+            access_policy.assert_impersonation_read_only(
+                token_data.scope, request.method, request.scope["path"]
+            )
         except access_policy.PolicyError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -381,6 +391,7 @@ async def get_current_user(token: str = Depends(get_token_from_request), db: Ses
             company_id=payload.get("cid"),
             scope=payload.get("scope", "full"),
             admin_user_id=payload.get("admin_user_id"),
+            exp=payload.get("exp"),
         )
         view_as_claim = payload.get("view_as")
     except JWTError:
@@ -444,6 +455,7 @@ async def get_verified_user(
             company_id=payload.get("cid"),
             scope=payload.get("scope", "full"),
             admin_user_id=payload.get("admin_user_id"),
+            exp=payload.get("exp"),
         )
         view_as_claim = payload.get("view_as")
     except JWTError:
