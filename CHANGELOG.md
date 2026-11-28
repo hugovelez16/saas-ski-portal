@@ -49,6 +49,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 - `deploy-prod` deja de desplegar por webhook y crea el tag git `vX.Y.Z`; `docker-compose.prod.yml` exige `IMAGE_TAG`, y el despliegue y el rollback de produccion se hacen cambiando esa variable en Komodo (`docs/operaciones/despliegue.md`, ADR-0001) (#111)
 
 ### Corregido
+- **Tarifas, decimales exactos, impuestos y netos de periodo**: calculo integro con `Decimal` y redondeo `ROUND_HALF_UP` en `calculate_dynamic_work_log` (`R-TAR-14`), rechazo con HTTP 422 si la suma efectiva de impuestos supera 100 % con suma y aviso en el editor frontend (`R-TAR-16`), restriccion de impuestos propios con nombre nuevo a empresas autonomas conservando sin edicion los existentes al pasar a gestionada (`R-ACC-74`, `R-TAR-08`), calculo de netos de periodo agrupados por trabajador y conjunto efectivo de impuestos en dashboard y billing (`R-TAR-27`, `R-TAR-30`, `R-TUR-25`) e inclusion de miembros inactivos con turnos en `get_billing_summary` (`R-TAR-29`) (#141)
 - **Refresh de sesion del PA**: `POST /refresh-token` comprueba que la empresa del claim `cid` sigue existiendo cuando el usuario es administrador de plataforma; si fue eliminada, emite el nuevo access token en contexto neutro (sin `cid` ni `view_as`), conservandolo si existe aunque este suspendida (#109)
 
 ## [0.28.0] - 2026-11-22
