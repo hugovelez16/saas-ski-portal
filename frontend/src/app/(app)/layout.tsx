@@ -34,12 +34,6 @@ const MODULE_SIDEBAR_REGISTRY: Record<string, {
         icon: FileText,
         allowedRoles: ["manager", "worker"],
     },
-    "billing": {
-        href: "/manager/billing",
-        label: "Facturación",
-        icon: Banknote,
-        allowedRoles: ["manager"],
-    },
     "reports": {
         href: "/reports",
         label: "Informes",
@@ -134,13 +128,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
             managerItems.push(
                 { href: "/manager/users", label: "Usuarios", icon: Users },
-                { href: "/manager/shifts", label: "Turnos", icon: CalendarDays }
+                { href: "/manager/shifts", label: "Turnos", icon: CalendarDays },
+                { href: "/manager/billing", label: "Facturación", icon: Banknote }
             );
-
-            const billingItem = activeModuleItems.find(item => item.codeName === "billing");
-            if (billingItem) {
-                managerItems.push(billingItem);
-            }
 
             const reportsItem = activeModuleItems.find(item => item.codeName === "reports");
             if (reportsItem) {
@@ -203,13 +193,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
             managerItems.push(
                 { href: "/manager/users", label: "Usuarios", icon: Users },
-                { href: "/manager/shifts", label: "Turnos", icon: CalendarDays }
+                { href: "/manager/shifts", label: "Turnos", icon: CalendarDays },
+                { href: "/manager/billing", label: "Facturación", icon: Banknote }
             );
-
-            const billingItem = activeModuleItems.find(item => item.codeName === "billing");
-            if (billingItem) {
-                managerItems.push(billingItem);
-            }
 
             const reportsItem = activeModuleItems.find(item => item.codeName === "reports");
             if (reportsItem) {

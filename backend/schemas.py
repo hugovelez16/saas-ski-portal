@@ -679,6 +679,14 @@ class WorkLogSummaryResponse(CamelModel):
     by_user: list[WorkLogUserTotals]
 
 
+class WorkLogReportResponse(CamelModel):
+    """Respuesta combinada de turnos y resumen para el modulo de informes (R-MOD-15)."""
+
+    items: list[WorkLogResponse]
+    total: int
+    summary: WorkLogSummaryResponse
+
+
 class AuditLogItem(CamelModel):
     id: UUID
     action: str

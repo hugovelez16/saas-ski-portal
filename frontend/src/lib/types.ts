@@ -508,4 +508,11 @@ export interface WorkLogSummary {
     byUser: WorkLogUserTotals[];
 }
 
+/** Respuesta combinada de GET /work-logs/reports (R-MOD-15). */
+export interface WorkLogReportResponse {
+    items: WorkLog[];
+    total: number;
+    summary: WorkLogSummary;
+}
+
 
