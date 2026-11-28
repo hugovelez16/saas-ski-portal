@@ -14,6 +14,7 @@ from uuid import UUID
 from contracts import (
     MEMBER_SETTINGS_ALLOWED_KEYS,
     CompanySettings,
+    PlatformSettings,
     TaxConfig,
     WorklogDefinitions,
     validate_allowed_email_domain,
@@ -315,14 +316,21 @@ class CompanyBase(CamelModel):
 
 
 def read_company_settings(raw: Any) -> dict[str, Any]:
-    """
-    Settings para respuestas de empresa: lectura tolerante con defaults aplicados.
-    Las claves de miembro (lista blanca) se conservan porque la vista de empresa de la API v2 las fusiona aqui.
-    """
+    """Settings de empresa para respuestas: lectura tolerante con defaults aplicados."""
     source = raw if isinstance(raw, dict) else {}
     member_part = {key: value for key, value in source.items() if key in MEMBER_SETTINGS_ALLOWED_KEYS}
-    company_part = {key: value for key, value in source.items() if key not in MEMBER_SETTINGS_ALLOWED_KEYS}
+    company_part = {
+        key: value
+        for key, value in source.items()
+        if key not in MEMBER_SETTINGS_ALLOWED_KEYS and key != "_platform"
+    }
     return {**CompanySettings.from_db(company_part).model_dump(mode="json"), **member_part}
+
+
+def read_company_platform_settings(raw: Any) -> dict[str, Any]:
+    """Ajustes de plataforma para respuestas del PA: lectura tolerante con defaults aplicados."""
+    source = raw if isinstance(raw, dict) else {}
+    return PlatformSettings.from_db(source).model_dump(mode="json")
 
 
 class Company(CompanyBase):

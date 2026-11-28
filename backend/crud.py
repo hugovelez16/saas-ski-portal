@@ -89,11 +89,14 @@ class UnknownWorkLogTypeError(ValueError):
     """El tipo de turno no existe en worklog_definitions de la empresa (el router lo traduce a 400, R-TUR-13)."""
 
 
-def _resolve_worklog_type_def(defs: dict | None, work_type: Any) -> dict:
+def _resolve_worklog_type_def(defs: dict | None, work_type: Any, *, require_active: bool = True) -> dict:
     key = work_type.value if hasattr(work_type, "value") else str(work_type)
     if not isinstance(defs, dict) or key not in defs or not isinstance(defs[key], dict):
         raise UnknownWorkLogTypeError(f"El tipo de turno '{key}' no existe en la configuracion de la empresa.")
-    return defs[key]
+    type_def = defs[key]
+    if require_active and type_def.get("is_active") is False:
+        raise UnknownWorkLogTypeError(f"El tipo de turno '{key}' esta desactivado en la empresa.")
+    return type_def
 
 
 def get_company_member(db: Session, user_id: Any, company_id: Any, *, only_active: bool = False):
@@ -1018,7 +1021,7 @@ def _compute_updated_work_log_values(
         member = get_company_member(db, owner_id, str(company_id), only_active=True)
         if member is None:
             raise PolicyError(403, MSG_NO_ACTIVE_MEMBERSHIP)
-        type_def = _resolve_worklog_type_def(defs, work_type)
+        type_def = _resolve_worklog_type_def(defs, work_type, require_active=type_changed)
         type_rate = (member.rates_config or {}).get(work_type, {})
         tax_config = company.tax_config if company else None
     else:
@@ -1026,7 +1029,11 @@ def _compute_updated_work_log_values(
         # Un snapshot sin esos datos (turno antiguo) cae a los vigentes.
         member = get_company_member(db, owner_id, str(company_id))
         snap_def = snapshot.get("definition")
-        type_def = snap_def if isinstance(snap_def, dict) else _resolve_worklog_type_def(defs, work_type)
+        type_def = (
+            snap_def
+            if isinstance(snap_def, dict)
+            else _resolve_worklog_type_def(defs, work_type, require_active=False)
+        )
         type_rate = snapshot.get("rate_applied")
         if not isinstance(type_rate, dict):
             type_rate = (member.rates_config or {}).get(work_type, {}) if member else {}

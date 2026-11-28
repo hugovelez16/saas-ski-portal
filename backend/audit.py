@@ -24,6 +24,7 @@ class AuditAction:
     COMPANY_DELETED = "company.deleted"
     COMPANY_TAX_CONFIG_CHANGED = "company.tax_config_changed"
     COMPANY_SETTINGS_CHANGED = "company.settings_changed"
+    COMPANY_PLATFORM_SETTINGS_CHANGED = "company.platform_settings_changed"
     COMPANY_DEFINITIONS_CHANGED = "company.worklog_definitions_changed"
     MEMBER_ADDED = "member.added"
     MEMBER_DEACTIVATED = "member.deactivated"

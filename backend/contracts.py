@@ -259,50 +259,8 @@ def _tolerant_build(model_cls: type[BaseModel], raw: Any, path: str) -> BaseMode
     return model_cls.model_validate(values)
 
 
-class BusinessLogic(BaseModel):
-    """Reglas de negocio de la empresa (clave `business_logic` de CompanySettings)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    price_type: Literal["net", "gross"] = "net"
-    """Tipo: Literal["net", "gross"]. Default "net".
-    Solo afecta a la vista del dashboard (P-10); no cambia ningun calculo del backend."""
-
-
-class WorkerExperience(BaseModel):
-    """Experiencia de registro de jornadas para trabajadores (clave `worker_experience`)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    input_mode: Literal["manual_single", "timer", "bulk"] = "manual_single"
-    """Tipo: Literal["manual_single", "timer", "bulk"]. Default "manual_single".
-    Modo de introduccion de jornadas que muestra la interfaz al trabajador."""
-
-
-class UiLabels(BaseModel):
-    """Etiquetas personalizables de la interfaz (dentro de `ui_customization.labels`)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    worklog: str | None = Field(None, max_length=60)
-    """Tipo: str | None, maximo 60 caracteres. Default None (etiqueta por defecto del producto)."""
-
-    client: str | None = Field(None, max_length=60)
-    """Tipo: str | None, maximo 60 caracteres. Default None (etiqueta por defecto del producto)."""
-
-
-class UiCustomization(BaseModel):
-    """Personalizacion visual de la empresa (clave `ui_customization`)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    labels: UiLabels = Field(default_factory=UiLabels)
-    """Tipo: UiLabels. Default: UiLabels sin etiquetas personalizadas."""
-
-
 class CompanySettings(BaseModel):
-    """
-    Configuracion global de una empresa (columna `companies.settings`).
+    """Configuracion de empresa editable por el manager y el PA (columna `companies.settings`).
 
     Las claves desconocidas se rechazan al validar (extra="forbid"); al leer
     desde BD se usa `from_db`, que las descarta con un warning.
@@ -310,55 +268,72 @@ class CompanySettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    business_logic: BusinessLogic = Field(default_factory=BusinessLogic)
-    """Clave `business_logic`. Tipo: BusinessLogic. Default: BusinessLogic(price_type="net").
-    Reglas de negocio; `price_type` solo afecta a la vista del dashboard (P-10)."""
-
-    worker_experience: WorkerExperience = Field(default_factory=WorkerExperience)
-    """Clave `worker_experience`. Tipo: WorkerExperience. Default: input_mode="manual_single".
-    Comportamiento de registro de jornadas para trabajadores."""
-
-    ui_customization: UiCustomization = Field(default_factory=UiCustomization)
-    """Clave `ui_customization`. Tipo: UiCustomization. Default: sin etiquetas personalizadas.
-    Personalizacion de textos de la interfaz."""
-
-    modules: dict[str, bool] = Field(default_factory=dict)
-    """Clave `modules`. Tipo: dict[str, bool]. Default: {}.
-    Activacion de modulos de la empresa por codigo de modulo."""
-
-    allowed_rates: list[str] | None = None
-    """Clave `allowed_rates`. Tipo: list[str] | None. Default: None (sin restriccion).
-    Tipos de turno que puede usar la empresa; None no restringe."""
+    default_is_gross: bool = False
+    """Valor de bruto/neto por defecto que se copia a los miembros nuevos (R-EMP-45, R-EMP-46)."""
 
     @classmethod
     def from_db(cls, raw: dict | None) -> "CompanySettings":
-        """
-        Lectura tolerante del JSONB de BD. Nunca lanza excepcion:
-        - las claves desconocidas (tambien dentro de subobjetos) se descartan con warning;
-        - un valor de tipo invalido cae al default de ese campo con warning.
-        """
+        """Lectura tolerante del JSONB de BD. Nunca lanza excepcion."""
         if not raw:
             return cls()
+        if isinstance(raw, dict) and "_platform" in raw:
+            raw = {k: v for k, v in raw.items() if k != "_platform"}
+            if not raw:
+                return cls()
         return _tolerant_build(cls, raw, "settings")
 
-    def ui_view(self) -> dict[str, Any]:
-        """Parte de interfaz para la vista reducida (PR-13)."""
-        return {
-            "worker_experience": self.worker_experience.model_dump(),
-            "ui_customization": self.ui_customization.model_dump(),
-            "modules": dict(self.modules),
-            "business_logic": {"price_type": self.business_logic.price_type},
-        }
+
+class PlatformLimits(BaseModel):
+    """Limites de plan de una empresa gestionados solo por el PA (R-EMP-45)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_monitors: int | None = Field(None, ge=0)
+    max_managers: int | None = Field(None, ge=0)
+
+
+class PlatformSettings(BaseModel):
+    """Ajustes de plataforma de una empresa: plan, limites y modulos (solo PA, R-EMP-45, R-EMP-49)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    plan: str | None = Field(None, min_length=1, max_length=60)
+    limits: PlatformLimits = Field(default_factory=PlatformLimits)
+    modules: dict[str, bool] = Field(default_factory=dict)
+
+    @classmethod
+    def from_db(cls, raw: dict | None) -> "PlatformSettings":
+        """Lectura tolerante del bloque de plataforma. Nunca lanza excepcion."""
+        if not raw:
+            return cls()
+        return _tolerant_build(cls, raw, "platform_settings")
 
 
 class WorklogDefinition(BaseModel):
     """Definicion de un tipo de turno (valor de `companies.worklog_definitions`)."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     unit: Literal["hours", "days", "fixed"]
     label: str = Field(min_length=1, max_length=60)
-    fields: list[dict[str, Any]] = Field(default_factory=list)
+    options: list[str] = Field(default_factory=list)
+    is_active: Annotated[bool, Strict()] = True
+
+    @field_validator("options")
+    @classmethod
+    def _validate_options(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for raw in value:
+            if not isinstance(raw, str):
+                raise ValueError("Cada opcion debe ser texto")
+            opt = raw.strip()
+            if not 1 <= len(opt) <= WORKLOG_KEY_MAX:
+                raise ValueError(f"Cada opcion debe tener entre 1 y {WORKLOG_KEY_MAX} caracteres")
+            if opt not in seen:
+                seen.add(opt)
+                cleaned.append(opt)
+        return cleaned
 
 
 class WorklogDefinitions(RootModel[dict[str, WorklogDefinition]]):

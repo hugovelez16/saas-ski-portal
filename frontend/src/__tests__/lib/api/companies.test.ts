@@ -5,6 +5,9 @@ import {
     updateCompany,
     getCompanies,
     getCompany,
+    getCompanyManagerSettings,
+    updateCompanyManagerSettings,
+    getWorklogDefinitionsUsage,
     getCompaniesDetailed,
     getMyCompanies,
     updateMemberStatus,
@@ -34,10 +37,10 @@ const mockedApi = vi.mocked(api);
 
 const REDUCED_COMPANY_KEYS = [
     'id', 'name', 'isManaged', 'role', 'isActiveMember', 'ratesConfig',
-    'worklogDefinitions', 'taxConfig', 'settings'
+    'worklogDefinitions', 'taxConfig'
 ].sort();
 
-// Respuesta v2 (snake_case) de la vista reducida.
+// Respuesta v2 (snake_case) de la vista reducida (sin settings ni platform_settings).
 const reducedCompanyV2 = {
     id: 'c-1',
     name: 'Escuela 1',
@@ -47,12 +50,6 @@ const reducedCompanyV2 = {
     rates_config: {},
     worklog_definitions: {},
     tax_config: { iva: 21 },
-    settings: {
-        worker_experience: { input_mode: 'timer' },
-        ui_customization: { labels: {} },
-        modules: { reports: true },
-        business_logic: { price_type: 'net' },
-    },
 };
 
 const memberV2 = {
@@ -149,15 +146,61 @@ describe('Companies API Client', () => {
         expect(result.isActive).toBe(true);
     });
 
-    it('getCompany should keep the reduced view shape without PA-only fields', async () => {
+    it('getCompany should keep the reduced view shape without PA-only fields or settings', async () => {
         (mockedApi.get as any).mockResolvedValue({ data: reducedCompanyV2 });
 
         const result: CompanyResponse = await getCompany('c-1');
         expect(Object.keys(result).sort()).toEqual(REDUCED_COMPANY_KEYS);
         expect(result).not.toHaveProperty('isActive');
+        expect(result).not.toHaveProperty('settings');
+        expect(result).not.toHaveProperty('platformSettings');
         expect(result).not.toHaveProperty('createdAt');
         expect(result).not.toHaveProperty('updatedAt');
-        expect(result.settings).not.toHaveProperty('allowed_rates');
+    });
+
+    it('manager settings y usage endpoints mapean camelCase y usan rutas esperadas', async () => {
+        (mockedApi.get as any).mockResolvedValueOnce({
+            data: {
+                id: 'c-1',
+                name: 'Escuela 1',
+                tax_config: { ss: 0.06 },
+                worklog_definitions: { particular: { unit: 'hours', label: 'Particular', options: [], is_active: true } },
+                settings: { default_is_gross: true },
+            },
+        });
+        const settings = await getCompanyManagerSettings('c-1');
+        expect(mockedApi.get).toHaveBeenCalledWith('/v2/companies/c-1/settings');
+        expect(settings.settings).toEqual({ default_is_gross: true });
+
+        (mockedApi.put as any).mockResolvedValueOnce({
+            data: {
+                id: 'c-1',
+                name: 'Escuela 1',
+                tax_config: { ss: 0.07 },
+                worklog_definitions: {},
+                settings: { default_is_gross: false },
+            },
+        });
+        const updated = await updateCompanyManagerSettings('c-1', {
+            settings: { default_is_gross: false },
+            tax_config: { ss: 0.07 },
+        });
+        expect(mockedApi.put).toHaveBeenCalledWith('/v2/companies/c-1/settings', {
+            settings: { default_is_gross: false },
+            tax_config: { ss: 0.07 },
+        });
+        expect(updated.tax_config).toEqual({ ss: 0.07 });
+
+        (mockedApi.get as any).mockResolvedValueOnce({
+            data: { particular: { work_logs_count: 2, member_rates_count: 1 } },
+        });
+        const usage = await getWorklogDefinitionsUsage('c-1', { asAdmin: false });
+        expect(mockedApi.get).toHaveBeenCalledWith('/v2/companies/c-1/worklog-definitions/usage');
+        expect(usage.particular.work_logs_count).toBe(2);
+
+        (mockedApi.get as any).mockResolvedValueOnce({ data: {} });
+        await getWorklogDefinitionsUsage('c-1', { asAdmin: true });
+        expect(mockedApi.get).toHaveBeenCalledWith('/v2/admin/companies/c-1/worklog-definitions/usage');
     });
 
     it('getCompaniesDetailed({ asAdmin: true }) should GET /v2/companies with include=members for PA and map members to camelCase', async () => {

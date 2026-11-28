@@ -8,10 +8,12 @@ import {
 } from "@/components/admin/tax-overrides-fields";
 
 describe("helpers de overrides", () => {
-    it("parsePercentText: vacio es null, 0 es valido, fuera de rango es NaN", () => {
+    it("parsePercentText: vacio es null, 0 es valido, acepta coma o punto y fuera de rango es NaN", () => {
         expect(parsePercentText("")).toBeNull();
         expect(parsePercentText("0")).toBe(0);
         expect(parsePercentText("6.48")).toBe(0.0648);
+        expect(parsePercentText("6,48")).toBe(0.0648);
+        expect(parsePercentText("6,4,8")).toBeNaN();
         expect(parsePercentText("101")).toBeNaN();
         expect(parsePercentText("-1")).toBeNaN();
         expect(parsePercentText("abc")).toBeNaN();

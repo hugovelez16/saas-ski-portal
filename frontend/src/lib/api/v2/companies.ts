@@ -4,11 +4,14 @@ import {
     CompanyFull,
     CompanyFullWithMembers,
     CompanyFullWithMembership,
+    CompanyManagerSettings,
+    CompanyManagerSettingsUpdate,
     CompanyReduced,
     CompanyUpdateV2,
     ListCompaniesParams,
     MyCompanyItem,
     Page,
+    WorklogDefinitionUsage,
 } from "@/lib/api/v2/types";
 
 /** GET /v2/companies (solo platform admin). */
@@ -54,5 +57,32 @@ export const listMyCompanies = async (): Promise<MyCompanyItem[]> => {
 /** GET /v2/users/{userId}/companies. PA: vista completa con la membresia del usuario; manager: vista reducida. */
 export const listUserCompanies = async (userId: string): Promise<(CompanyFullWithMembership | CompanyReduced)[]> => {
     const response = await api.get<(CompanyFullWithMembership | CompanyReduced)[]>(`/v2/users/${userId}/companies`);
+    return response.data;
+};
+
+/** GET /v2/companies/{companyId}/settings (manager de la empresa activa). */
+export const getCompanyManagerSettings = async (companyId: string): Promise<CompanyManagerSettings> => {
+    const response = await api.get<CompanyManagerSettings>(`/v2/companies/${companyId}/settings`);
+    return response.data;
+};
+
+/** PUT /v2/companies/{companyId}/settings (manager de la empresa activa). */
+export const updateCompanyManagerSettings = async (
+    companyId: string,
+    body: CompanyManagerSettingsUpdate,
+): Promise<CompanyManagerSettings> => {
+    const response = await api.put<CompanyManagerSettings>(`/v2/companies/${companyId}/settings`, body);
+    return response.data;
+};
+
+/** GET /v2/companies/{companyId}/worklog-definitions/usage o /v2/admin/companies/{companyId}/worklog-definitions/usage. */
+export const getWorklogDefinitionsUsage = async (
+    companyId: string,
+    options?: { asAdmin?: boolean },
+): Promise<Record<string, WorklogDefinitionUsage>> => {
+    const url = options?.asAdmin
+        ? `/v2/admin/companies/${companyId}/worklog-definitions/usage`
+        : `/v2/companies/${companyId}/worklog-definitions/usage`;
+    const response = await api.get<Record<string, WorklogDefinitionUsage>>(url);
     return response.data;
 };
