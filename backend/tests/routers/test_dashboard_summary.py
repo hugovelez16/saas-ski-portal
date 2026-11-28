@@ -164,3 +164,89 @@ def test_unauthorized_access_denied(client, db, dashboard):
     # PR-03: sin membresia la empresa responde 403 con MSG_NO_ACCESS (mensaje de access_policy).
     assert resp.status_code == 403, resp.text
     assert resp.json()["detail"] == MSG_NO_ACCESS
+
+
+def test_period_net_totals_group_by_worker_and_effective_tax_set(client, db):
+    """R-TAR-30: agrupa por trabajador y conjunto efectivo de impuestos antes de redondear el neto."""
+    from tests.factories import make_company, make_member, make_user
+
+    company = make_company(db, tax_config={"IRPF": 0.15})
+    manager = make_user(db)
+    worker_a = make_user(db)
+    worker_b = make_user(db)
+    make_member(
+        db,
+        manager,
+        company,
+        role="manager",
+        rates_config={"particular": {"base_rate": 20.0, "is_gross": True, "tax_overrides": {}}},
+    )
+    make_member(
+        db,
+        worker_a,
+        company,
+        role="worker",
+        rates_config={"particular": {"base_rate": 10.01, "is_gross": True, "tax_overrides": {}}},
+    )
+    make_member(
+        db,
+        worker_b,
+        company,
+        role="worker",
+        rates_config={"particular": {"base_rate": 10.03, "is_gross": True, "tax_overrides": {}}},
+    )
+
+    day = date(2026, 4, 10)
+    # Worker A: 10 turnos de 1.01 bruto con IRPF 15%.
+    # Por turno: 1.01 * 0.85 = 0.8585 -> 0.86 (suma turno a turno = 8.60).
+    # Agrupado: 10.10 * 0.85 = 8.585 -> ROUND_HALF_UP = 8.59.
+    for _ in range(10):
+        db.add(
+            models.WorkLog(
+                user_id=worker_a.id,
+                company_id=company.id,
+                type="particular",
+                start_date=day,
+                end_date=day,
+                duration=1.0,
+                gross_amount=1.01,
+                net_amount=0.86,
+                calculation_snapshot={
+                    "rate_applied": {"base_rate": 1.01, "is_gross": True},
+                    "tax_applied": {"IRPF": 0.15},
+                },
+            )
+        )
+
+    # Worker B: 1 turno de 10.03 bruto con IRPF 15% -> 10.03 * 0.85 = 8.5255 -> 8.53.
+    # No se mezcla con worker_a (si se mezclaran: 20.13 * 0.85 = 17.1105 -> 17.11 != 8.59 + 8.53 = 17.12).
+    db.add(
+        models.WorkLog(
+            user_id=worker_b.id,
+            company_id=company.id,
+            type="particular",
+            start_date=day,
+            end_date=day,
+            duration=1.0,
+            gross_amount=10.03,
+            net_amount=8.53,
+            calculation_snapshot={
+                "rate_applied": {"base_rate": 10.03, "is_gross": True},
+                "tax_applied": {"IRPF": 0.15},
+            },
+        )
+    )
+    db.commit()
+
+    as_user(client, manager, company)
+    resp = client.get(
+        f"/companies/{company.id}/dashboard-summary",
+        params={"start_date": "2026-04-01", "end_date": "2026-04-30"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["periodMetrics"]["totalGross"] == 20.13
+    assert body["periodMetrics"]["totalNet"] == 17.12
+    by_user = {w["userId"]: w for w in body["workersSummary"]}
+    assert by_user[str(worker_a.id)]["totalNet"] == 8.59
+    assert by_user[str(worker_b.id)]["totalNet"] == 8.53

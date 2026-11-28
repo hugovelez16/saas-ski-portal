@@ -342,6 +342,7 @@ def test_create_company_accepts_empty_tax_config(client, world):
         pytest.param({"": 0.1}, id="empty_tax_name"),
         pytest.param({"x" * 51: 0.1}, id="tax_name_51_chars"),
         pytest.param({f"t{i}": 0.01 for i in range(21)}, id="more_than_20_taxes"),
+        pytest.param({"irpf": 0.6, "ss": 0.5}, id="tax_sum_above_one"),
     ],
 )
 def test_create_company_rejects_invalid_tax_config(client, db, world, tax_config):
@@ -554,6 +555,7 @@ def test_put_without_changes_returns_422_and_writes_no_audit(client, db, world, 
         pytest.param({"name": "x" * 121}, id="name_121_chars"),
         pytest.param({"settings": {"cost_markup": 1.2}}, id="cost_markup_in_settings"),
         pytest.param({"tax_config": {"iva": 2}}, id="tax_rate_above_one"),
+        pytest.param({"tax_config": {"irpf": 0.7, "ss": 0.4}}, id="tax_sum_above_one"),
         pytest.param({"worklog_definitions": {"g": {"unit": "weeks", "label": "G"}}}, id="invalid_unit"),
     ],
 )

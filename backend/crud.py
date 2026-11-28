@@ -9,6 +9,7 @@ import json
 import uuid
 from datetime import UTC, date
 from datetime import datetime as _dt
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 import access_cache
@@ -17,7 +18,7 @@ import models
 import schemas
 import work_log_rules
 from access_policy import PolicyError
-from contracts import MissingWorklogDatesError, MissingWorklogUnitError, resolve_taxes
+from contracts import MissingWorklogDatesError, MissingWorklogUnitError, compute_grouped_net_total, resolve_taxes
 from redis_config import logger, redis_manager
 from sqlalchemy import distinct, func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -116,13 +117,23 @@ def get_worklog_unit(type_def: dict) -> str:
     return unit
 
 
-def _safe_float(val, default=0.0):
+_CENT = Decimal("0.01")
+_ONE = Decimal("1")
+_HUNDRED = Decimal("100")
+
+
+def _round_cents(value: Decimal) -> Decimal:
+    return value.quantize(_CENT, rounding=ROUND_HALF_UP)
+
+
+def _safe_decimal(val: Any, default: str = "0") -> Decimal:
     try:
-        if val is None or val == "":
-            return float(default)
-        return float(val)
-    except (ValueError, TypeError):
-        return float(default)
+        if val is None or val == "" or isinstance(val, bool):
+            return Decimal(default)
+        dec = Decimal(str(val))
+        return dec if dec.is_finite() else Decimal(default)
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal(default)
 
 
 def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dict, company_tax_config: dict = None):
@@ -130,6 +141,7 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     SaaS Evolution: Dynamic calculation engine.
     Calculates amounts based on company definitions and user rates stored in JSONB.
 
+    Opera integramente con Decimal exacto y redondeo ROUND_HALF_UP a 2 decimales (R-TAR-14).
     Semantica de `is_gross` (P-10):
     - True: la tarifa es bruta; se descuentan todos los impuestos efectivos (empresa + overrides
       de miembro): neto = (base + extras) * (1 - suma de tasas).
@@ -139,31 +151,30 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     """
     # 1. Extract configuration
     unit = get_worklog_unit(company_def)
-    base_rate = _safe_float(user_rate.get("base_rate", 0))
-    is_gross = user_rate.get("is_gross", False)
+    base_rate = _safe_decimal(user_rate.get("base_rate", 0))
+    is_gross = bool(user_rate.get("is_gross", False))
 
     # Impuestos efectivos con claves libres (override de miembro > empresa)
-    taxes = {
-        name: _safe_float(rate)
+    taxes: dict[str, Decimal] = {
+        name: _safe_decimal(rate)
         for name, rate in resolve_taxes(company_tax_config, user_rate.get("tax_overrides") or {}).items()
     }
 
-    duration = 0.0
+    duration = Decimal("0")
 
     # 2. Calculate Base Amount by Unit
     if unit == "hours":
-        duration = _safe_float(log_data.get("duration_hours") or 0)
+        duration = _safe_decimal(log_data.get("duration_hours") or 0)
         if not duration and log_data.get("start_time") and log_data.get("end_time"):
             st = log_data["start_time"]
             et = log_data["end_time"]
-            # Handles cross-day if needed, though usually same day
-            start_h = st.hour + st.minute / 60.0
-            end_h = et.hour + et.minute / 60.0
-            diff = end_h - start_h
-            if diff < 0:
-                diff += 24.0
-            duration = diff
-        amount_base = duration * base_rate
+            start_minutes = Decimal(st.hour * 60 + st.minute) + Decimal(st.second) / Decimal(60)
+            end_minutes = Decimal(et.hour * 60 + et.minute) + Decimal(et.second) / Decimal(60)
+            diff = (end_minutes - start_minutes) / Decimal(60)
+            if diff < Decimal("0"):
+                diff += Decimal("24")
+            duration = _round_cents(diff)
+        amount_base = _round_cents(duration * base_rate)
 
     elif unit == "days":
         start_date = log_data.get("start_date")
@@ -171,15 +182,15 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
         if not start_date or not end_date:
             raise MissingWorklogDatesError("Un turno con unidad 'days' requiere fecha de inicio y de fin")
         delta = end_date - start_date
-        duration = _safe_float(delta.days + 1)
-        amount_base = duration * base_rate
+        duration = Decimal(delta.days + 1)
+        amount_base = _round_cents(duration * base_rate)
     else:  # fixed
-        duration = 1.0
-        amount_base = base_rate
+        duration = Decimal("1")
+        amount_base = _round_cents(base_rate)
 
     # 4. Handle Modifiers (Dynamic lookup in rate config)
-    extras_total = 0.0
-    applied_extras = {}
+    extras_total = Decimal("0.00")
+    applied_extras: dict[str, Decimal] = {}
     user_extras = user_rate.get("extras", {})
 
     # Get extra inputs from extra_data
@@ -190,26 +201,26 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
         # If log has the key as True in extra_data['opciones']
         if log_options.get(extra_key) is True:
             # Extras can be fixed or per-unit
-            val = _safe_float(extra_val.get("value", 0))
+            val = _safe_decimal(extra_val.get("value", 0))
             if extra_val.get("per_unit") is True:
-                extra_amt = val * duration
+                extra_amt = _round_cents(val * duration)
             else:
-                extra_amt = val
+                extra_amt = _round_cents(val)
             extras_total += extra_amt
             applied_extras[extra_key] = extra_amt
 
     # 5. Apply Taxes and handle Gross/Net modes
-    total_tax_rate = sum(taxes.values())
+    total_tax_rate = sum(taxes.values(), Decimal("0"))
 
     if is_gross:
         # Rate is Gross: Gross -> Net (se descuentan todos los impuestos efectivos)
-        gross_total = amount_base + extras_total
-        net_total = gross_total * (1.0 - total_tax_rate)
+        gross_total = _round_cents(amount_base + extras_total)
+        net_total = _round_cents(gross_total * (_ONE - total_tax_rate))
     else:
         # Rate is Net: no se deduce ningun impuesto; el bruto es informativo (Net -> Gross)
-        net_total = amount_base + extras_total
-        if total_tax_rate < 1.0:
-            gross_total = net_total / (1.0 - total_tax_rate)
+        net_total = _round_cents(amount_base + extras_total)
+        if total_tax_rate < _ONE:
+            gross_total = _round_cents(net_total / (_ONE - total_tax_rate))
         else:
             gross_total = net_total  # Fallback
 
@@ -218,41 +229,43 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
     display_lines = []
 
     # Base Income line
-    base_label = f"{duration} {unit}"
+    base_label = f"{float(duration)} {unit}"
     if unit == "hours":
-        base_label = f"{round(duration, 2)}h x {base_rate}€/h"
+        base_label = f"{float(_round_cents(duration))}h x {float(base_rate)}€/h"
     elif unit == "days":
-        base_label = f"{round(duration, 1)}d x {base_rate}€/d"
+        base_label = f"{float(duration.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP))}d x {float(base_rate)}€/d"
 
     display_lines.append(
         {
             "type": "income",
             "label": base_label if is_gross else f"{base_label} (Neto)",
-            "value": round(float(amount_base), 2),
+            "value": float(amount_base),
         }
     )
 
     # Extras lines
     for ex_k, ex_v in applied_extras.items():
-        display_lines.append({"type": "extra", "label": f"Extra: {ex_k}", "value": round(float(ex_v), 2)})
+        display_lines.append({"type": "extra", "label": f"Extra: {ex_k}", "value": float(ex_v)})
 
     # Gross Total line
-    display_lines.append({"type": "subtotal", "label": "Total Bruto", "value": round(float(gross_total), 2)})
+    display_lines.append({"type": "subtotal", "label": "Total Bruto", "value": float(gross_total)})
 
     # Taxes lines
     for tax_name, tax_rate in taxes.items():
-        if tax_rate > 0:
+        if tax_rate > Decimal("0"):
+            tax_pct = float(_round_cents(tax_rate * _HUNDRED))
+            tax_val = _round_cents(gross_total * tax_rate)
             display_lines.append(
                 {
                     "type": "tax",
                     "code": tax_name,
-                    "label": f"{tax_name} ({round(tax_rate * 100, 2)}%)",
-                    "value": -round(float(gross_total * tax_rate), 2),
+                    "label": f"{tax_name} ({tax_pct}%)",
+                    "value": -float(tax_val),
                 }
             )
 
     # Final Net line
-    display_lines.append({"type": "total", "label": "Total Neto", "value": round(float(net_total), 2)})
+    display_lines.append({"type": "total", "label": "Total Neto", "value": float(net_total)})
 
     # 7. Build Snapshot
     snapshot = {
@@ -261,13 +274,13 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
         "display_lines": display_lines,
         "calculations": {
             "base_amount": float(amount_base),
-            "extras": applied_extras,
+            "extras": {k: float(v) for k, v in applied_extras.items()},
             "gross": float(gross_total),
             "net": float(net_total),
             "duration": float(duration),
             "unit": unit,
         },
-        "tax_applied": taxes,
+        "tax_applied": {name: float(rate) for name, rate in taxes.items()},
         "version": "2.3-free-taxes",
     }
 
@@ -336,7 +349,7 @@ def create_work_log(db: Session, work_log: schemas.WorkLogCreate):
     type_def = _resolve_worklog_type_def(defs, work_type)
     type_rate = rates.get(work_type, {})
 
-    if _safe_float(type_rate.get("base_rate", 0)) <= 0:
+    if _safe_decimal(type_rate.get("base_rate", 0)) <= Decimal("0"):
         raise MissingRateError(
             f"No se ha encontrado un precio (rate) configurado para el tipo '{work_type}' para este usuario."
         )
@@ -412,7 +425,7 @@ def create_work_log_bulk(db: Session, work_log_bulk: schemas.WorkLogBulkCreate):
         rates = member.rates_config or {}
         type_rate = rates.get(work_type, {})
 
-        if _safe_float(type_rate.get("base_rate", 0)) <= 0:
+        if _safe_decimal(type_rate.get("base_rate", 0)) <= Decimal("0"):
             user_obj = db.query(models.User).filter(models.User.id == user_id).first()
             user_name = f"{user_obj.first_name} {user_obj.last_name}" if user_obj else str(user_id)
             raise MissingRateError(
@@ -681,13 +694,35 @@ def _compute_work_log_summary(
         .all()
     )
 
+    net_rows = _filtered(
+        db.query(
+            logs.user_id,
+            logs.type,
+            logs.start_date,
+            logs.gross_amount,
+            logs.net_amount,
+            logs.calculation_snapshot,
+        ).select_from(logs)
+    ).all()
+
+    all_items: list[tuple[Any, Any, Any, Any]] = []
+    by_type_items: dict[str, list[tuple[Any, Any, Any, Any]]] = {}
+    by_day_items: dict[date, list[tuple[Any, Any, Any, Any]]] = {}
+    by_user_items: dict[Any, list[tuple[Any, Any, Any, Any]]] = {}
+    for nrow in net_rows:
+        item = (nrow[0], nrow[3], nrow[4], nrow[5])
+        all_items.append(item)
+        by_type_items.setdefault(nrow[1], []).append(item)
+        by_day_items.setdefault(nrow[2], []).append(item)
+        by_user_items.setdefault(nrow[0], []).append(item)
+
     return {
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
         "totals": {
             "logs_count": int(total_row[0] or 0),
             "total_hours": float(total_row[1] or 0),
-            "total_net": float(total_row[2] or 0),
+            "total_net": float(compute_grouped_net_total(all_items)),
             "total_gross": float(total_row[3] or 0),
             "unique_days": int(total_row[4] or 0),
             "active_users": int(total_row[5] or 0),
@@ -697,7 +732,7 @@ def _compute_work_log_summary(
                 "type": row[0],
                 "logs_count": int(row[1] or 0),
                 "hours": float(row[2] or 0),
-                "net": float(row[3] or 0),
+                "net": float(compute_grouped_net_total(by_type_items.get(row[0], []))),
                 "gross": float(row[4] or 0),
             }
             for row in type_rows
@@ -707,7 +742,7 @@ def _compute_work_log_summary(
                 "date": row[0].isoformat(),
                 "logs_count": int(row[1] or 0),
                 "hours": float(row[2] or 0),
-                "net": float(row[3] or 0),
+                "net": float(compute_grouped_net_total(by_day_items.get(row[0], []))),
                 "gross": float(row[4] or 0),
             }
             for row in day_rows
@@ -720,7 +755,7 @@ def _compute_work_log_summary(
                 "email": row[3],
                 "logs_count": int(row[4] or 0),
                 "hours": float(row[5] or 0),
-                "net": float(row[6] or 0),
+                "net": float(compute_grouped_net_total(by_user_items.get(row[0], []))),
                 "gross": float(row[7] or 0),
                 "unique_days": int(row[8] or 0),
             }
@@ -998,7 +1033,7 @@ def _compute_updated_work_log_values(
         tax_applied = snapshot.get("tax_applied")
         tax_config = tax_applied if isinstance(tax_applied, dict) else (company.tax_config if company else None)
 
-    if _safe_float(type_rate.get("base_rate", 0)) <= 0:
+    if _safe_decimal(type_rate.get("base_rate", 0)) <= Decimal("0"):
         raise MissingRateError(
             f"No se ha encontrado un precio (rate) configurado para el tipo '{work_type}' para este usuario."
         )
@@ -1436,12 +1471,16 @@ def get_dashboard_summary(
         models.WorkLog.end_date >= today
     ).all()
 
-    # 4. Compute Period Metrics
-    total_hours = 0.0
-    total_net = 0.0
-    total_gross = 0.0
+    # 4. Compute Period Metrics (totales en Decimal exacto y neto agrupado por trabajador e impuestos, R-TAR-30)
+    total_hours = Decimal("0")
+    total_gross = Decimal("0")
     unique_days_set = set()
     active_users_set = set()
+
+    period_net_items: list[tuple[Any, Any, Any, Any]] = []
+    type_net_items: dict[str, list[tuple[Any, Any, Any, Any]]] = {}
+    daily_net_items: dict[str, list[tuple[Any, Any, Any, Any]]] = {}
+    user_net_items: dict[str, list[tuple[Any, Any, Any, Any]]] = {}
 
     type_stats: dict[str, dict] = {}
     daily_stats: dict[str, dict] = {}
@@ -1451,12 +1490,12 @@ def get_dashboard_summary(
         uid_str = str(log.user_id)
         active_users_set.add(uid_str)
 
-        dur = float(log.duration or 0.0)
-        net = float(log.net_amount or 0.0)
-        gross = float(log.gross_amount or 0.0)
+        dur = _safe_decimal(log.duration)
+        gross = _safe_decimal(log.gross_amount)
+        item = (log.user_id, log.gross_amount, log.net_amount, log.calculation_snapshot)
+        period_net_items.append(item)
 
         total_hours += dur
-        total_net += net
         total_gross += gross
 
         # Unique days
@@ -1471,15 +1510,14 @@ def get_dashboard_summary(
                 "type": w_type,
                 "label": t_def.get("label", w_type.capitalize()),
                 "unit": t_def.get("unit", "hours"),
-                "hours": 0.0,
-                "net": 0.0,
-                "gross": 0.0,
-                "count": 0
+                "hours": Decimal("0"),
+                "gross": Decimal("0"),
+                "count": 0,
             }
         type_stats[w_type]["hours"] += dur
-        type_stats[w_type]["net"] += net
         type_stats[w_type]["gross"] += gross
         type_stats[w_type]["count"] += 1
+        type_net_items.setdefault(w_type, []).append(item)
 
         # Daily Breakdown
         d_str = str(log.start_date)
@@ -1492,40 +1530,42 @@ def get_dashboard_summary(
                 "date": d_str,
                 "day_of_week": dow,
                 "day_name": d_names[dow],
-                "hours": 0.0,
-                "net": 0.0,
-                "gross": 0.0,
-                "count": 0
+                "hours": Decimal("0"),
+                "gross": Decimal("0"),
+                "count": 0,
             }
         daily_stats[d_str]["hours"] += dur
-        daily_stats[d_str]["net"] += net
         daily_stats[d_str]["gross"] += gross
         daily_stats[d_str]["count"] += 1
+        daily_net_items.setdefault(d_str, []).append(item)
 
         # User stats
         if uid_str not in user_period_stats:
             user_period_stats[uid_str] = {
-                "hours": 0.0,
-                "net": 0.0,
-                "gross": 0.0,
+                "hours": Decimal("0"),
+                "gross": Decimal("0"),
                 "days": set(),
                 "count": 0,
-                "types": {}
+                "types": {},
             }
         user_period_stats[uid_str]["hours"] += dur
-        user_period_stats[uid_str]["net"] += net
         user_period_stats[uid_str]["gross"] += gross
         user_period_stats[uid_str]["days"].add(str(log.start_date))
         user_period_stats[uid_str]["count"] += 1
-        user_period_stats[uid_str]["types"][w_type] = user_period_stats[uid_str]["types"].get(w_type, 0.0) + dur
+        user_period_stats[uid_str]["types"][w_type] = (
+            user_period_stats[uid_str]["types"].get(w_type, Decimal("0")) + dur
+        )
+        user_net_items.setdefault(uid_str, []).append(item)
+
+    total_net = compute_grouped_net_total(period_net_items)
 
     # 5. Compute Today's Metrics
-    today_hours = 0.0
+    today_hours = Decimal("0")
     today_user_map: dict[str, dict] = {}
 
     for log in today_logs:
         uid_str = str(log.user_id)
-        dur = float(log.duration or 0.0)
+        dur = _safe_decimal(log.duration)
         today_hours += dur
 
         if uid_str not in today_user_map:
@@ -1536,8 +1576,8 @@ def get_dashboard_summary(
                 "last_name": u.last_name if u else None,
                 "email": u.email if u else None,
                 "role": "worker",
-                "hours": 0.0,
-                "logs_count": 0
+                "hours": Decimal("0"),
+                "logs_count": 0,
             }
         today_user_map[uid_str]["hours"] += dur
         today_user_map[uid_str]["logs_count"] += 1
@@ -1548,21 +1588,26 @@ def get_dashboard_summary(
         if uid_str in today_user_map:
             today_user_map[uid_str]["role"] = m.role.value if hasattr(m.role, "value") else str(m.role)
 
-    today_active_members = list(today_user_map.values())
+    today_active_members = [
+        {**entry, "hours": float(_round_cents(entry["hours"]))} for entry in today_user_map.values()
+    ]
 
     # 6. Workers Summary respecting strict sort_order
     workers_summary = []
     for m in members:
         uid_str = str(m.user_id)
         u = m.user
-        u_stats = user_period_stats.get(uid_str, {
-            "hours": 0.0,
-            "net": 0.0,
-            "gross": 0.0,
-            "days": set(),
-            "count": 0,
-            "types": {}
-        })
+        u_stats = user_period_stats.get(
+            uid_str,
+            {
+                "hours": Decimal("0"),
+                "gross": Decimal("0"),
+                "days": set(),
+                "count": 0,
+                "types": {},
+            },
+        )
+        u_net = compute_grouped_net_total(user_net_items.get(uid_str, []))
 
         workers_summary.append({
             "user_id": m.user_id,
@@ -1572,16 +1617,40 @@ def get_dashboard_summary(
             "role": m.role.value if hasattr(m.role, "value") else str(m.role),
             "sort_order": m.sort_order if m.sort_order is not None else 1000,
             "is_active": m.is_active,
-            "total_hours": round(u_stats["hours"], 2),
-            "total_net": round(u_stats["net"], 2),
-            "total_gross": round(u_stats["gross"], 2),
+            "total_hours": float(_round_cents(u_stats["hours"])),
+            "total_net": float(u_net),
+            "total_gross": float(_round_cents(u_stats["gross"])),
             "unique_days": len(u_stats["days"]),
             "logs_count": u_stats["count"],
-            "types_breakdown": {k: round(v, 2) for k, v in u_stats["types"].items()}
+            "types_breakdown": {k: float(_round_cents(v)) for k, v in u_stats["types"].items()},
         })
 
+    type_breakdown = [
+        {
+            "type": entry["type"],
+            "label": entry["label"],
+            "unit": entry["unit"],
+            "hours": float(_round_cents(entry["hours"])),
+            "net": float(compute_grouped_net_total(type_net_items.get(w_type, []))),
+            "gross": float(_round_cents(entry["gross"])),
+            "count": entry["count"],
+        }
+        for w_type, entry in type_stats.items()
+    ]
+
     # Sort daily breakdown by date
-    sorted_daily = sorted(daily_stats.values(), key=lambda x: x["date"])
+    sorted_daily = [
+        {
+            "date": entry["date"],
+            "day_of_week": entry["day_of_week"],
+            "day_name": entry["day_name"],
+            "hours": float(_round_cents(entry["hours"])),
+            "net": float(compute_grouped_net_total(daily_net_items.get(entry["date"], []))),
+            "gross": float(_round_cents(entry["gross"])),
+            "count": entry["count"],
+        }
+        for entry in sorted(daily_stats.values(), key=lambda x: x["date"])
+    ]
 
     return {
         "company_id": company.id,
@@ -1589,22 +1658,22 @@ def get_dashboard_summary(
         "start_date": str(start_date) if start_date else "",
         "end_date": str(end_date) if end_date else "",
         "period_metrics": {
-            "total_hours": round(total_hours, 2),
-            "total_net": round(total_net, 2),
-            "total_gross": round(total_gross, 2),
+            "total_hours": float(_round_cents(total_hours)),
+            "total_net": float(total_net),
+            "total_gross": float(_round_cents(total_gross)),
             "unique_days": len(unique_days_set),
             "total_logs": len(period_logs),
-            "active_members_count": len(active_users_set)
+            "active_members_count": len(active_users_set),
         },
         "today_metrics": {
-            "today_hours": round(today_hours, 2),
+            "today_hours": float(_round_cents(today_hours)),
             "today_logs_count": len(today_logs),
             "today_active_members_count": len(today_active_members),
-            "today_active_members": today_active_members
+            "today_active_members": today_active_members,
         },
-        "type_breakdown": list(type_stats.values()),
+        "type_breakdown": type_breakdown,
         "daily_breakdown": sorted_daily,
-        "workers_summary": workers_summary
+        "workers_summary": workers_summary,
     }
 
 
