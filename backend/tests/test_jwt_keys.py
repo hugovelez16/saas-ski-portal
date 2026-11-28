@@ -1,9 +1,9 @@
 """Tests de la carga de claves JWT (jwt_keys.load_jwt_keys)."""
 
-import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from jose import jwt
 from jwt_keys import load_jwt_keys
 
 
