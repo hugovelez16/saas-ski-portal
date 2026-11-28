@@ -1,6 +1,6 @@
 """Exportacion de companies.fiscal_id previa a la migracion que borra la columna (PR-23).
 
-No modifica la BD. Reglas (docs/empresa/plan-implementacion-empresa.md, secciones 5 y 9.2):
+No modifica la BD. Reglas (plan-implementacion-empresa.md, secciones 5 y 9.2; eliminado, ver historial de git):
 - Valor real: no nulo, no vacio tras strip() y distinto del valor de semilla B00000000.
 - --dry-run (defecto): cuenta las empresas con valor real y las que solo tienen el de semilla.
 - --apply (exige --backup-dir): escribe fiscal_id_export_<ts>.json fuera del repo con todas las

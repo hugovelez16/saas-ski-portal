@@ -17,7 +17,7 @@ Evaluar si conviene adoptar **FullCalendar**, **Schedule-X** o **`@event-calenda
 1. **Escala acotada por empresa**: los planes comerciales cubren 10 monitores (Pista Verde), 25 (Pista Azul) y hasta 50 monitores activos simultaneos (Pista Roja) ([../planes-y-precios.md](../planes-y-precios.md)), con jornadas visibles tipicas de 8 a 14 horas por dia.
 2. **Modelo de turnos propio**: un turno puede tener unidad `hours` (con o sin cruce de medianoche), `days` (rango `start_date..end_date`) o `fixed` (`worklog_definitions`). No se usan reglas de recurrencia iCalendar (RFC 5545).
 3. **Solapes permitidos**: dos turnos del mismo trabajador pueden solaparse (`R-TUR-23`); el cuadrante diario debe mostrarlos sin ocultarse mutuamente.
-4. **Edicion con reglas de liquidacion**: cambiar horas, fechas o tipo exige respetar el `calculation_snapshot` o pedir confirmacion explicita comparando importe actual frente a nuevo (`R-TUR-19` a `R-TUR-21`). Por ello, arrastrar y soltar en el calendario se retiro de la promesa comercial en v0.26.0 ([../auditoria-propuesta-iliberis.md](../auditoria-propuesta-iliberis.md), F2) y no es requisito de esta entrega.
+4. **Edicion con reglas de liquidacion**: cambiar horas, fechas o tipo exige respetar el `calculation_snapshot` o pedir confirmacion explicita comparando importe actual frente a nuevo (`R-TUR-19` a `R-TUR-21`). Por ello, arrastrar y soltar en el calendario se retiro de la promesa comercial en v0.26.0 (auditoria de la promesa comercial eliminada en #131, F2) y no es requisito de esta entrega.
 5. **Stack del frontend**: Next.js `16.0.7` (App Router), React `19.2.0`, TypeScript 5, Tailwind CSS v4, primitivos Radix / `shadcn/ui`, `date-fns` `^3.6.0` y `@dnd-kit/core` `^6.3.1` (`frontend/package.json`).
 
 ---

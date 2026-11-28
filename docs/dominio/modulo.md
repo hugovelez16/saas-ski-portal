@@ -5,7 +5,7 @@ Prefijo: `R-MOD`. Tablas: `app_modules` y `module_subscriptions`. Modelos: `AppM
 
 Un [modulo](../glosario.md) es una funcionalidad de pago del catalogo de la plataforma. Una
 [suscripcion](../glosario.md) lo asigna a una empresa. Este fichero sustituye a la seccion 8 de
-`logica-negocio-empresa.md`, que queda como historico; donde contradiga a
+`logica-negocio-empresa.md` (eliminado, ver historial de git); donde contradiga a
 [revision-base.md](../producto/revision-base.md) (P9, P10, P17, S9) manda este.
 
 Las reglas de acceso se enlazan, no se repiten (`acceso.md`): R-ACC-19 (empresa suspendida),

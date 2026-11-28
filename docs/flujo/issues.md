@@ -53,7 +53,6 @@ Tiene que cumplir las cuatro condiciones:
 1. "Contexto a leer" tiene rutas exactas, y la seccion cuando el fichero es
    largo.
 2. "Reglas afectadas" tiene IDs (`R-EMP-04`) o la seccion del documento de
-   dominio, o "ninguna (solo docs)". Hasta que exista `docs/dominio/` (fase 2),
-   se cita la seccion de `docs/empresa/logica-negocio-empresa.md`.
+   dominio (`docs/dominio/`), o "ninguna (solo docs)".
 3. Los criterios de aceptacion se pueden verificar con un comando o un test.
 4. "Fuera de alcance" esta relleno.

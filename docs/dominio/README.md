@@ -8,10 +8,8 @@ cerrar en [../preguntas-abiertas.md](../preguntas-abiertas.md).
 
 ## Fuente de verdad
 
-Mientras una entidad no tenga su fichero aqui, manda
-[../empresa/logica-negocio-empresa.md](../empresa/logica-negocio-empresa.md).
-Cuando el fichero de la entidad existe, manda el fichero y la seccion
-equivalente de `logica-negocio-empresa.md` queda como historico.
+Este directorio es la fuente de verdad del dominio. Sustituye a
+`logica-negocio-empresa.md` (eliminado, ver historial de git).
 
 Este directorio describe el comportamiento **objetivo**. Si el codigo hace otra
 cosa, es un hallazgo: se registra con `/issue-create`, no se adapta la regla al
@@ -19,7 +17,7 @@ codigo.
 
 ## Ficheros y prefijos reservados
 
-| Prefijo | Fichero | Contenido | Origen en `logica-negocio-empresa.md` |
+| Prefijo | Fichero | Contenido | Origen en `logica-negocio-empresa.md` (eliminado) |
 |---|---|---|---|
 | `R-ACC` | `acceso.md` | Token, sesion, empresa activa, roles, suplantacion de solo lectura ("ver como" retirado, P4), comprobaciones por peticion | 2.2, 3 y 9 |
 | `R-EMP` | `empresa.md` | Atributos, ciclo de vida, empresa gestionada y suspendida, campos JSON | 4 |
@@ -40,14 +38,15 @@ primero a esta tabla, en su propio PR o en el que crea la entidad.
   valer se marca `Retirada` y se conserva con su ID.
 - **Una regla, una afirmacion comprobable**: quien, que y con que resultado
   (por ejemplo, el codigo HTTP). Si hace falta un "y ademas", son dos reglas.
-- **Estado**, igual que en `logica-negocio-empresa.md`:
+- **Estado**:
   - `Cerrado`: decidido por el usuario.
   - `Confirmar`: propuesto, valido como punto de partida.
   - `Abierto`: sin decidir. Lleva el ID de su pregunta (`O1`, `O10`...) en
     `preguntas-abiertas.md`.
   - `Retirada`: ya no aplica. Se indica que la sustituye, si algo.
-- **Origen**: de donde sale la regla (seccion de `logica-negocio-empresa.md`,
-  ID de pregunta cerrada, issue o ADR).
+- **Origen**: de donde sale la regla (seccion de documento de origen,
+  ID de pregunta cerrada, issue o ADR). Si cita un fichero eliminado, se
+  indica `<fichero> (eliminado, ver historial de git)` sin perder la seccion.
 - **Codigo**: opcional. Donde se aplica hoy (`backend/src/...`, `access_policy`),
   sin numeros de linea, que cambian.
 
@@ -81,7 +80,7 @@ Entidad de dominio: `backend/src/domain/entities/<fichero>.py` (si existe).
 
 | ID | Regla | Estado | Origen |
 |---|---|---|---|
-| R-<ENT>-01 | <Quien puede hacer que y con que resultado> | Cerrado | logica-negocio-empresa.md 6.2 |
+| R-<ENT>-01 | <Quien puede hacer que y con que resultado> | Cerrado | ADR-0005 / #123 |
 | R-<ENT>-02 | <...> | Abierto (O1) | preguntas-abiertas.md |
 
 ## Casos limite

@@ -20,7 +20,7 @@ gh pr list --repo hugovelez16/saas-ski-portal --base develop --state open
 
 - Si `develop` no tiene commits nuevos respecto a `main`, para.
 - Si hay PR abiertos a `develop`, enumeralos y pregunta si se espera a ellos.
-- Lee `docs/empresa/tareas-manuales-release.md` y la seccion `[Unreleased]`:
+- Lee `docs/operaciones/tareas-manuales-release.md` y la seccion `[Unreleased]`:
   si hay migraciones con paso previo (backup, script de reparacion) o
   variables nuevas, enumeralos para el usuario.
 

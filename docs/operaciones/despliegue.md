@@ -18,7 +18,7 @@ Produccion corre siempre una version fija y conocida. `deploy-prod` ya no despli
    git ls-remote --tags origin 'refs/tags/vX.Y.Z'
    ```
 
-3. Antes de desplegar, si la version lleva una migracion con paso previo (backup o script de reparacion), sigue `backups.md` y la seccion 10 de `empresa/plan-implementacion-empresa.md`.
+3. Antes de desplegar, si la version lleva una migracion con paso previo (backup o script de reparacion), sigue `backups.md` y la seccion "Migraciones con paso previo" de este documento.
 4. En Komodo, abre el stack de produccion y cambia `IMAGE_TAG` a `vX.Y.Z`.
 5. Despliega el stack (Deploy). El servicio `migrate` aplica las migraciones y `backend` arranca cuando termina bien.
 6. Verifica:
@@ -32,8 +32,25 @@ Produccion corre siempre una version fija y conocida. `deploy-prod` ya no despli
 2. Si la version nueva aplico una migracion, decide antes de cambiar la imagen:
    - Si el `downgrade` es completo: ejecuta `alembic downgrade -1` con la imagen NUEVA (es la que contiene los ficheros de migracion) y despues cambia `IMAGE_TAG`. El orden importa.
    - Si el `downgrade` no es completo: restaura el backup previo (`backups.md`) y despues cambia `IMAGE_TAG`.
-   El detalle esta en la seccion 10 de `empresa/plan-implementacion-empresa.md`.
+   El detalle operativo esta en la seccion "Migraciones con paso previo" y la decision en `docs/decisiones/ADR-0010-migraciones-con-paso-previo.md`.
 3. Verifica igual que tras un despliegue.
+
+## Migraciones con paso previo
+
+Aplica a toda version con migracion Alembic que altere o borre columnas o pueda chocar con datos existentes (ADR-0010). Todo comando de produccion lo ejecuta el usuario, nunca un agente.
+
+1. **Backup manual previo**: ademas del diario de `pgbackups`, haz un `pg_dump -Fc` inmediatamente antes de desplegar (`backups.md`), verifica el volcado con `pg_restore --list <fichero> | head` y anota el `IMAGE_TAG` actual para rollback.
+2. **Inventario de vistas manuales (solo lectura)**: si la migracion altera o borra columnas, revisa las vistas del esquema `public` (`pg_views`) y sus dependencias sobre las columnas afectadas (`pg_depend` y `pg_rewrite`), porque bloquean `ALTER`/`DROP`. Las migraciones que usan `backend/migration_helpers.py` guardan y restauran propietario, definicion y privilegios (`GRANT`) al recrear vistas; si aparece una vista no prevista, adaptarla es decision manual antes de migrar.
+3. **Ensayo previo con copia anonimizada (recomendado)**: levanta un Postgres 16 desechable en `127.0.0.1` sin volumenes, restaura el volcado, anonimiza antes de cualquier consulta los datos personales (`users`: `email`, `hashed_password`, `first_name`, `last_name`, `otp_secret`; `user_sessions`: `refresh_token`, `ip_address`, `device_name`) y ensaya `alembic upgrade head`, el script en `--dry-run` y la migracion. Al terminar, destruye el contenedor y el volcado temporal.
+4. **Script de reparacion de datos (`backend/scripts/`)**:
+   - Se ejecuta desde la imagen publicada del backend (`python3 -m scripts.<nombre>`) montando `${BACKUP_DIR}:/backups:z` para guardar los ficheros JSON fuera del repo (permisos `0600`, sin secretos).
+   - `--dry-run` es el modo por defecto (no escribe). `--apply --backup-dir /backups/repairs` aplica los cambios en una unica transaccion tras escribir el backup.
+   - Codigos de salida: `0` limpio, `2` pendientes de decision manual (no se tocan automaticamente), `1` error.
+   - Repite `--dry-run` tras resolver los pendientes manuales y aplicar `--apply` hasta obtener codigo `0`, y vuelve a comprobarlo justo antes de desplegar.
+5. **Si `migrate` falla**: PostgreSQL revierte la transaccion DDL y `backend` no arranca (`service_completed_successfully`). Lee el log de `migrate` (indica el script a ejecutar), corrige los datos y relanza el despliegue.
+6. **Si falla tras aplicar la migracion**:
+   - Con `downgrade` completo: ejecuta `docker compose -f docker-compose.prod.yml run --rm migrate python3 -m alembic downgrade -1` con la imagen NUEVA y despues cambia `IMAGE_TAG` a la version anterior.
+   - Con `downgrade` incompleto (perdida de datos): para `backend` y `frontend`, restaura el backup del paso 1 (`backups.md`), cambia `IMAGE_TAG` a la version anterior y redespliega. Los ficheros de `${BACKUP_DIR}/repairs/` permiten recuperacion parcial si procede.
 
 ## Ver las versiones publicadas
 
