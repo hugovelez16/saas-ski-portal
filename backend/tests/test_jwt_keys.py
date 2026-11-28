@@ -1,10 +1,16 @@
 """Tests de la carga de claves JWT (jwt_keys.load_jwt_keys)."""
 
+import secrets
+
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jose import jwt
 from jwt_keys import load_jwt_keys
+
+# Frase generada en cada ejecucion: no se versiona ningun literal con forma de contrasena.
+TEST_PASSPHRASE = secrets.token_urlsafe(16)
+OTHER_PASSPHRASE = secrets.token_urlsafe(16)
 
 
 def _make_pair(passphrase=None):
@@ -81,11 +87,11 @@ def test_claves_por_variable_con_saltos_escapados(tmp_path):
 
 
 def test_clave_cifrada_por_variable(tmp_path):
-    private_pem, public_pem = _make_pair(passphrase="secreto-de-prueba")
+    private_pem, public_pem = _make_pair(passphrase=TEST_PASSPHRASE)
     env = {
         "PRIVATE_KEY": private_pem,
         "PUBLIC_KEY": public_pem,
-        "JWT_PRIVATE_KEY_PASSPHRASE": "secreto-de-prueba",
+        "JWT_PRIVATE_KEY_PASSPHRASE": TEST_PASSPHRASE,
     }
     got_private, got_public = load_jwt_keys(environ=env, keys_dir=str(tmp_path))
     assert "ENCRYPTED" not in got_private
@@ -93,10 +99,10 @@ def test_clave_cifrada_por_variable(tmp_path):
 
 
 def test_clave_cifrada_por_fichero(tmp_path):
-    private_pem, public_pem = _make_pair(passphrase="secreto-de-prueba")
+    private_pem, public_pem = _make_pair(passphrase=TEST_PASSPHRASE)
     (tmp_path / "private_key.pem").write_text(private_pem)
     (tmp_path / "public_key.pem").write_text(public_pem)
-    env = {"JWT_PRIVATE_KEY_PASSPHRASE": "secreto-de-prueba"}
+    env = {"JWT_PRIVATE_KEY_PASSPHRASE": TEST_PASSPHRASE}
     got_private, got_public = load_jwt_keys(environ=env, keys_dir=str(tmp_path))
     assert _roundtrip(got_private, got_public) == {"sub": "x"}
 
@@ -105,7 +111,7 @@ def test_clave_sin_cifrar_con_passphrase_reintenta(tmp_path):
     private_pem, public_pem = _make_pair()
     (tmp_path / "private_key.pem").write_text(private_pem)
     (tmp_path / "public_key.pem").write_text(public_pem)
-    env = {"JWT_PRIVATE_KEY_PASSPHRASE": "no-hace-falta"}
+    env = {"JWT_PRIVATE_KEY_PASSPHRASE": OTHER_PASSPHRASE}
     got_private, got_public = load_jwt_keys(environ=env, keys_dir=str(tmp_path))
     assert _roundtrip(got_private, got_public) == {"sub": "x"}
 
