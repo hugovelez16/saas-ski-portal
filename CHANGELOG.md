@@ -22,6 +22,9 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ## [Unreleased]
 
+### Anadido
+- El dashboard del manager recuerda por empresa el periodo y el rango personalizado elegidos en el navegador (#172)
+
 ### Cambiado
 - **Limpieza del editor JSON obsoleto**: eliminado `JsonEditor` y su test, ya sin uso desde la sustitucion de las pestanas de edicion por `ReadOnlyJsonButton` (#166)
 - **Test de limites de lineas (ADR-0007)**: `backend/tests/test_limites_de_lineas.py` falla si un fichero de `backend/src/` o `backend/routers/` supera 300 lineas fuera de la lista de excepciones `backend/tests/limites_excepciones.json` (que solo puede encoger) o si una clase `*UseCase` supera 120 lineas; `routers/v2/admin.py` pasa a un paquete con un router por recurso (empresas, membresias, invitaciones, usuarios, modulos y auditoria) y `invitations.py` se parte en un fichero por caso de uso (ADR-0006), sin cambiar rutas ni comportamiento (#164)

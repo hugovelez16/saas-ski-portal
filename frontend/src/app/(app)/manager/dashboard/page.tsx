@@ -47,6 +47,7 @@ export default function ManagerDashboardPage() {
         <div className="space-y-6">
             {/* Dashboard Content */}
             <CompanyDashboard
+                key={selectedCompany.id}
                 companyId={selectedCompany.id}
                 companyName={selectedCompany.name}
             />
