@@ -108,11 +108,11 @@ describe('fromV2Company', () => {
     it('conserva sin convertir el contenido interno de settings, rates_config, tax_config y worklog_definitions', () => {
         const result = fromV2Company({
             ...fullCompanyV2,
-            settings: { ui_customization: { some_key: 1, camelKey: 2 } },
+            settings: { default_is_gross: true, nested_block: { some_key: 1, camelKey: 2 } },
             tax_config: { iva_reducido: 10 },
         } as any);
 
-        expect((result as any).settings).toEqual({ ui_customization: { some_key: 1, camelKey: 2 } });
+        expect((result as any).settings).toEqual({ default_is_gross: true, nested_block: { some_key: 1, camelKey: 2 } });
         expect(result.taxConfig).toEqual({ iva_reducido: 10 });
         expect(result.worklogDefinitions).toEqual({ particular: { label: 'Particular', unit: 'hours' } });
     });
@@ -206,12 +206,12 @@ describe('toV2CompanyBody', () => {
     it('no toca el contenido interno de los valores', () => {
         const body = toV2CompanyBody({
             taxConfig: { someKey: 1, otherTax: 2 },
-            settings: { ui_customization: { labelText: 'x' } },
+            settings: { default_is_gross: true, nestedConfig: { labelText: 'x' } },
         });
 
         expect(body).toEqual({
             tax_config: { someKey: 1, otherTax: 2 },
-            settings: { ui_customization: { labelText: 'x' } },
+            settings: { default_is_gross: true, nestedConfig: { labelText: 'x' } },
         });
     });
 

@@ -23,6 +23,7 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 ## [Unreleased]
 
 ### Cambiado
+- **Alineacion restante de Empresa con `R-EMP`**: `seed.py` y `dev_seed.py` crean la empresa inicial sin `tax_config` por defecto (`tax_config={}`) y las pantallas de administracion de empresas (`CompaniesPageClient.tsx`) e informe PDF corporativo (`CompanyPDFReport.tsx`) recorren los impuestos existentes sin asumir claves fijas (`R-EMP-37`); retirada de la busqueda por nombre `"Personal"` en `user-dialog.tsx` (`R-EMP-15`), verificacion y documentacion de inmutabilidad de clave en tipos de turno (`R-EMP-40`), y eliminacion de los constructores obsoletos `business-logic-builder.tsx` y `worker-ux-builder.tsx` (`R-EMP-45`, `R-EMP-48`) (#117)
 - **Configuracion, tipos de turno y ajustes de empresa**: separacion entre `settings` de empresa (editable por manager y PA, con `default_is_gross`) y `platform_settings` (plan, limites y modulos, solo PA); eliminacion de `settings` en `CompanyReduced`, `fields` en `WorklogDefinition` y edicion JSON cruda en frontend; guardado sin cambios devolviendo 200 sin `audit_logs`; desactivacion, reactivacion y borrado seguro de tipos de turno con limpieza de `rates_config`; porcentajes de impuestos en 0-100 aceptando coma o punto decimal; y script idempotente `backend/scripts/create_personal_companies.py` para dotar de empresa propia a usuarios sin membresias (#138)
 
 ### Seguridad

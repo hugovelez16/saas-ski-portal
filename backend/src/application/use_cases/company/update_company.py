@@ -51,8 +51,9 @@ class UpdateCompanyUseCase:
         """`changes` contiene solo los campos enviados (JSON plano).
 
         - Sin cambios reales (incluido `{}` o mismos valores): devuelve la empresa sin modificar nada ni auditar (R-EMP-16).
-        - Al eliminar un tipo de turno de `worklog_definitions`, rechaza con 409 si tiene turnos en BD;
-          si tiene 0 turnos, limpia sus tarifas asociadas en `rates_config` (R-EMP-41).
+        - Las claves de `worklog_definitions` son inmutables (R-EMP-40): sustituir una clave por otra
+          se procesa como baja de la clave anterior mas alta de la nueva. Si la clave eliminada tiene
+          turnos en BD se rechaza con 409; si tiene 0 turnos, limpia sus tarifas asociadas en `rates_config` (R-EMP-41).
         """
         company = await self.company_repo.get_by_id(company_id)
         if company is None:

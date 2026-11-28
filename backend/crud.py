@@ -150,7 +150,6 @@ def calculate_dynamic_work_log(log_data: dict, company_def: dict, user_rate: dic
       de miembro): neto = (base + extras) * (1 - suma de tasas).
     - False (o ausente): la tarifa es neta; no se deduce ningun impuesto y neto = base + extras.
       El bruto devuelto es solo informativo (neto / (1 - suma de tasas) si la suma es < 1).
-    `settings.price_type` NO interviene aqui: solo decide la vista del dashboard.
     """
     # 1. Extract configuration
     unit = get_worklog_unit(company_def)

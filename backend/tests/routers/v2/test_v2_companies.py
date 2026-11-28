@@ -1722,3 +1722,36 @@ def test_delete_shift_type_blocked_with_work_logs_and_cleans_rates_when_unused(c
     pa_usage = client.get(f"/v2/admin/companies/{cid}/worklog-definitions/usage")
     assert pa_usage.status_code == 200, pa_usage.text
     assert pa_usage.json() == {"particular": {"work_logs_count": 1, "member_rates_count": 2}}
+
+
+def test_worklog_definition_key_cannot_be_renamed_when_used_by_shifts(client, db, world):
+    """R-EMP-40: la clave es inmutable; intentar renombrarla si tiene turnos se rechaza con 409 y conserva la original."""
+    cid = world.company.id
+    make_work_log(db, world.worker, world.company, type="particular", net_amount=25.0)
+    as_user(client, world.manager, world.company)
+
+    rename_attempt = client.put(
+        f"{BASE}/{cid}/settings",
+        json={
+            "worklog_definitions": {
+                "clase_privada": {"unit": "hours", "label": "Clase Privada", "options": [], "is_active": True}
+            }
+        },
+    )
+    assert rename_attempt.status_code == 409, rename_attempt.text
+    assert "particular" in rename_attempt.json()["detail"]
+    stored = _fresh(db, cid).worklog_definitions
+    assert "particular" in stored
+    assert "clase_privada" not in stored
+
+    # Solo editar la etiqueta conservando la misma clave si esta permitido
+    label_update = client.put(
+        f"{BASE}/{cid}/settings",
+        json={
+            "worklog_definitions": {
+                "particular": {"unit": "hours", "label": "Clase Particular Editada", "options": [], "is_active": True}
+            }
+        },
+    )
+    assert label_update.status_code == 200, label_update.text
+    assert _fresh(db, cid).worklog_definitions["particular"]["label"] == "Clase Particular Editada"
