@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Button } from "@/components/ui/button";
 import { MousePointer2, Timer, Layers } from "lucide-react";
@@ -15,13 +14,11 @@ interface WorkerUXBuilderProps {
 export function WorkerUXBuilder({ initialValue, onSave }: WorkerUXBuilderProps) {
     const [ux, setUx] = useState({
         input_mode: initialValue?.worker_experience?.input_mode,
-        allow_manual_amount: initialValue?.worker_experience?.allow_manual_amount,
     });
 
     useEffect(() => {
         setUx({
             input_mode: initialValue?.worker_experience?.input_mode,
-            allow_manual_amount: initialValue?.worker_experience?.allow_manual_amount,
         });
     }, [JSON.stringify(initialValue?.worker_experience || {})]);
 
@@ -34,9 +31,8 @@ export function WorkerUXBuilder({ initialValue, onSave }: WorkerUXBuilderProps) 
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Input Mode */}
-                <div className="space-y-3">
+            {/* Input Mode */}
+            <div className="max-w-md space-y-3">
                     <Label className="text-sm font-bold">Modo de Entrada de Datos</Label>
                     <p className="text-xs text-muted-foreground mb-3">
                         Define cómo el trabajador introduce sus jornadas.
@@ -78,30 +74,6 @@ export function WorkerUXBuilder({ initialValue, onSave }: WorkerUXBuilderProps) 
                         </div>
                     </RadioGroup>
                 </div>
-
-                {/* Worker Permissions */}
-                <div className="space-y-4 pt-2">
-                    <Label className="text-sm font-bold">Permisos del Trabajador</Label>
-                    
-                    <div className="flex items-start space-x-4 p-4 rounded-lg border border-slate-200 bg-slate-50/50">
-                        <div className="flex-1 space-y-1">
-                            <div className="flex items-center justify-between">
-                                <Label htmlFor="allow_manual_amount" className="text-sm font-semibold cursor-pointer">
-                                    Sobreescritura de Importe
-                                </Label>
-                                <Switch
-                                    id="allow_manual_amount"
-                                    checked={ux.allow_manual_amount}
-                                    onCheckedChange={(checked) => setUx({ ...ux, allow_manual_amount: checked })}
-                                />
-                            </div>
-                            <p className="text-[10px] text-muted-foreground leading-relaxed">
-                                Permite al trabajador escribir el importe final del parte a mano, ignorando el cálculo automático por tarifas.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
             <div className="flex justify-end">
                 <Button onClick={handleSave} size="sm" className="bg-indigo-600 hover:bg-indigo-700">

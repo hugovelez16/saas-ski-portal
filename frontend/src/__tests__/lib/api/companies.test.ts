@@ -48,7 +48,7 @@ const reducedCompanyV2 = {
     worklog_definitions: {},
     tax_config: { iva: 21 },
     settings: {
-        worker_experience: { input_mode: 'timer', allow_manual_amount: false },
+        worker_experience: { input_mode: 'timer' },
         ui_customization: { labels: {} },
         modules: { reports: true },
         business_logic: { price_type: 'net' },

@@ -18,6 +18,7 @@ import {
     getAllWorkLogs,
     getWorkLogSummary,
     createWorkLog,
+    previewWorkLogRecalculation,
     updateWorkLog,
     deleteWorkLog
 } from '@/lib/api/work-logs';
@@ -273,27 +274,6 @@ describe('Work Logs API Client', () => {
             );
         });
 
-        it('should add keep_manual_amount=true when requested, also with apply_to_group', async () => {
-            const update: Partial<WorkLogCreate> = { description: 'Updated' };
-            (mockedApi.put as any).mockResolvedValue({ data: { id: 'wl-1' } });
-
-            await updateWorkLog('wl-1', update, true, { keepManualAmount: true });
-
-            expect(mockedApi.put).toHaveBeenCalledWith(
-                '/work-logs/wl-1?apply_to_group=true&keep_manual_amount=true',
-                update
-            );
-        });
-
-        it('should not add keep_manual_amount when the flag is false', async () => {
-            const update: Partial<WorkLogCreate> = { description: 'Updated' };
-            (mockedApi.put as any).mockResolvedValue({ data: { id: 'wl-1' } });
-
-            await updateWorkLog('wl-1', update, false, { keepManualAmount: false });
-
-            expect(mockedApi.put).toHaveBeenCalledWith('/work-logs/wl-1?apply_to_group=false', update);
-        });
-
         it('should not add recalculate_with_current_rates when the flag is false', async () => {
             const update: Partial<WorkLogCreate> = { description: 'Updated' };
             (mockedApi.put as any).mockResolvedValue({ data: { id: 'wl-1' } });
@@ -301,6 +281,36 @@ describe('Work Logs API Client', () => {
             await updateWorkLog('wl-1', update, false, { recalculateWithCurrentRates: false });
 
             expect(mockedApi.put).toHaveBeenCalledWith('/work-logs/wl-1?apply_to_group=false', update);
+        });
+    });
+
+    describe('previewWorkLogRecalculation', () => {
+        it('should POST to /work-logs/:id/recalculate-preview with query flags', async () => {
+            const previewResponse = {
+                workLogId: 'wl-1',
+                currentNetAmount: 40,
+                currentGrossAmount: 45,
+                currentDuration: 2,
+                newNetAmount: 60,
+                newGrossAmount: 68,
+                newDuration: 2,
+                applyToGroup: true,
+                groupCount: 2,
+            };
+            (mockedApi.post as any).mockResolvedValue({ data: previewResponse });
+
+            const result = await previewWorkLogRecalculation(
+                'wl-1',
+                { type: 'tutorial' },
+                true,
+                { recalculateWithCurrentRates: true }
+            );
+
+            expect(mockedApi.post).toHaveBeenCalledWith(
+                '/work-logs/wl-1/recalculate-preview?apply_to_group=true&recalculate_with_current_rates=true',
+                { type: 'tutorial' }
+            );
+            expect(result).toEqual(previewResponse);
         });
     });
 

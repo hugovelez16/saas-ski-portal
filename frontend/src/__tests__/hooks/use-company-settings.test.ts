@@ -16,7 +16,7 @@ describe('useCompanySettings', () => {
     it('devuelve el objeto settings de la empresa tal cual llega', () => {
         const settings = {
             business_logic: { price_type: 'net' },
-            worker_experience: { input_mode: 'timer', allow_manual_amount: true },
+            worker_experience: { input_mode: 'timer' },
             ui_customization: { labels: { worklog: 'Turno', client: 'Cliente' } },
             modules: { reports: true, worker_daily_report: false },
             allowed_rates: ['hourly'],
