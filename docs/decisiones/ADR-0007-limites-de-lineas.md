@@ -1,7 +1,8 @@
 # ADR-0007: Limites de lineas
 
-Estado: Aceptada (2026-11-22). Pendiente de implementar: el test de CI y la
-lista de excepciones no existen todavia.
+Estado: Aceptada (2026-11-22). Implementada en #164: test
+`backend/tests/test_limites_de_lineas.py` y lista de excepciones
+`backend/tests/limites_excepciones.json`.
 
 ## Contexto
 
@@ -30,8 +31,10 @@ responsabilidades. Un limite solo documentado no se cumple.
 - El tamano deja de ser una opinion de revision: lo decide CI.
 - Un cambio que hace crecer una excepcion obliga a partir el fichero en el
   mismo PR.
-- Pendiente de implementar: el test, la lista inicial de excepciones (generada
-  con `wc -l` el dia de la issue) y su mencion en `CLAUDE.md`. Es una issue de
-  seguimiento aparte.
+- El test mide los ficheros `.py` de `backend/src/` y `backend/routers/`
+  (lineas segun `splitlines`) y las clases `*UseCase` (120 lineas). La lista
+  inicial de excepciones se genero el 2026-11-28 con los ficheros que superaban
+  300 lineas; una entrada cuyo fichero ya cumple el limite o ya no existe hace
+  fallar el test hasta que se retire.
 - Riesgo: un limite por lineas puede fomentar partir por partir. Se acepta; la
   estructura de ADR-0006 da el criterio de corte (un caso de uso, un fichero).
