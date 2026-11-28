@@ -22,6 +22,9 @@ El formato sigue el estandar Semantic Versioning utilizando 3 numeros separados 
 
 ## [Unreleased]
 
+### Cambiado
+- **Configuracion, tipos de turno y ajustes de empresa**: separacion entre `settings` de empresa (editable por manager y PA, con `default_is_gross`) y `platform_settings` (plan, limites y modulos, solo PA); eliminacion de `settings` en `CompanyReduced`, `fields` en `WorklogDefinition` y edicion JSON cruda en frontend; guardado sin cambios devolviendo 200 sin `audit_logs`; desactivacion, reactivacion y borrado seguro de tipos de turno con limpieza de `rates_config`; porcentajes de impuestos en 0-100 aceptando coma o punto decimal; y script idempotente `backend/scripts/create_personal_companies.py` para dotar de empresa propia a usuarios sin membresias (#138)
+
 ### Seguridad
 - **Sesiones de refresh**: `user_sessions` guarda el hash SHA-256 (`refresh_token_hash`) en lugar del JWT en claro, registra `expires_at` y `revoked_at`, y rechaza con 401 sesiones caducadas o revocadas (#132)
 
